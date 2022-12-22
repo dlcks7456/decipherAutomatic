@@ -91,11 +91,12 @@ def get_surveys(
     if chk_index :
         df_surveys['pid'] = df_surveys['path'].apply(lambda x : x.split('/')[-1])
         df_surveys['creator'] = df_surveys['createdBy'].apply(lambda x : x['email'])
+        sorted_df = df_surveys.sort_values(by='pid', ascending=False)
         if info_all :
-            return df_surveys
+            return sorted_df
         else :
             show_columns = ['pid', 'title', 'state', 'creator', 'createdOn']
-            return df_surveys[show_columns]
+            return sorted_df[show_columns]
     else :
         print('❓ No projects could be found with the query')
         print(f'❗ quoery : {quoery}')
