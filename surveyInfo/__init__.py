@@ -16,6 +16,7 @@ def get_surveys(
     status=[],
     start_date=None,
     end_date=None,
+    all_date=False,
     key=api_key,
     server=api_server,
     info_all=False) :
@@ -56,10 +57,14 @@ def get_surveys(
             return
         end_date_filt = f'end_date:{return_ymd(chk_end_date)}'
     
-    if start_date and end_date :
-        if chk_start_date > chk_end_date :
-            print('❌ [ERROR] : Please check date')
-            return 
+    if all_date :
+        start_date_filt = None
+        end_date_filt = None
+    else :
+        if start_date and end_date :
+            if chk_start_date > chk_end_date :
+                print('❌ [ERROR] : Please check date')
+                return 
 
     # status
     if type(status) != list :
