@@ -33,6 +33,7 @@ def project_files(
     pid,
     key = api_key,
     server = api_server,
+    mkdir=False,
     delivery=False,
     cond='',
     xml=False,
@@ -53,12 +54,18 @@ def project_files(
         print('❌ [ERROR] : Decipher api login failed')
         return 
     
+    # folder create check
+    parent_path = f'{os.getcwd()}'
+    if mkdir :
+        parent_path = f'{parent_path}\{pid}'
+        chk_mkdir(parent_path)
+
     # paths
-    delivery_path = f'{os.getcwd()}\Delivery data'
-    data_path = f'{os.getcwd()}\All data'
-    layout_path = f'{os.getcwd()}\Layouts'
-    file_path = f'{os.getcwd()}\Survey files'
-    lang_path = f'{os.getcwd()}\Languages'
+    delivery_path = f'{parent_path}\Delivery data'
+    data_path = f'{parent_path}\All data'
+    layout_path = f'{parent_path}\Layouts'
+    file_path = f'{parent_path}\Survey files'
+    lang_path = f'{parent_path}\Languages'
 
     # Delivey data download
     if delivery :

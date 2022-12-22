@@ -895,7 +895,8 @@ def Setting(pid, mode='auto',
             server=api_server, 
             json_export=True, 
             data_layout=True, 
-            datamap_name='Datamap') :
+            datamap_name='Datamap',
+            mkdir=False) :
     if pid == '' or not pid :
         print('❌ Please enter pid')
         return
@@ -903,6 +904,11 @@ def Setting(pid, mode='auto',
     if not mode in ['auto', 'file'] :
         print('❌ Please check the mode argument (auto or file)')
         return
+
+    parent_path = f'{os.getcwd()}'
+    if mkdir :
+        parent_path = f'{parent_path}\\{pid}'
+        chk_mkdir(parent_path)
 
     if mode == 'file' :
         file_name = f'{pid}.xlsx'
@@ -923,17 +929,17 @@ def Setting(pid, mode='auto',
         # get csv data
         csv_data = api.get(f'{path}/data', format='csv', cond='qualified')
 
-        csv_binary = f'{pid}_binary.csv'
-        create_binary_file(os.getcwd(), csv_binary, csv_data)
-        create_ascii_file(os.getcwd(), csv_binary, f'{pid}.csv')
+        csv_binary = f'binary_{pid}.csv'
+        create_binary_file(parent_path, csv_binary, csv_data)
+        create_ascii_file(parent_path, csv_binary, f'{pid}.csv')
         
         time.sleep(3)
 
         # get datamap xlsx
         map_xlsx = api.get(f'{path}/datamap', format='xlsx')
-        create_binary_file(os.getcwd(), f'{pid}_mapsheet.xlsx', map_xlsx)
+        create_binary_file(parent_path, f'mapsheet_{pid}.xlsx', map_xlsx)
 
-        xl = openpyxl.load_workbook(f'{pid}_mapsheet.xlsx')
+        xl = openpyxl.load_workbook(f'{parent_path}\mapsheet_{pid}.xlsx')
         map_sheet = 'datamap'
         data_map = xl[map_sheet]
 
@@ -1079,17 +1085,17 @@ def Setting(pid, mode='auto',
 
     # default setting
     nb = nbf.v4.new_notebook()
-    ipynb_file_name = f'{pid}_DataCheck.ipynb'
+    ipynb_file_name = f'DataCheck_{pid}.ipynb'
     order_qid = list(qids.items())
 
     # json export
     if json_export :
-        with open(f'{pid}_map.json', 'w', encoding='utf-8') as f :
+        with open(f'{parent_path}\map_{pid}.json', 'w', encoding='utf-8') as f :
             json.dump(qids, f, ensure_ascii=False, indent=4)
 
     # data layout export
     if data_layout :
-        with open(f'{pid}_layout.txt', 'w', encoding='utf-8') as f :
+        with open(f'{parent_path}\layout_{pid}.txt', 'w', encoding='utf-8') as f :
             # key id setting
             variable_names = [attrs[0] for attrs in order_qid if attrs[0] in key_ids]
 
@@ -1140,7 +1146,8 @@ def Setting(pid, mode='auto',
                 
 
     # variable py file create
-    py_file = open(f'variables_{pid}.py', 'w')
+    variable_py_name = f'variables_{pid}.py'
+    py_file = open(f'{parent_path}\{variable_py_name}', 'w')
     py_file.write(f'# {pid} variables\n')
 
     ipynb_cell = []
@@ -1332,7 +1339,11 @@ df = dc.df
     #ipynb_cell
     nb['cells'] = ipynb_cell
     #print(nb)
-    with open(ipynb_file_name, 'w') as f:
-        nbf.write(nb, f)
+    ipynb_file_path = f'{parent_path}\{ipynb_file_name}'
+    if not os.path.isfile(ipynb_file_path) :
+        with open(f'{parent_path}\{ipynb_file_name}', 'w') as f:
+            nbf.write(nb, f)
+    else :
+        print('❗ The DataCheck ipynb file already exists')
     
     print("✅ DataCheck Setting Complete")
