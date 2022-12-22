@@ -34,6 +34,13 @@ def get_surveys(
     start_date_filt = f'start_date:{return_ymd(defualt_date)}'
     end_date_filt = f'end_date:{return_ymd(now)}'
 
+    # favorite_edit
+    favorite_filt = None
+    if favorite : 
+        favorite_filt = 'my:favorite'
+        start_date_filt = None
+        end_date_filt = None
+
     if start_date :
         try :
             chk_start_date = datetime.strptime(start_date, '%Y-%m-%d')
@@ -53,11 +60,6 @@ def get_surveys(
         if chk_start_date > chk_end_date :
             print('❌ [ERROR] : Please check date')
             return 
-    
-    # favorite_edit
-    favorite_filt = None
-    if favorite : 
-        favorite_filt = 'my:favorite'
 
     # status
     if type(status) != list :
