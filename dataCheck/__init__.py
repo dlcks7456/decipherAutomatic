@@ -939,7 +939,7 @@ def Setting(pid, mode='auto',
         map_xlsx = api.get(f'{path}/datamap', format='xlsx')
         create_binary_file(parent_path, f'mapsheet_{pid}.xlsx', map_xlsx)
 
-        xl = openpyxl.load_workbook(os.path.join(parent_path, 'mapsheet_{pid}.xlsx'))
+        xl = openpyxl.load_workbook(os.path.join(parent_path, f'mapsheet_{pid}.xlsx'))
         map_sheet = 'datamap'
         data_map = xl[map_sheet]
 
