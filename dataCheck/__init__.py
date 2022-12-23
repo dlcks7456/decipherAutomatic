@@ -423,7 +423,7 @@ class Ready :
             if not resp_chk :
                 print_str += "  ❓ No response to this condition\n"
 
-        print_str += self.separator
+        
 
         err_chk = list(curr_df[~curr_df[err_col].isnull()].index)
         
@@ -431,6 +431,8 @@ class Ready :
             print_str += f"  ✅ No error\n"
         else :
             print_str += f"  ❌ Error sample count : {len(err_chk)}\n"
+
+        print_str += self.separator
 
         if not only == None :
             print_str += f"📢 {sa} ANSWER DATA CHECK\n"
