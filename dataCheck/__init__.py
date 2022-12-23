@@ -939,7 +939,7 @@ def Setting(pid, mode='auto',
         map_xlsx = api.get(f'{path}/datamap', format='xlsx')
         create_binary_file(parent_path, f'mapsheet_{pid}.xlsx', map_xlsx)
 
-        xl = openpyxl.load_workbook(f'{parent_path}\mapsheet_{pid}.xlsx')
+        xl = openpyxl.load_workbook(os.path.join(parent_path, 'mapsheet_{pid}.xlsx'))
         map_sheet = 'datamap'
         data_map = xl[map_sheet]
 
@@ -1090,12 +1090,12 @@ def Setting(pid, mode='auto',
 
     # json export
     if json_export :
-        with open(f'{parent_path}\map_{pid}.json', 'w', encoding='utf-8') as f :
+        with open(os.path.join(parent_path, f'map_{pid}.json'), 'w', encoding='utf-8') as f :
             json.dump(qids, f, ensure_ascii=False, indent=4)
 
     # data layout export
     if data_layout :
-        with open(f'{parent_path}\layout_{pid}.txt', 'w', encoding='utf-8') as f :
+        with open(os.path.join(parent_path, f'layout_{pid}.txt'), 'w', encoding='utf-8') as f :
             # key id setting
             variable_names = [attrs[0] for attrs in order_qid if attrs[0] in key_ids]
 
