@@ -427,7 +427,6 @@ class Ready :
         
         if not err_chk :
             print_str += f"  ✅ No error\n"
-            print_str += self.separator
         else :
             print_str += f"  ❌ Error sample count : {len(err_chk)}\n"
 
@@ -441,12 +440,12 @@ class Ready :
             
             if not only_chk :
                 print_str += f"  ✅ Only value check : No error\n"
-                print_str += self.separator
             else :
                 curr_df.loc[only_chk, only_col] = 'chk'
                 print_str += f"  ❌ Only Error sample count : {len(only_chk)}\n"
         
-        
+        print_str += self.separator
+
         err_df = curr_df[ (~curr_df[err_col].isnull()) | (~curr_df[only_col].isnull()) ][show_cols].copy()
 
         curr_df[err_col] = curr_df[err_col].fillna('')
