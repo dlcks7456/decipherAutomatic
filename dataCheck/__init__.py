@@ -905,9 +905,9 @@ def Setting(pid, mode='auto',
         print('❌ Please check the mode argument (auto or file)')
         return
 
-    parent_path = f'{os.getcwd()}'
+    parent_path = os.getcwd()
     if mkdir :
-        parent_path = f'{parent_path}\\{pid}'
+        parent_path =  os.path.join(parent_path, pid)
         chk_mkdir(parent_path)
 
     if mode == 'file' :
@@ -1147,7 +1147,7 @@ def Setting(pid, mode='auto',
 
     # variable py file create
     variable_py_name = f'variables_{pid}.py'
-    py_file = open(f'{parent_path}\{variable_py_name}', 'w')
+    py_file = open(os.path.join(parent_path, variable_py_name), 'w')
     py_file.write(f'# {pid} variables\n')
 
     ipynb_cell = []
@@ -1339,9 +1339,9 @@ df = dc.df
     #ipynb_cell
     nb['cells'] = ipynb_cell
     #print(nb)
-    ipynb_file_path = f'{parent_path}\{ipynb_file_name}'
+    ipynb_file_path = os.path.join(parent_path, ipynb_file_name)
     if not os.path.isfile(ipynb_file_path) :
-        with open(f'{parent_path}\{ipynb_file_name}', 'w') as f:
+        with open(ipynb_file_path, 'w') as f:
             nbf.write(nb, f)
     else :
         print('❗ The DataCheck ipynb file already exists')

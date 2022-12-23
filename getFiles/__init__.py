@@ -10,24 +10,25 @@ def chk_mkdir(path_name) :
         os.mkdir(path_name)
 
 def create_binary_file(path, file_name, file) :
-    file_path = f'{path}\{file_name}'
+    file_path = os.path.join(path, file_name)
     with open(file_path, 'wb') as f: 
         f.write(file)
 
 def create_ascii_file(path, binary_file, save_name) :
+    get_binary_file_path = os.path.join(path, binary_file)
     if '.csv' in save_name :
-        csv = pd.read_csv(f'{path}/{binary_file}', low_memory=False)
+        csv = pd.read_csv(os.path.join(path, binary_file), low_memory=False)
         csv_to_xlsx = save_name.replace('.csv', '.xlsx')
-        save_path = f'{path}/{csv_to_xlsx}'
+        save_path = os.path.join(path, csv_to_xlsx)
         csv.to_excel(save_path, index=False)
     else :
         with open(f'{path}/{save_name}', 'w', encoding='utf-8-sig') as f :
-            get_binary_file = open(f'{path}/{binary_file}', 'r', encoding='utf-8-sig')
+            get_binary_file = open(get_binary_file_path, 'r', encoding='utf-8-sig')
             for line in get_binary_file.readlines() :
                 f.write(line)
             get_binary_file.close()
 
-    os.remove(f'{path}/{binary_file}')
+    os.remove(get_binary_file_path)
 
 def project_files(
     pid,
@@ -55,17 +56,17 @@ def project_files(
         return 
     
     # folder create check
-    parent_path = f'{os.getcwd()}'
+    parent_path = os.getcwd()
     if mkdir :
-        parent_path = f'{parent_path}\{pid}'
+        parent_path = os.path.join(parent_path, pid)
         chk_mkdir(parent_path)
 
-    # paths
-    delivery_path = f'{parent_path}\Delivery data'
-    data_path = f'{parent_path}\All data'
-    layout_path = f'{parent_path}\Layouts'
-    file_path = f'{parent_path}\Survey files'
-    lang_path = f'{parent_path}\Languages'
+    # paths 
+    delivery_path = os.path.join(parent_path, 'Delivery data')
+    data_path = os.path.join(parent_path, 'All data')
+    layout_path = os.path.join(parent_path, 'Layouts')
+    file_path = os.path.join(parent_path, 'Survey files')
+    lang_path = os.path.join(parent_path, 'Languages')
 
     # Delivey data download
     if delivery :
@@ -82,7 +83,7 @@ def project_files(
         now_day = '{0:02}'.format(now.day)
         date_dir = f'{now_year}{now_month}{now_day}'
 
-        delivery_date_path = f'{delivery_path}\{date_dir}'
+        delivery_date_path = os.path.join(delivery_path, date_dir)
         chk_mkdir(delivery_date_path)
 
         info = api.get(f'rh/{path}')
@@ -268,15 +269,14 @@ def project_files(
 
             if layouts :
                 chk_mkdir(layout_path)
-
-                with open(f'{layout_path}/layouts.py', 'w', encoding='utf-8') as f :
+                with open(os.path.join(layout_path, 'layouts.py'), 'w', encoding='utf-8') as f :
                     f.write(f'layout = {layouts}')
 
                 for layout in layouts :
                     layout_name = layout['description']
                     layout_variables = layout['variables']
                     
-                    with open(f'{layout_path}/{layout_name}.txt', 'w', encoding='utf-8') as f :
+                    with open(os.path.join(layout_path, f'{layout_name}.txt'), 'w', encoding='utf-8') as f :
                         for variable in layout_variables :
                             label = variable['label']
                             fwidth = variable['fwidth']
