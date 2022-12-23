@@ -1161,7 +1161,7 @@ from variables_{pid} import *
 
 file_name = '{pid}.xlsx'
 
-raw = pd.read_excel(file_name)
+raw = pd.read_excel(file_name, engine='openpyxl')
 
 # if data sheet is more than 1
 # example)
