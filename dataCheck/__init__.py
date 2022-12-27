@@ -733,8 +733,6 @@ class Ready :
         curr_df[exist] = np.nan
         curr_df[ma_base] = np.nan
     
-    
-    
         filt_df = curr_df[~curr_df[sa].isnull()].copy()
         filt_index = list(filt_df.index)
         
@@ -758,6 +756,7 @@ class Ready :
         err_index = list(filt_df[~filt_df[ms_col].isnull()].index)
         exist_check = list(filt_df[~filt_df[exist].isnull()].index)
         
+        err_df = filt_df[~(filt_df[ms_col].isnull()) | ~(filt_df[exist].isnull())][show_cols]
         if err_index or exist_check:
             if err_index :
                 print_str += f"  ❌ [ERROR] MA-SA Logic Error\n"
@@ -767,10 +766,10 @@ class Ready :
                 print_str += f"  ❌ Error sample count : {len(exist_check)}\n"
         else :
             print_str += f"  ✅ Logic correct\n"
-    
+
         print_str += self.separator
         
-        err_df = filt_df[~(filt_df[ms_col].isnull()) | ~(filt_df[exist].isnull())][show_cols]
+        
         filt_df[ms_col] = filt_df[ms_col].fillna('')
         filt_df[exist] = filt_df[exist].fillna('')
         err_df[ms_col] = err_df[ms_col].fillna('')
@@ -830,7 +829,9 @@ class Ready :
         curr_df = self.df.copy()
         curr_df[ms_col] = np.nan
         curr_df[exist] = np.nan
-        
+        curr_df[ma_base] = np.nan
+        curr_df[ma_answer] = np.nan
+
         filt_df = curr_df[~(curr_df[ma_cols].isnull()).all(axis=1)].copy()
         filt_index = list(filt_df.index)
         
@@ -869,6 +870,8 @@ class Ready :
         err_index = list(list(filt_df[~filt_df[ms_col].isnull()].index))
         exist_check = list(filt_df[~filt_df[exist].isnull()].index)
         
+        err_df = filt_df[~(filt_df[ms_col].isnull()) | ~(filt_df[exist].isnull())][show_cols]
+
         if err_index or exist_check:
             if err_index :
                 print_str += f"  ❌ [ERROR] MA-MA Logic Error\n"
@@ -878,10 +881,9 @@ class Ready :
                 print_str += f"  ❌ Error sample count : {len(exist_check)}\n"
         else :
             print_str += f"  ✅ Logic correct\n"
-    
+
         print_str += self.separator
         
-        err_df = filt_df[~(filt_df[ms_col].isnull()) | ~(filt_df[exist].isnull())][show_cols]
         filt_df[ms_col] = filt_df[ms_col].fillna('')
         filt_df[exist] = filt_df[exist].fillna('')
         err_df[ms_col] = err_df[ms_col].fillna('')
@@ -987,10 +989,15 @@ def Setting(pid, mode='auto',
         a_cell = variable['a']
         a_cell = [a for a in a_cell if a != '' and a != None]
         b_cell = variable['b']
-        b_cell = [b for b in b_cell if b != '' and b != None]
+        #b_cell = [b for b in b_cell if b != '' and b != None]
         c_cell = variable['c']
+        #c_cell = [c for c in c_cell if c != '' and c != None]
         qid = a_cell[0] # qid
-        
+
+        # print(qid)
+        # print(b_cell)
+        # print(c_cell)
+
         type_chk = a_cell[1] if len(a_cell) >= 2 else None # type check
 
         # attribute
