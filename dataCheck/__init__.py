@@ -1072,13 +1072,15 @@ def Setting(pid, mode='auto',
             if main_qlabel in qelements :
                 qelements.remove(main_qlabel)
 
+        el_labels = {key:value for key, value in qlabes['texts'].items() if key}
+        
         qids[main_qlabel] = {
             'element' : qelements,
             'title' : qtitle,
             'type' : qtype,
             'value' : qvalue,
             'value_label' : qlabes['values'],
-            'element_label' : qlabes['texts'],
+            'element_label' : el_labels,
         }
 
     if na in list(qids.keys()) :
