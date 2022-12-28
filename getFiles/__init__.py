@@ -205,7 +205,7 @@ def project_files(
         # Excel all data
         print(' 🧩 Excel all data downloading... ⌛')
         try :
-            excel_data = oe_data = api.get(f'{path}/data', format='csv', cond=delivery_cond)
+            excel_data = api.get(f'{path}/data', format='csv', cond=delivery_cond)
 
             time.sleep(3)
             
@@ -228,7 +228,7 @@ def project_files(
 
             print(' 🔔 The data map(xlsx) download is done')
         except :
-            print(' ❌ [ERROR] : Get Data download API is Error - data mpa file (xlsx)')
+            print(' ❌ [ERROR] : Get Data download API is Error - data map file (xlsx)')
         print('')
 
         print('✅ Delivery data download is done ✅')
