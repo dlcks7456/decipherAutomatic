@@ -21,6 +21,8 @@ def get_surveys(
     server=api_server,
     info_all=False) :
 
+    pd.io.formats.excel.ExcelFormatter.header_style = None
+    
     # API LOGIN
     try :
         api.login(key, server)

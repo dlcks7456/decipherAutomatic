@@ -902,6 +902,9 @@ def Setting(pid, mode='auto',
             data_layout=True, 
             datamap_name='Datamap',
             mkdir=False) :
+    
+    pd.io.formats.excel.ExcelFormatter.header_style = None
+    
     if pid == '' or not pid :
         print('❌ Please enter pid')
         return

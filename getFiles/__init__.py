@@ -43,6 +43,8 @@ def project_files(
     quota=False,
     lang=False) :
 
+    pd.io.formats.excel.ExcelFormatter.header_style = None
+    
     if pid == None or pid == '' :
         print('❌ [ERROR] : pid is blank')
         return
