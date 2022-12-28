@@ -179,7 +179,8 @@ def project_files(
         try :
             panner_key = ['GID', 'sname', 'uid', 'sid', 'eid', 'gid', 'GUID', 'pid', 'psid']
             system_vars = ['date', 'markers', 'vlist', 'qtime', 'vos', 'vosr15oe', 'vbrowser', 'vbrowserr15oe', 'vmobiledevice', 'vmobileos', 'start_date', 'vdropout', 'source', 'decLang', 'userAgent', 'dcua', 'url', 'session', 'ipAddress', 'qtime', 'HQTolunaEnc', 'Feedback', 'feedback']
-            diff_vars = panner_key + system_vars
+            # diff_vars = panner_key + system_vars
+            diff_vars = []
             txt_vars = [var['label'] for var in datamap['variables'] if var['type'] == 'text' and not var['label'] in diff_vars]
 
             oe_fileds = ','.join(txt_vars)
