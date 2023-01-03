@@ -7,6 +7,7 @@ import openpyxl
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Border, Alignment, Color, fills, Side
 import os
+from dataclasses import dataclass
 from decipherAutomatic.getFiles import *
 
 def find_highlight_cells(
@@ -50,8 +51,6 @@ def find_highlight_cells(
     month = '{:02}'.format(now.month)
     day = '{:02}'.format(now.day)
     file_verison = 1
-
-    key_variable = 'record'
 
     # find high light cell
     wb = load_workbook(file_name, data_only=True)
@@ -170,4 +169,108 @@ def get_file_names(
         return sorted_file_list[0][0]
     else :
         return file_list
+
+
+
+@dataclass
+class SetData:
+    pid: str
+    file_name: str
+    keyid: str = 'record'
+    backup: bool = True
+    key: str = api_key
+    server: str = api_server
+    modify_df: pd.DataFrame = pd.DataFrame()
+    delete_df: pd.DataFrame = pd.DataFrame()
+    modify_list: list = None
+    delete_list: list = None
+
+    def __post_init__(self) :
+        self.df = pd.read_excel(self.file_name, dtype=str)
+        # self.df.fillna(np.nan, inplace=True)
+        self.project_path = f'surveys/selfserve/548/{self.pid}'
+        
+        # api login
+        api.login(self.key, self.server)
+
+        # get variables
+        datamap = api.get(f'{self.project_path}/datamap', format='json')
+        self.variables = [(v['label'], v['qlabel'], v['vgroup']) for v in datamap['variables']]
+
+        print('✅ It\'s ready to setup')
+        # variables name check
+        self.chk_variables = [(label, qlabel) for label, qlabel, vgroup in self.variables if (qlabel != None) and (label != qlabel) and (not qlabel in label)]
+        if self.chk_variables :
+            print('❗ You need to check the name of the variable')
+            for label, qlabel in self.chk_variables :
+                print(f'  🔹 {label} ▶ qlabel = {qlabel}' )
+        
+    
+    def find(self, check_index=0, modi=['수정'], delete=['삭제']) :
+        # modifiy data
+        self.df.iloc[:, check_index] = self.df.iloc[:, check_index].str.replace(' ', '')
+        self.modify_df = self.df[self.df.iloc[:, check_index].str.contains('|'.join(modi))].copy()
+        self.modify_df.drop(self.modify_df.columns[check_index], axis=1, inplace=True)
+
+        # delete data
+        self.df.iloc[:, check_index] = self.df.iloc[:, check_index].str.replace(' ', '')
+        self.delete_df = self.df[self.df.iloc[:, check_index].str.contains('|'.join(delete))].copy()
+        self.delete_df.drop(self.delete_df.columns[check_index], axis=1, inplace=True)
+        
+        print('✅ The modify/delete data found (modfiy_df/delte_df)')
+
+    def setup(self) :
+        # modify
+        if not self.modify_df.empty :
+            modi_dict = self.modify_df.to_dict('index')
+            for idx, md in modi_dict.items() :
+                for key, value in md.items() :
+                    if pd.isna(value) :
+                        md[key] = None
+                modi_dict[idx] = md
+                
+            self.modify_list = list(modi_dict.values())
+        
+        # delete
+        if not self.delete_df.empty :
+            delete_dict = self.delete_df.to_dict('index')
+            self.delete_list = list(delete_dict.values())
+        
+        if self.modify_df.empty and self.delete_df.empty :
+            modi_dict = self.df.to_dict('index')
+            for idx, md in modi_dict.items() :
+                for key, value in md.items() :
+                    if pd.isna(value) :
+                        md[key] = None
+                modi_dict[idx] = md
+            
+            self.modify_list = list(modi_dict.values())
+            print('❗ Only modify')
+        
+        print('✅ Setup complete')
+
+    
+    def send(self, test=True, delete_mode='disqualify') :
+        if self.modify_list :
+            try :
+                result = api.put(f'{self.project_path}/data/edit', key=self.keyid, data=self.modify_list, test=test)
+            except :
+                print('❌ Decipher API error')
+            
+            if test :
+                print('❗ It\'s a test mode. If you want to update at the Decipher, enter the \'False\' at the test argument')
+            else :
+                print('✅ Data update complete')
+
+            stats = result['stats']
+            bad = stats['bad']
+            if bad :
+                print(' ❌ This found a bad samples in file. Please check modifed data.')
+            for key, value in stats.items() :
+                print(f' 🔹 {key} : {value}')
+            print('-'*8)
+            print('')
+        else :
+            print('❗ The modfiy_list is empty')
+
 
