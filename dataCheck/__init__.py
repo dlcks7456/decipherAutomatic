@@ -1191,6 +1191,9 @@ dc = Ready(raw)
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 df = dc.df
+
+# Qualified only
+comp = (df.status == 3)
 '''
 
     ipynb_cell.append(nbf.v4.new_code_cell(default))
