@@ -189,6 +189,7 @@ class SetModify:
     keyid: str = 'record'
     key: str = api_key
     server: str = api_server
+    init_list: list = None
     modify_list: list = None
     delete_list: list = None
 
@@ -279,6 +280,16 @@ class SetModify:
 
         print(f'✅ Complete making delete_list : total {len(self.delete_list)}\'s')
 
+    def set_init(self, id_list=[], respstatus='RespStatus', respstatus_value=1) :
+        if not id_list :
+            print('❌ The id_list is empty')
+            return
+        
+        id_list = list(set(id_list))       
+        self.init_list = [{self.keyid:i, respstatus:respstatus_value, 'status': 'q'} for i in id_list]
+
+        print(f'✅ Complete making init_list : total {len(self.init_list)}\'s')
+
     
     def send(self, test=True, delete_mode='disqualify', delete_marker='delete_sample', delete_date=True, backup=True) :
         # Data backup
@@ -347,7 +358,7 @@ class SetModify:
             else :
                 print('❗ The modfiy_list is empty.')
         except :
-            print('❌ Decipher API Modify error')
+            print('❌ Decipher API modify error')
         
         print('')
 

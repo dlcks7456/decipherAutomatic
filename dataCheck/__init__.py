@@ -895,7 +895,9 @@ class Ready :
         else :
             return outputs
 
-def Setting(pid, mode='auto', 
+def Setting(pid, 
+            mode='auto', 
+            use_variable=False,
             key=api_key, 
             server=api_server, 
             json_export=True, 
@@ -951,7 +953,7 @@ def Setting(pid, mode='auto',
         map_sheet = 'datamap'
         data_map = xl[map_sheet]
 
-        print('📢 Using Decipher REST API (csv)')
+        print('📢 Using Decipher REST API')
 
     mx_row = data_map.max_row
     mx_col = data_map.max_column
@@ -1219,7 +1221,7 @@ comp = (df.status == 3)
                         val_chk = f"# value : {qval}"
                         cell_texts.append(val_chk)
 
-                    if len(qels) >=2 :
+                    if len(qels) >= 2 :
                         diff_na = [q for q in qels if not na in q]
                         py_file.write(f"{qid} = {diff_na}\n")
 
@@ -1228,6 +1230,8 @@ comp = (df.status == 3)
                             cell_texts.append(f'# The {qid} contains {qel}')
                         else :
                             safreq = f"dc.safreq('{qel}')"
+                            if use_variable : safreq = f"dc.safreq({qel})"
+
                             py_file.write(f"{qel} = '{qel}'\n")
                             cell_texts.append(safreq)
 
@@ -1254,44 +1258,52 @@ comp = (df.status == 3)
                             py_file.write(f"{qid} = {dup_diff_na}\n")
                             #cell_texts.append(f'{qid} = {set_qid}')
                             dupchk = f"dc.dupchk({set_qid})"
+                            if use_variable : dupchk = f"dc.dupchk({qid})"
+
                             cell_texts.append(dupchk)
                 else :
                     if qval :
                         val_chk = f"# value : {qval}"
+                        py_file.write(f"{qid} = '{qid}'\n")
+                        py_file.write(f'{qid}_value = [0, 1]\n')
+                        
                         cell_texts.append(val_chk)
                         safreq = f"dc.safreq('{qels[0]}')"
+                        if use_variable : safreq = f"dc.safreq({qels[0]})"
                         cell_texts.append(safreq)
             ### sa end ###
 
             # ma check #
             elif qtype == 'MA' :
-                diff_na = [q for q in qels if not na in q]
-                nas = [q for q in qels if na in q]
-                first_el = diff_na[0]
-                last_el = diff_na[-1]
-                set_qid = f"('{first_el}', '{last_el}')"
+                if len(qels) > 1 :
+                    diff_na = [q for q in qels if not na in q]
+                    nas = [q for q in qels if na in q]
+                    first_el = diff_na[0]
+                    last_el = diff_na[-1]
+                    set_qid = f"('{first_el}', '{last_el}')"
 
-                for q in diff_na :
-                    py_file.write(f"{q} = '{q}'\n")
+                    for q in diff_na :
+                        py_file.write(f"{q} = '{q}'\n")
 
-                py_file.write(f"{qid} = {diff_na}\n")
+                    py_file.write(f"{qid} = {diff_na}\n")
 
-                if val_label :
-                    values = [v for v in val_label.keys() if not int(v) == 0]
-                    if not values == [1] :
-                        py_file.write(f'{qid}_value = {values}\n')
-                        #values_txt = f'{qid}_values = {values}'
-                        #cell_texts.append(values_txt)
-                    else :
-                        py_file.write(f'{qid}_value = [0, 1]\n')
-                # cell_texts.append(f'{qid} = {set_qid}')
+                    if val_label :
+                        values = [v for v in val_label.keys() if not int(v) == 0]
+                        if not values == [1] :
+                            py_file.write(f'{qid}_value = {values}\n')
+                            #values_txt = f'{qid}_values = {values}'
+                            #cell_texts.append(values_txt)
+                        else :
+                            py_file.write(f'{qid}_value = [0, 1]\n')
+                    # cell_texts.append(f'{qid} = {set_qid}')
 
-                mafreq = f"dc.mafreq({set_qid})"
+                    mafreq = f"dc.mafreq({set_qid})"
+                    if use_variable : mafreq = f"dc.mafreq({qid})"
 
-                cell_texts.append(mafreq)
+                    cell_texts.append(mafreq)
 
-                if nas :
-                    cell_texts.append(f'# The {qid} contains {nas}')
+                    if nas :
+                        cell_texts.append(f'# The {qid} contains {nas}')
             ### ma end ###
 
 
@@ -1313,8 +1325,11 @@ comp = (df.status == 3)
                     else :
                         if range_set :
                             safreq = f"dc.safreq('{qel}', {range_set})"
+                            if use_variable : safreq = f"dc.safreq({qel}, {range_set})"
                         else :
                             safreq = f"dc.safreq('{qel}')"
+                            if use_variable : safreq = f"dc.safreq({qel})"
+
                         py_file.write(f"{qel} = '{qel}'\n")
                         cell_texts.append(safreq)
 
@@ -1331,6 +1346,8 @@ comp = (df.status == 3)
                         cell_texts.append(f'# The {qid} contains {qel}')
                     else :
                         safreq = f"dc.safreq('{qel}')"
+                        if use_variable : safreq = f"dc.safreq({qel})"
+
                         py_file.write(f"{qel} = '{qel}'\n")
                         cell_texts.append(safreq)
             ### text end ###
@@ -1339,6 +1356,8 @@ comp = (df.status == 3)
             elif qtype == 'OTHER_OE' :
                 for qel in qels :
                     safreq = f"dc.safreq('{qel}')"
+                    if use_variable : safreq = f"dc.safreq({qel})"
+
                     py_file.write(f"{qel} = '{qel}'\n")
                     cell_texts.append(safreq)
             ### other open end ###
