@@ -12,11 +12,11 @@ from decipherAutomatic.getFiles import *
 
 def find_cells(
         file_name,
-        key_variable = 'record',
-        start_row_num = 1,
-        start_col_num = 1,
-        find_text=['수정', '삭제'],
-        mkdir=False) :
+        key_variable = 'record', 
+        start_row_num = 1, 
+        start_col_num = 1, 
+        find_text=['수정', '삭제'], 
+        mkdir=False) : 
     
     if file_name == '' or file_name == None :
         print('❌ Please check the file_name')
@@ -136,7 +136,7 @@ def find_cells(
 
 
 def get_file_names(
-    dir='', 
+    dir='',  
     excel_only=True,
     recent=False) :
 
@@ -216,7 +216,13 @@ class SetModify:
             for label, qlabel in self.chk_variables :
                 print(f'  🔹 {label} ▶ qlabel = {qlabel}' )
         
-    def setup(self, check_index=0, modi=['수정'], delete=['삭제'], respstatus='RespStatus', respstatus_value=99) :
+    def setup(self, 
+            check_index=0,
+            modi=['수정'],
+            delete=['삭제'],
+            respstatus='RespStatus',
+            respstatus_value=99) :
+
         if not list(self.df.index) :
             print('❌ self.df is not defined')
             return
@@ -269,9 +275,14 @@ class SetModify:
         
         print('✅ Setup complete')
 
-    def set_delete(self, id_list=[], respstatus='RespStatus', respstatus_value=99) :
+    def set_delete(self, 
+                id_list=[],
+                respstatus='RespStatus',
+                respstatus_value=99) :
         if not id_list :
             print('❌ The id_list is empty')
+            print(f'✅ delete_list initialized.')
+            self.delete_list = []
             return
         
         id_list = list(set(id_list))       
@@ -279,8 +290,45 @@ class SetModify:
 
         print(f'✅ Complete making delete_list : total {len(self.delete_list)}\'s')
 
-    
-    def send(self, test=True, delete_mode='disqualify', delete_marker='delete_sample', delete_date=True, backup=True) :
+    def set_requal(self,
+                id_list=[],
+                respstatus='RespStatus',
+                respstatus_value=1):
+        if not id_list :
+            print('❌ The id_list is empty')
+            print(f'✅ requal_list initialized.')
+            self.requal_list = []
+            return
+
+        # get markers data
+        self.markers_data = api.get(f'{self.project_path}/data', format='json', fields=f'{self.keyid},markers')
+        id_list = [str(i) for i in id_list]
+        self.requal_list = [data for data in self.markers_data if str(data[self.keyid]) in id_list]
+        if not self.requal_list :
+            print('❗ There ins no such ID')
+            return
+
+        bad_marker = 'bad:'
+        for data in self.requal_list :
+            markers = data['markers']
+            markers = markers.split(',')
+            if not markers :
+                continue
+            
+            markers = [marker.replace(bad_marker, '') if bad_marker in marker else marker for marker in markers]
+            markers = ','.join(markers)
+            
+            data['markers'] = markers
+            data[respstatus] = respstatus_value
+            
+        print(f'✅ Complete making requal_list : total {len(self.requal_list)}\'s')
+
+    def send(self, 
+            test=True,
+            delete_mode='disqualify',  
+            delete_marker='delete_sample', 
+            delete_date=True,
+            backup=True) : 
         # Data backup
         backup_path = f'{self.project_path}/data'
         edit_api = f'{self.project_path}/data/edit'
@@ -325,6 +373,7 @@ class SetModify:
             print('❌ The delete_mode is only [\'disqualify\', \'delete\']')
             return
 
+        # Modify
         try :
             if self.modify_list :
                 print('🟦 Modify data')
@@ -351,6 +400,7 @@ class SetModify:
         
         print('')
 
+        # Delete
         try :
             if self.delete_list :
                 print(f'🟦 Delete data (mode = {delete_mode})')
@@ -380,7 +430,34 @@ class SetModify:
             print('❌ Decipher API delete error')
 
         print('')
+
+        # Requalify
+        try :
+            if self.requal_list :
+                print('🟦 Requalify data')
+                result = api.put(edit_api, key=self.keyid, data=self.requal_list, test=test)
+
+                stats = result['stats']
+                bad = stats['bad']
+                
+                if bad :
+                    print(' ⛔ This found a bad samples in file. Please check requalify data.')
+                    for num, label, value, err in bad :
+                        print(f'  ❌ {err}')
+                        print(f'      {label} = {value}')
+                        print('')
+                else :                
+                    for key, value in stats.items() :
+                        if key in ['unchanged', 'fieldsUpdated', 'created'] :
+                            print(f' 🔹 {key} : {value}')
+                    print('-'*8)
+            else :
+                print('❗ The requal_list is empty.')
+        except :
+            print('❌ Decipher API Requalify error')
         
+        print('')
+
         if test :
             print('❗ It\'s a test mode. If you want to update at the Decipher, enter the \'False\' at the test argument ( .send(test=False) )')
         else :
