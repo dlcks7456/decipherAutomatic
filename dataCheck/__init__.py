@@ -1092,7 +1092,8 @@ def Setting(pid,
         nas = qids[na]
         els = nas[eltxt]
         for el in els :
-            na_el = el.split('_')[0].replace(na, '')
+            na_name = el.split('_')[:-1]
+            na_el = '_'.join(na_name).replace(na, '')
             if qids[na_el] :
                 qel = qids[na_el][eltxt]
                 qel.append(el)
@@ -1156,7 +1157,10 @@ def Setting(pid,
                         else :
                             continue
                     else :
-                        max_width = len(qval.split('-')[1])
+                        if not qval == None :
+                            max_width = len(qval.split('-')[1])
+                        else :
+                            max_width = 64
                         if na in e :
                             max_width = 1
                         f.write(f'{e},{e},{max_width}\n')
