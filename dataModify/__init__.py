@@ -189,6 +189,7 @@ class SetModify:
     keyid: str = 'record'
     key: str = api_key
     server: str = api_server
+    init_list: list = None
     modify_list: list = None
     delete_list: list = None
 
@@ -323,12 +324,8 @@ class SetModify:
             
         print(f'✅ Complete making requal_list : total {len(self.requal_list)}\'s')
 
-    def send(self, 
-            test=True,
-            delete_mode='disqualify',  
-            delete_marker='delete_sample', 
-            delete_date=True,
-            backup=True) : 
+    
+    def send(self, test=True, delete_mode='disqualify', delete_marker='delete_sample', delete_date=True, backup=True) :
         # Data backup
         backup_path = f'{self.project_path}/data'
         edit_api = f'{self.project_path}/data/edit'
@@ -396,7 +393,7 @@ class SetModify:
             else :
                 print('❗ The modfiy_list is empty.')
         except :
-            print('❌ Decipher API Modify error')
+            print('❌ Decipher API modify error')
         
         print('')
 
