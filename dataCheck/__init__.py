@@ -118,6 +118,31 @@ def none_check(_none, add_text="") :
         print(f"❌ [ERROR] Please check {add_text}")
         return True
 
+def list_int_check(_check, add_text="") :
+    if not _check == None :
+        if type(_check) != list and type(_check) != int :
+            print(f"❌ [ERROR] Please check {add_text}")
+            return True
+
+        if type(_check) == list :
+            for c in _check :
+                if type(c) != int :
+                    print(f"❌ [ERROR] Please check value in {add_text}")
+                    return True
+
+def list_or_int_set(_check) :
+    if _check == None :
+        return []
+    
+    if type(_check) == list :
+        return _check
+
+    if type(_check) == int :
+        return [_check]
+
+
+
+
 def sum_list(*args) :
     return sum([*args], [])
 
@@ -698,7 +723,7 @@ class Ready :
         else :
             return outputs
 
-    def masa(self, ma, sa, with_cols=None, df=False, err=False):
+    def masa(self, ma, sa, diff_value=None, with_cols=None, df=False, err=False):
         show_cols = self.default_show_cols.copy()
         if df_err_check(df, err) : return
 
@@ -707,6 +732,10 @@ class Ready :
         
         key_id = key_id_check(ma_cols, sa, "SA")
         
+        if list_int_check(diff_value, add_text="diff_value") : return
+
+        diff_list = list_or_int_set(diff_value)
+
         ma_qid = ""
         if key_id["ok"] :
             ma_qid = key_id["return"]
@@ -741,11 +770,19 @@ class Ready :
         print_str += f"  💠 SA : {sa}\n"
         print_str += f"  💠 MA : {ma_cols[0]} - {ma_cols[-1]} ({len(ma_cols)} columns)\n"
         
+        if diff_list :
+            print_str += f"  ❗ Do not check the code : {diff_list}\n"
+
         for idx in filt_index :
             v = int(filt_df.loc[idx, sa])
+            
             base = f"{ma_qid}{v}"
             curr_base = [col.replace(ma_qid, '') for col in ma_cols if not pd.isnull(filt_df.loc[idx, col]) and filt_df.loc[idx, col] != 0]
             filt_df.loc[idx, ma_base] = str(curr_base)
+
+            if v in diff_list :
+                continue
+            
             if base in ma_cols :
                 base_v = filt_df.loc[idx, base]
                 if pd.isnull(base_v) or base_v.astype(int) == 0 :
@@ -781,7 +818,7 @@ class Ready :
         else :
             return outputs
 
-    def mama(self, base_ma, ma, with_cols=None, df=False, err=False):
+    def mama(self, base_ma, ma, diff_value=None, with_cols=None, df=False, err=False):
         show_cols = self.default_show_cols.copy()
         if df_err_check(df, err) : return
         
@@ -790,6 +827,10 @@ class Ready :
         
         if ma_check(ma, self.cols) : return
         ma_cols = ma_return(ma, self.cols)
+
+        if list_int_check(diff_value, add_text="diff_value") : return
+
+        diff_list = list_or_int_set(diff_value)
 
         if not with_cols == None :
             if ma_check(with_cols, self.cols, len_chk=False) : return
@@ -840,6 +881,9 @@ class Ready :
         print_str += f"  💠 MA : {ma_cols[0]} - {ma_cols[-1]} ({len(ma_cols)} columns)\n"
         print_str += f"  💠 MA : {base_ma_cols[0]} - {base_ma_cols[-1]} ({len(base_ma_cols)} columns)\n"
         
+        if diff_list :
+            print_str += f"  ❗ Do not check the code : {diff_list}\n"
+
         err_index = []
         for idx in filt_index :
             curr_base = [col.replace(base_ma_qid, '') for col in base_ma_cols if not pd.isnull(filt_df.loc[idx, col]) and filt_df.loc[idx, col] != 0]
@@ -850,6 +894,8 @@ class Ready :
             err_vars = []
             exist_vars = []
             for answer in answers :
+                if int(answer) in diff_list :
+                    continue
                 if not pd.isnull(answer) :
                     v = int(answer)
                     base_id = base_key_id["return"]
