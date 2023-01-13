@@ -12,6 +12,7 @@ from decipher.beacon import api
 import time
 from ..key import api_key, api_server
 from decipherAutomatic.getFiles import *
+from decipherAutomatic.utils import *
 
 def with_cols_check(with_cols) :
     if type(with_cols) != list :
@@ -943,13 +944,15 @@ class Ready :
 
 def Setting(pid, 
             mode='auto', 
+            cond=None,
             use_variable=False,
             key=api_key, 
             server=api_server, 
             json_export=True, 
             data_layout=True, 
             datamap_name='Datamap',
-            mkdir=False) :
+            mkdir=False,
+            dir_name=None) :
     
     pd.io.formats.excel.ExcelFormatter.header_style = None
     
@@ -963,7 +966,10 @@ def Setting(pid,
 
     parent_path = os.getcwd()
     if mkdir :
-        parent_path =  os.path.join(parent_path, pid)
+        folder_name = pid
+        if dir_name != None :
+            folder_name = dir_name
+        parent_path =  os.path.join(parent_path, folder_name)
         chk_mkdir(parent_path)
 
     if mode == 'file' :
@@ -975,6 +981,11 @@ def Setting(pid,
 
     if mode == 'auto' :
         file_name = f'{pid}.csv'
+        if cond != None :
+            if cond.isdigit() :
+                print('❌ [ERROR] : The cond argument can only be a string')
+                return
+        delivery_cond = 'qualified' if cond == None else cond
         try :
             api.login(key, server)
         except :
@@ -983,7 +994,11 @@ def Setting(pid,
 
         path = f'surveys/selfserve/548/{pid}'
         # get csv data
-        csv_data = api.get(f'{path}/data', format='csv', cond='qualified')
+        try :
+            csv_data = api.get(f'{path}/data', format='csv', cond=delivery_cond)
+        except :
+            print('❌ Error : Please check the cond argument')
+            return
 
         csv_binary = f'binary_{pid}.csv'
         create_binary_file(parent_path, csv_binary, csv_data)
@@ -1004,8 +1019,8 @@ def Setting(pid,
     mx_row = data_map.max_row
     mx_col = data_map.max_column
 
-    key_ids = ['record', 'uuid', 'list', 'UID', 'eid', 'GID', 'uid', 'pid']
-    diff_vars = ['Agree', 'Chk', 'noanswer', 'date', 'markers', 'status', 'vlist', 'qtime', 'vos', 'vosr15oe', 'vbrowser', 'vbrowserr15oe', 'vmobiledevice', 'vmobileos', 'start_date', 'vdropout', 'source', 'decLang', 'userAgent', 'dcua', 'url', 'session', 'ipAddress', 'qtime', 'HQTolunaEnc']
+    key_ids = key_vars
+    diff_vars = sys_vars
     all_diff = key_ids + diff_vars
     rank_chk = ['1순위', '2순위', '1st', '2nd']
 

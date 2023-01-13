@@ -35,6 +35,7 @@ def project_files(
     key = api_key,
     server = api_server,
     mkdir=False,
+    dir_name=None,
     delivery=False,
     cond='',
     xml=False,
@@ -60,7 +61,10 @@ def project_files(
     # folder create check
     parent_path = os.getcwd()
     if mkdir :
-        parent_path = os.path.join(parent_path, pid)
+        folder_name = pid
+        if dir_name != None :
+            folder_name = dir_name
+        parent_path = os.path.join(parent_path, folder_name)
         chk_mkdir(parent_path)
 
     # paths 
