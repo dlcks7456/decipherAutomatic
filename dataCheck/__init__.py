@@ -985,7 +985,7 @@ def Setting(pid,
             if cond.isdigit() :
                 print('❌ [ERROR] : The cond argument can only be a string')
                 return
-        delivery_cond = 'qualified' if cond == None else cond
+        delivery_cond = 'qualified' if cond == None else f'qualified and {cond}'
         try :
             api.login(key, server)
         except :
