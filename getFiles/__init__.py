@@ -79,7 +79,7 @@ def project_files(
         if cond == None or cond.isdigit() :
             print('❌ [ERROR] : The cond argument can only be a string')
             return
-        delivery_cond = 'qualified' if cond == '' else cond
+        delivery_cond = 'qualified' if cond == '' else f'qualified and {cond}' 
 
         chk_mkdir(delivery_path)
 
