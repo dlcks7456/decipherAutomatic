@@ -192,6 +192,7 @@ class SetModify:
     init_list: list = None
     modify_list: list = None
     delete_list: list = None
+    requal_list: list = None
 
     def __post_init__(self) :
         if self.file_name != None :
