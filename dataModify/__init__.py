@@ -307,7 +307,7 @@ class SetModify:
         id_list = [str(i) for i in id_list]
         self.requal_list = [data for data in self.markers_data if str(data[self.keyid]) in id_list]
         if not self.requal_list :
-            print('❗ There ins no such ID')
+            print('❗ There is no such ID')
             return
 
         bad_marker = 'bad:'
