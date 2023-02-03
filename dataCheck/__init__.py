@@ -1155,10 +1155,11 @@ def Setting(pid,
         for el in els :
             na_name = el.split('_')[:-1]
             na_el = '_'.join(na_name).replace(na, '')
-            if qids[na_el] :
-                qel = qids[na_el][eltxt]
-                qel.append(el)
-                qids[na_el][eltxt] = qel
+            if not na_el == '' :
+                if qids[na_el] :
+                    qel = qids[na_el][eltxt]
+                    qel.append(el)
+                    qids[na_el][eltxt] = qel
 
     # print(qids)
 
