@@ -342,7 +342,10 @@ def project_files(
                 chk_mkdir(lang_path)
                 for lang in survey_langs :
                     lang_xml = f'{lang}.xml'
-                    get_lang_xml = api.get(f'{path}/files/{lang_xml}')
+                    try : 
+                        get_lang_xml = api.get(f'{path}/files/{lang_xml}')
+                    except :
+                        print(f'❗ the {lang} is not exist')
                     create_binary_file(lang_path, lang_xml, get_lang_xml)
                     time.sleep(2)
                 print(' 🔔 Language BackUp is done')
@@ -353,3 +356,4 @@ def project_files(
         print('')
 
     print('✅ BackUp is done ✅')
+    print('')
