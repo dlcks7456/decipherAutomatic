@@ -23,7 +23,6 @@ start_date
 vdropout
 ipAddress
 source
-decLang
 userAgent
 dcua
 url
@@ -316,3 +315,5 @@ m_job
 sid
 pagetime
 '''
+
+# decLang

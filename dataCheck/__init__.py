@@ -1175,7 +1175,8 @@ def Setting(pid,
 
     # data layout export
     if data_layout :
-        with open(os.path.join(parent_path, f'layout_{pid}.txt'), 'w', encoding='utf-8') as f :
+        # CE Layout
+        with open(os.path.join(parent_path, f'CE_{pid}.txt'), 'w', encoding='utf-8') as f :
             # key id setting
             variable_names = [attrs[0] for attrs in order_qid if attrs[0] in key_ids]
 
@@ -1226,8 +1227,50 @@ def Setting(pid,
                         if na in e :
                             max_width = 1
                         f.write(f'{e},{e},{max_width}\n')
-                
 
+        # OE Layout
+        with open(os.path.join(parent_path, f'OE_{pid}.txt'), 'w', encoding='utf-8') as f :
+            # key id setting
+            variable_names = [attrs[0] for attrs in order_qid if attrs[0] in key_ids]
+
+            for key in key_ids :
+                if not key in variable_names :
+                    continue
+
+                if key == 'record' :
+                    f.write(f'{key},{key},7\n')
+                elif key == 'uuid' :
+                    f.write(f'{key},{key},16\n')
+                else :
+                    f.write(f'{key},{key},60\n')
+
+            # variable setting
+            for attrs in order_qid :
+                qid = attrs[0]
+                els = attrs[1]
+                if qid in all_diff :
+                    continue
+
+                qels = els['element']
+                qtype = els['type']
+                qval = els['value']
+                qtitle = els['title']
+                val_label = els['value_label']
+                el_label = els['element_label']
+
+                if not qtype in ['OE', 'OTHER_OE'] :
+                    continue
+
+                for e in qels :
+                    if na in e :
+                        f.write(f'{e},{e},1\n')
+                    
+                    max_width = 255
+                    if qtype == 'OTHER_OE' :
+                        max_width = 60
+
+                    f.write(f'{e},{e},{max_width}\n')
+                                
     # variable py file create
     variable_py_name = f'variables_{pid}.py'
     py_file = open(os.path.join(parent_path, variable_py_name), 'w')
