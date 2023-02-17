@@ -1022,6 +1022,7 @@ def Setting(pid,
     key_ids = key_vars
     diff_vars = sys_vars
     all_diff = key_ids + diff_vars
+
     rank_chk = ['1순위', '2순위', '1st', '2nd']
 
     na = 'noanswer'
@@ -1180,16 +1181,19 @@ def Setting(pid,
             # key id setting
             variable_names = [attrs[0] for attrs in order_qid if attrs[0] in key_ids]
 
-            for key in key_ids :
-                if not key in variable_names :
-                    continue
+            # for key in key_ids :
+            #     if not key in variable_names :
+            #         continue
 
-                if key == 'record' :
-                    f.write(f'{key},{key},7\n')
-                elif key == 'uuid' :
-                    f.write(f'{key},{key},16\n')
-                else :
-                    f.write(f'{key},{key},60\n')
+            #     if key == 'record' :
+            #         f.write(f'{key},{key},7\n')
+            #     elif key == 'uuid' :
+            #         f.write(f'{key},{key},16\n')
+            #     else :
+            #         f.write(f'{key},{key},60\n')
+
+            f.write(f'record,record,7\n')
+            f.write(f'uuid,uuid,16\n')
 
             # variable setting
             for attrs in order_qid :
@@ -1233,16 +1237,9 @@ def Setting(pid,
             # key id setting
             variable_names = [attrs[0] for attrs in order_qid if attrs[0] in key_ids]
 
-            for key in key_ids :
-                if not key in variable_names :
-                    continue
+            f.write(f'record,record,7\n')
+            f.write(f'uuid,uuid,16\n')
 
-                if key == 'record' :
-                    f.write(f'{key},{key},7\n')
-                elif key == 'uuid' :
-                    f.write(f'{key},{key},16\n')
-                else :
-                    f.write(f'{key},{key},60\n')
 
             # variable setting
             for attrs in order_qid :

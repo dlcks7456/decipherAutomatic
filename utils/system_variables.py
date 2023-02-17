@@ -136,6 +136,7 @@ RVID_resultCustomFactorFlag
 RVID_resultCustomFactorPanelistId
 RVID_resultCustomFactorDate
 RVID_resultErrorCode
+RespStatusRelID
 RespStatusRelIDr16
 RespStatusRelIDr17
 RespStatusRelIDr14
@@ -184,6 +185,7 @@ GridACr6
 ACCheckResultGrid
 ACCheckResultGrid2
 counterHyob
+YOB1
 YOB1r1
 HYOBFAIL
 HYOB1
@@ -353,6 +355,8 @@ PrivacyAgreement
 PIIAgreement
 ConfidentialityAgreement
 AGE1r1
+AGE1
+GridAC
 q30
 q31
 ICCCheckResult
@@ -381,9 +385,20 @@ Speeder_Log
 RelevantID_Log
 ICC_Log
 Other_Log
-CSO_resultAckFlag
+CSO_result
 HidS2S
 Feedbackr1
+interviewerId
+device_id
+QC_FailCheckssline
+QC_FailChecksattntrap
+QC_FailChecksrealans
+QC_FailChecksgeoloc
+QC_FailChecksic
+QC_FailChecksspeed
+QC_FailChecksageyob
+QC_FailChecks
+QVidScrInfo
 '''
 
 # decLang
