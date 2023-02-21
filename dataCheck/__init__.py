@@ -1383,6 +1383,8 @@ comp = (df.status == 3)
             elif qtype == 'MA' :
                 if len(qels) > 1 :
                     diff_na = [q for q in qels if not na in q]
+                    if not diff_na :
+                        continue
                     nas = [q for q in qels if na in q]
                     first_el = diff_na[0]
                     last_el = diff_na[-1]
