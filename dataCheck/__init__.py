@@ -949,7 +949,8 @@ def Setting(pid,
             key=api_key, 
             server=api_server, 
             json_export=True, 
-            data_layout=True, 
+            data_layout=False, 
+            base_layout = 'DoNotDelete',
             datamap_name='Datamap',
             mkdir=False,
             dir_name=None) :
@@ -1174,100 +1175,72 @@ def Setting(pid,
         with open(os.path.join(parent_path, f'map_{pid}.json'), 'w', encoding='utf-8') as f :
             json.dump(qids, f, ensure_ascii=False, indent=4)
 
+    # print(qids)
     # data layout export
     if data_layout :
-        # CE Layout
-        with open(os.path.join(parent_path, f'CE_{pid}.txt'), 'w', encoding='utf-8') as f :
-            # key id setting
-            variable_names = [attrs[0] for attrs in order_qid if attrs[0] in key_ids]
+        try :
+            api.login(key, server)
+            survey = f'selfserve/548/{pid}'
+            url = f'surveys/{survey}/layouts'
+            map = api.get(url)
+        except :
+            print('❌ Error : Decipher API failed')
+        
+        maps = [m for m in map if m['description'] == base_layout ]
+        if not maps :
+            print(f'❌ Error : The base layout({base_layout}) is null')
+            return 
+        base_map = maps[0]
 
-            # for key in key_ids :
-            #     if not key in variable_names :
-            #         continue
+        variables = base_map['variables']
+        exactly_diff_vars = key_vars + sys_vars
+        ce_vars = ['radio', 'checkbox', 'number', 'float']
+        oe_vars = ['text', 'textarea']
+        diff_label_names = ['vqtable', 'voqtable', 'dummy', 'DUMMY', 'Dummmy']
+        
+        ce = open(os.path.join(parent_path, f'CE_{pid}.txt'), 'w')
+        oe = open(os.path.join(parent_path, f'OE_{pid}.txt'), 'w')
 
-            #     if key == 'record' :
-            #         f.write(f'{key},{key},7\n')
-            #     elif key == 'uuid' :
-            #         f.write(f'{key},{key},16\n')
-            #     else :
-            #         f.write(f'{key},{key},60\n')
+        for label, width in [ ('record', 7), ('uuid', 16) ]:
+            write_text = f'{label},{label},{width}\n'
+            ce.write(write_text)
+            oe.write(write_text)
 
-            f.write(f'record,record,7\n')
-            f.write(f'uuid,uuid,16\n')
+        resp_chk = [v for v in variables if v['label'] == 'RespStatus']
+        if resp_chk :
+            ce.write(f'RespStatus,RespStatus,8\n')
 
-            # variable setting
-            for attrs in order_qid :
-                qid = attrs[0]
-                els = attrs[1]
-                if qid in all_diff :
+        for var in variables :
+            label = var['label']
+            qlabel = var['qlabel']
+            qtype = var['qtype']
+            fwidth = var['fwidth']
+            altlabel = var['altlabel']
+
+            write_text = f'{label},{altlabel},{fwidth}\n'
+            if (not label in exactly_diff_vars and not qlabel in exactly_diff_vars) :
+                if [dl for dl in diff_label_names if (dl in label) or (dl in qlabel)] :
                     continue
+                if qtype in ce_vars :
+                    if qtype in ['number', 'float'] :
+                        verify_check = [attr['value'].split('-')[1] for ql, attr in list(qids.items()) if (ql == qlabel) or (ql == label)]
+                        if verify_check :
+                            max_width = len(verify_check[0])
+                                # print(label, verify_check, max_width)
+                            if qtype == 'float' :
+                                max_width += 4
+                            write_text = f'{label},{altlabel},{max_width}\n'
+                    ce.write(write_text)
+                if qtype in oe_vars :
+                    oe.write(write_text)
 
-                qels = els['element']
-                qtype = els['type']
-                qval = els['value']
-                qtitle = els['title']
-                val_label = els['value_label']
-                el_label = els['element_label']
+        oe.write(f'decLang,decLang,60\n')
+        # if resp_chk :
+        #     oe.write(f'RespStatus,RespStatus,8\n')
 
-                if qtype in ['OTHER_OE'] :
-                    continue
-                
-                if qtype == 'SA' :
-                    if len(val_label) == 1 :
-                        # dummy variable
-                        continue
+        ce.close()
+        oe.close()
 
-                for e in qels :
-                    if qtype == 'OE' :
-                        if na in e :
-                            f.write(f'{e},{e},1\n')
-                        else :
-                            continue
-                    else :
-                        if not qval == None :
-                            max_width = len(qval.split('-')[1])
-                        else :
-                            max_width = 64
-                        if na in e :
-                            max_width = 1
-                        f.write(f'{e},{e},{max_width}\n')
-
-        # OE Layout
-        with open(os.path.join(parent_path, f'OE_{pid}.txt'), 'w', encoding='utf-8') as f :
-            # key id setting
-            variable_names = [attrs[0] for attrs in order_qid if attrs[0] in key_ids]
-
-            f.write(f'record,record,7\n')
-            f.write(f'uuid,uuid,16\n')
-
-
-            # variable setting
-            for attrs in order_qid :
-                qid = attrs[0]
-                els = attrs[1]
-                if qid in all_diff :
-                    continue
-
-                qels = els['element']
-                qtype = els['type']
-                qval = els['value']
-                qtitle = els['title']
-                val_label = els['value_label']
-                el_label = els['element_label']
-
-                if not qtype in ['OE', 'OTHER_OE'] :
-                    continue
-
-                for e in qels :
-                    if na in e :
-                        f.write(f'{e},{e},1\n')
-                    
-                    max_width = 255
-                    if qtype == 'OTHER_OE' :
-                        max_width = 60
-
-                    f.write(f'{e},{e},{max_width}\n')
-                                
     # variable py file create
     variable_py_name = f'variables_{pid}.py'
     py_file = open(os.path.join(parent_path, variable_py_name), 'w')
@@ -1492,3 +1465,6 @@ comp = (df.status == 3)
         print('❗ The DataCheck ipynb file already exists')
     
     print("✅ DataCheck Setting Complete")
+
+    
+    

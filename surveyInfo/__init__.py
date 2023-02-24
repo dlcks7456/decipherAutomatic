@@ -84,10 +84,10 @@ def get_surveys(
         type_flit = f'type:({types})'
 
     queory_filt = [search, favorite_filt, type_flit, start_date_filt, end_date_filt]
-    quoery = [q for q in queory_filt if q != None]
-    quoery = ' '.join(quoery)
+    queory = [q for q in queory_filt if q != None]
+    queory = ' '.join(queory)
 
-    surveys = api.get(f'/rh/companies/all/surveys', query=quoery)
+    surveys = api.get(f'/rh/companies/all/surveys', query=queory)
 
     df_surveys = pd.DataFrame(surveys)
     pd.set_option('display.max_columns', None)
@@ -106,4 +106,4 @@ def get_surveys(
             return sorted_df[show_columns]
     else :
         print('❓ No projects could be found with the query')
-        print(f'❗ quoery : {quoery}')
+        print(f'❗ queory : {queory}')

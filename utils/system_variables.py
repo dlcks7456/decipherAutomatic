@@ -399,6 +399,10 @@ QC_FailChecksspeed
 QC_FailChecksageyob
 QC_FailChecks
 QVidScrInfo
+LQ
+QAudScrInfo
+voqtable1r0
+vqtable1r0
+vterm
+decLang
 '''
-
-# decLang
