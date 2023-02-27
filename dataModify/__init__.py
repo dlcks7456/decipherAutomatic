@@ -232,7 +232,7 @@ class SetModify:
         # modifiy data
         self.df.iloc[:, check_index] = self.df.iloc[:, check_index].str.replace(' ', '')
         if not self.df.columns[check_index] in [label for label, qlabel, vgroup in self.variables] :
-            self.modify_df = self.df[self.df.iloc[:, check_index].str.contains('|'.join(modi))].copy()
+            self.modify_df = self.df[self.df.iloc[:, check_index].str.contains('|'.join(modi), na=False)].copy()
             self.modify_df.drop(self.modify_df.columns[check_index], axis=1, inplace=True)
         else :
             self.modify_df = self.df.copy()
@@ -240,7 +240,7 @@ class SetModify:
         # delete data
         self.df.iloc[:, check_index] = self.df.iloc[:, check_index].str.replace(' ', '')
         if not self.df.columns[check_index] in [label for label, qlabel, vgroup in self.variables] :
-            self.delete_df = self.df[self.df.iloc[:, check_index].str.contains('|'.join(delete))].copy()
+            self.delete_df = self.df[self.df.iloc[:, check_index].str.contains('|'.join(delete), na=False)].copy()
             self.delete_df.drop(self.delete_df.columns[check_index], axis=1, inplace=True)
         else :
             self.delete_df = pd.DataFrame()
