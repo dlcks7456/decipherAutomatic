@@ -1194,7 +1194,7 @@ def Setting(pid,
 
         variables = base_map['variables']
         exactly_diff_vars = key_vars + sys_vars
-        ce_vars = ['radio', 'checkbox', 'number', 'float']
+        ce_vars = ['radio', 'checkbox', 'number', 'float', 'select']
         oe_vars = ['text', 'textarea']
         diff_label_names = ['vqtable', 'voqtable', 'dummy', 'DUMMY', 'Dummmy']
         
