@@ -492,7 +492,7 @@ class Ready :
             if desc :
                 curr_desc = curr_df[sa].describe()
                 print_str+='🧮 Description\n'
-                print_str+='  - Mean : %s\n'%(curr_desc['mean'])
+                print_str+='  - Mean : %s\n'%(round(float(curr_desc['mean']), 2))
                 print_str+='  - Median : %s\n'%(curr_desc['50%'])
                 print_str+='  - Max : %s\n'%(curr_desc['max'])
                 print_str+='  - Min : %s\n'%(curr_desc['min'])
@@ -595,6 +595,12 @@ class Ready :
         if err_chk :
             print_str += f"  ❌ Error sample count : {len(err_chk)}\n"
         else :
+            # Description
+            desc = curr_df[cnt_col].describe()
+            print_str += "  🧮 Description\n"
+            print_str += "    - Mean Count : %s\n"%(round(float(desc['mean']), 2))
+            print_str += "    - Max  Count : %s\n"%(desc['max'])
+            print_str += "    - Min  Count : %s\n"%(desc['min'])
             print_str += f"  ✅ No error\n"
         print_str += self.separator
 
