@@ -380,7 +380,7 @@ class Ready :
             return pd.crosstab([self.df[qids[0]], self.df[qids[1]]], self.df[qids[2]], margins=True)
     
     # DATA CHECK FUNCTION
-    def safreq(self, sa=None, cond=None, with_cols=None, only=None, df=False, err=False, desc=False) :
+    def safreq(self, sa=None, cond=None, with_cols=None, only=None, df=False, err=False) :
         show_cols = self.default_show_cols.copy()
         if df_err_check(df, err) : return
         
@@ -489,13 +489,12 @@ class Ready :
         outputs = df_err_return(df, return_df, err, err_df)
         if type(outputs) == bool and outputs == False :
             # description
-            if desc :
-                curr_desc = curr_df[sa].describe()
-                print_str+='🧮 Description\n'
-                print_str+='  - Mean : %s\n'%(round(float(curr_desc['mean']), 2))
-                print_str+='  - Median : %s\n'%(curr_desc['50%'])
-                print_str+='  - Max : %s\n'%(curr_desc['max'])
-                print_str+='  - Min : %s\n'%(curr_desc['min'])
+            curr_desc = curr_df[sa].describe()
+            print_str+='🧮 Description\n'
+            print_str+='  - Mean : %s\n'%(round(float(curr_desc['mean']), 2))
+            print_str+='  - Median : %s\n'%(curr_desc['50%'])
+            print_str+='  - Max : %s\n'%(curr_desc['max'])
+            print_str+='  - Min : %s\n'%(curr_desc['min'])
             print(print_str)
         else :
             return outputs
@@ -1421,10 +1420,10 @@ comp = (df.status == 3)
                     else :
                         if range_set :
                             safreq = f"dc.safreq('{qel}', {range_set})"
-                            if use_variable : safreq = f"dc.safreq({qel}, {range_set}, desc=True)"
+                            if use_variable : safreq = f"dc.safreq({qel}, {range_set})"
                         else :
                             safreq = f"dc.safreq('{qel}')"
-                            if use_variable : safreq = f"dc.safreq({qel}, desc=True)"
+                            if use_variable : safreq = f"dc.safreq({qel})"
 
                         py_file.write(f"{qel} = '{qel}'\n")
                         cell_texts.append(safreq)
