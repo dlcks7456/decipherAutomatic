@@ -437,4 +437,5 @@ QC_FailedChecks
 QC_Log
 QC_Rejection
 QC_RejectionType
+minLOIcheck
 '''
