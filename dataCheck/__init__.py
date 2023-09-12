@@ -491,11 +491,11 @@ class Ready :
             # description
             if desc :
                 curr_desc = curr_df[sa].describe()
-                print_str+='  🧮 Description\n'
-                print_str+='    - Mean : %s\n'%(curr_desc['mean'])
-                print_str+='    - Median : %s\n'%(curr_desc['50%'])
-                print_str+='    - Max : %s\n'%(curr_desc['max'])
-                print_str+='    - Min : %s\n'%(curr_desc['min'])
+                print_str+='🧮 Description\n'
+                print_str+='  - Mean : %s\n'%(curr_desc['mean'])
+                print_str+='  - Median : %s\n'%(curr_desc['50%'])
+                print_str+='  - Max : %s\n'%(curr_desc['max'])
+                print_str+='  - Min : %s\n'%(curr_desc['min'])
             print(print_str)
         else :
             return outputs
