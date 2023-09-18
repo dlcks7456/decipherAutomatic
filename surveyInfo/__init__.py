@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from ..key import api_key, api_server
+from pandas.io.formats import excel
 
 def return_ymd(datevar) :
     year = datevar.year
@@ -21,7 +22,8 @@ def get_surveys(
     server=api_server,
     info_all=False) :
 
-    pd.io.formats.excel.ExcelFormatter.header_style = None
+    #pd.io.formats.excel.ExcelFormatter.header_style = None
+    excel.ExcelFormatter.header_style = None
     
     # API LOGIN
     try :

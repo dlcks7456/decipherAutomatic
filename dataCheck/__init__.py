@@ -13,6 +13,7 @@ import time
 from ..key import api_key, api_server
 from decipherAutomatic.getFiles import *
 from decipherAutomatic.utils import *
+from pandas.io.formats import excel
 
 def with_cols_check(with_cols) :
     if type(with_cols) != list :
@@ -489,12 +490,14 @@ class Ready :
         outputs = df_err_return(df, return_df, err, err_df)
         if type(outputs) == bool and outputs == False :
             # description
-            curr_desc = curr_df[sa].describe()
-            print_str+='🧮 Description\n'
-            print_str+='  - Mean : %s\n'%(round(float(curr_desc['mean']), 2))
-            print_str+='  - Median : %s\n'%(curr_desc['50%'])
-            print_str+='  - Max : %s\n'%(curr_desc['max'])
-            print_str+='  - Min : %s\n'%(curr_desc['min'])
+            base = curr_df[sa]
+            if not base.dtype == 'object' :
+                curr_desc = base.describe()
+                print_str+='🧮 Description\n'
+                print_str+='  - Mean : %s\n'%(round(float(curr_desc['mean']), 2))
+                print_str+='  - Median : %s\n'%(curr_desc['50%'])
+                print_str+='  - Max : %s\n'%(curr_desc['max'])
+                print_str+='  - Min : %s\n'%(curr_desc['min'])
             print(print_str)
         else :
             return outputs
@@ -969,7 +972,8 @@ def Setting(pid,
             mkdir=False,
             dir_name=None) :
     
-    pd.io.formats.excel.ExcelFormatter.header_style = None
+    #pd.io.formats.excel.ExcelFormatter.header_style = None
+    excel.ExcelFormatter.header_style = None
     
     if pid == '' or not pid :
         print('❌ Please enter pid')

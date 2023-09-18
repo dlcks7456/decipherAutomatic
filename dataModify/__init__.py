@@ -9,6 +9,7 @@ from openpyxl.styles import Font, PatternFill, Border, Alignment, Color, fills, 
 import os
 from dataclasses import dataclass
 from decipherAutomatic.getFiles import *
+from pandas.io.formats import excel
 
 def find_cells(
         file_name,
@@ -339,7 +340,8 @@ class SetModify:
         print(f'📣 test mode is {test}')
         print('')
         if backup and not test :
-            pd.io.formats.excel.ExcelFormatter.header_style = None
+            #pd.io.formats.excel.ExcelFormatter.header_style = None
+            excel.ExcelFormatter.header_style = None
 
             print('📥 Data BackUp ... ⌛')
             data_path = os.path.join(os.getcwd(), 'BackUp')

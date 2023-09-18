@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 import pandas as pd
 from ..key import api_key, api_server
+from pandas.io.formats import excel
 
 def chk_mkdir(path_name) :
     if not os.path.exists(path_name) :
@@ -44,7 +45,8 @@ def project_files(
     quota=False,
     lang=False) :
 
-    pd.io.formats.excel.ExcelFormatter.header_style = None
+    #pd.io.formats.excel.ExcelFormatter.header_style = None
+    excel.ExcelFormatter.header_style = None
     
     if pid == None or pid == '' :
         print('❌ [ERROR] : pid is blank')
