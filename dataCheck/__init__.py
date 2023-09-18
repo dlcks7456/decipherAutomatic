@@ -490,7 +490,7 @@ class Ready :
         outputs = df_err_return(df, return_df, err, err_df)
         if type(outputs) == bool and outputs == False :
             # description
-            base = curr_df[sa]
+            base =  curr_df[cond][sa] if cond_flag == True else curr_df[sa]
             if not base.dtype == 'object' :
                 curr_desc = base.describe()
                 print_str+='🧮 Description\n'
@@ -598,12 +598,14 @@ class Ready :
             print_str += f"  ❌ Error sample count : {len(err_chk)}\n"
         else :
             # Description
-            desc = curr_df[cnt_col].describe()
+            base =  curr_df[cond][cnt_col] if cond_flag == True else curr_df[cnt_col]
+            desc = base.describe()
             print_str += "  🧮 Description\n"
             print_str += "    - Mean Count : %s\n"%(round(float(desc['mean']), 2))
             print_str += "    - Max  Count : %s\n"%(desc['max'])
             print_str += "    - Min  Count : %s\n"%(desc['min'])
             print_str += f"  ✅ No error\n"
+            
         print_str += self.separator
 
         err_df = curr_df[~curr_df[err_col].isnull()][show_cols].copy()
