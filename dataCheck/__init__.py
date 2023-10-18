@@ -1273,6 +1273,7 @@ def Setting(pid,
 
     default = f'''from decipherAutomatic.dataCheck import *
 import pandas as pd
+import numpy as np
 from variables_{pid} import * 
 
 file_name = '{pid}.xlsx'
