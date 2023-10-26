@@ -783,6 +783,7 @@ class Ready :
         curr_df = self.df.copy()
         if cond_flag :
             curr_df = self.df[cond].copy()
+
         curr_df[ms_col] = np.nan
         curr_df[exist] = np.nan
         curr_df[ma_base] = np.nan
@@ -792,6 +793,12 @@ class Ready :
         
         print_str = ""
         print_str += "📢 Multi variable base Single variable Logic Check\n"
+
+        if not list(curr_df.index) :
+            print_str += "❓ No response to this condition\n"
+            print(print_str)
+            return
+
         print_str += f"  💠 SA : {sa}\n"
         print_str += f"  💠 MA : {ma_cols[0]} - {ma_cols[-1]} ({len(ma_cols)} columns)\n"
         
@@ -908,6 +915,12 @@ class Ready :
         
         print_str = ""
         print_str += "📢 Multi variable base Multi variable Logic Check\n"
+        
+        if not list(curr_df.index) :
+            print_str += "❓ No response to this condition\n"
+            print(print_str)
+            return
+        
         print_str += f"  💠 MA : {ma_cols[0]} - {ma_cols[-1]} ({len(ma_cols)} columns)\n"
         print_str += f"  💠 MA : {base_ma_cols[0]} - {base_ma_cols[-1]} ({len(base_ma_cols)} columns)\n"
         
