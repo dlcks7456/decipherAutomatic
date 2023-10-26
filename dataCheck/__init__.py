@@ -522,7 +522,7 @@ class Ready :
         err_col = self.err_col
         curr_df[err_col] = np.nan
         
-        cond_flag = cond_check(cond)        
+        cond_flag = cond_check(cond)
         if cond_flag == False : return
 
         err_col = self.err_col
@@ -743,7 +743,7 @@ class Ready :
         else :
             return outputs
 
-    def masa(self, ma, sa, diff_value=None, with_cols=None, df=False, err=False):
+    def masa(self, ma, sa, cond=None, diff_value=None, with_cols=None, df=False, err=False):
         show_cols = self.default_show_cols.copy()
         if df_err_check(df, err) : return
 
@@ -764,6 +764,9 @@ class Ready :
 
         if sa_check(sa) : return
 
+        cond_flag = cond_check(cond)
+        if cond_flag == False : return
+
         if not with_cols == None :
             if ma_check(with_cols, self.cols, len_chk=False) : return
             with_cols = ma_return(with_cols, self.cols)
@@ -778,6 +781,9 @@ class Ready :
         
         show_cols = sum_list(show_cols, [ms_col, exist, ma_base], masa_cols, with_cols)    
         curr_df = self.df.copy()
+        if cond_flag :
+            curr_df = self.df[cond].copy()
+
         curr_df[ms_col] = np.nan
         curr_df[exist] = np.nan
         curr_df[ma_base] = np.nan
@@ -787,6 +793,12 @@ class Ready :
         
         print_str = ""
         print_str += "📢 Multi variable base Single variable Logic Check\n"
+
+        if not list(curr_df.index) :
+            print_str += "❓ No response to this condition\n"
+            print(print_str)
+            return
+
         print_str += f"  💠 SA : {sa}\n"
         print_str += f"  💠 MA : {ma_cols[0]} - {ma_cols[-1]} ({len(ma_cols)} columns)\n"
         
@@ -838,7 +850,7 @@ class Ready :
         else :
             return outputs
 
-    def mama(self, base_ma, ma, diff_value=None, with_cols=None, df=False, err=False):
+    def mama(self, base_ma, ma, cond=None, diff_value=None, with_cols=None, df=False, err=False):
         show_cols = self.default_show_cols.copy()
         if df_err_check(df, err) : return
         
@@ -847,6 +859,9 @@ class Ready :
         
         if ma_check(ma, self.cols) : return
         ma_cols = ma_return(ma, self.cols)
+
+        cond_flag = cond_check(cond)
+        if cond_flag == False : return
 
         if list_int_check(diff_value, add_text="diff_value") : return
 
@@ -888,6 +903,8 @@ class Ready :
         show_cols = sum_list(show_cols, [ms_col, exist, ma_base, ma_answer], cols_order, with_cols)
         
         curr_df = self.df.copy()
+        if cond_flag :
+            curr_df = self.df[cond].copy()
         curr_df[ms_col] = np.nan
         curr_df[exist] = np.nan
         curr_df[ma_base] = np.nan
@@ -898,6 +915,12 @@ class Ready :
         
         print_str = ""
         print_str += "📢 Multi variable base Multi variable Logic Check\n"
+        
+        if not list(curr_df.index) :
+            print_str += "❓ No response to this condition\n"
+            print(print_str)
+            return
+        
         print_str += f"  💠 MA : {ma_cols[0]} - {ma_cols[-1]} ({len(ma_cols)} columns)\n"
         print_str += f"  💠 MA : {base_ma_cols[0]} - {base_ma_cols[-1]} ({len(base_ma_cols)} columns)\n"
         
