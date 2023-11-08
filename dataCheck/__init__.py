@@ -1510,5 +1510,6 @@ comp = (df.status == 3)
     
     print("✅ DataCheck Setting Complete")
 
-    
-    
+
+def qset(qname, *code):
+    return list(map(lambda x: f'{qname}{x}', code))
