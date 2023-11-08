@@ -1511,5 +1511,8 @@ comp = (df.status == 3)
     print("✅ DataCheck Setting Complete")
 
 
-def qset(qname, *code):
+def qset(qname, code):
+    if not type(code) in [list, tuple]  :
+        print('❌ Code should only be entered as a list or tuple type.')
+        return 
     return list(map(lambda x: f'{qname}{x}', code))
