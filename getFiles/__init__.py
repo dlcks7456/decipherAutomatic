@@ -43,7 +43,9 @@ def project_files(
     data=False,
     layout=False,
     quota=False,
-    lang=False) :
+    lang=False,
+    ce=None,
+    oe=None) :
 
     #pd.io.formats.excel.ExcelFormatter.header_style = None
     excel.ExcelFormatter.header_style = None
@@ -113,16 +115,20 @@ def project_files(
         if layout_ids :
             print(' ❗ If you want to use the Standard layout, press the ESC button')
             print(' 📊 Enter the CE data layout')
-            while True :
-                ce_layout_id = input('📊 CE data layout id : ')
-                if ce_layout_id == '' :
-                    break
-                elif not ce_layout_id.isdigit() :
-                    print('  ❌ [ERROR] : The CE data layout id is only number')
-                elif not int(ce_layout_id) in layout_ids :
-                    print('  ❌ [ERROR] : Please check the layout id')
-                else :
-                    break
+            ce_layout_id = None
+            if ce == None :
+                while True :
+                    ce_layout_id = input('📊 CE data layout id : ')
+                    if ce_layout_id == '' :
+                        break
+                    elif not ce_layout_id.isdigit() :
+                        print('  ❌ [ERROR] : The CE data layout id is only number')
+                    elif not int(ce_layout_id) in layout_ids :
+                        print('  ❌ [ERROR] : Please check the layout id')
+                    else :
+                        break
+            else :
+                ce_layout_id = str(ce)
 
             if ce_layout_id == '' :
                 ce_layout_id = None
@@ -134,16 +140,20 @@ def project_files(
             print('')
 
             print(' 📝 Enter the OE data layout')
-            while True :
-                oe_layout_id = input('📝 OE data layout id : ')
-                if oe_layout_id == '' :
-                    break
-                if not oe_layout_id.isdigit() :
-                    print('  ❌ [ERROR] : The OE data layout id is only number')
-                elif not int(oe_layout_id) in layout_ids :
-                    print('  ❌ [ERROR] : Please check the layout id')
-                else :
-                    break
+            oe_layout_id = None
+            if oe == None :
+                while True :
+                    oe_layout_id = input('📝 OE data layout id : ')
+                    if oe_layout_id == '' :
+                        break
+                    if not oe_layout_id.isdigit() :
+                        print('  ❌ [ERROR] : The OE data layout id is only number')
+                    elif not int(oe_layout_id) in layout_ids :
+                        print('  ❌ [ERROR] : Please check the layout id')
+                    else :
+                        break
+            else :
+                oe_layout_id = str(oe)
 
             if oe_layout_id == '' :
                 oe_layout_id = None
