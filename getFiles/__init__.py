@@ -97,7 +97,7 @@ def project_files(
         chk_mkdir(delivery_date_path)
 
         info = api.get(f'rh/{path}')
-        title_name = info['title']
+        # title_name = info['title']
         layouts = api.get(f'{path}/layouts')
         datamap = api.get(f'{path}/datamap', format='json')
         time.sleep(3)
@@ -128,7 +128,7 @@ def project_files(
                     else :
                         break
             else :
-                ce_layout_id = str(ce)
+                ce_layout_id = int(ce)
 
             if ce_layout_id == '' :
                 ce_layout_id = None
@@ -153,7 +153,7 @@ def project_files(
                     else :
                         break
             else :
-                oe_layout_id = str(oe)
+                oe_layout_id = int(oe)
 
             if oe_layout_id == '' :
                 oe_layout_id = None
@@ -178,17 +178,18 @@ def project_files(
                 spss_fw = api.get(f'{path}/data', format='spss_data', cond=delivery_cond)
                 time.sleep(3)
                 spss_sav = api.get(f'{path}/data', format='spss16', cond=delivery_cond)
-            
-            time.sleep(3)
-            fw_zip_name = f'{title_name}_fixed-width.zip'
-            create_binary_file(delivery_date_path, fw_zip_name, spss_fw)
-            
-            sav_zip_name = f'{title_name}_sav.zip'
-            create_binary_file(delivery_date_path, sav_zip_name, spss_sav)
-
-            print(' 🔔 The CE data download is done')
         except :
             print(' ❌ [ERROR] : Get Data download API is Error - CE / 🆖 Hint : Please check width of layout')
+
+
+        time.sleep(3)
+        fw_zip_name = f'fixed-width.zip'
+        create_binary_file(delivery_date_path, fw_zip_name, spss_fw)
+        
+        sav_zip_name = f'sav.zip'
+        create_binary_file(delivery_date_path, sav_zip_name, spss_sav)
+
+        print(' 🔔 The CE data download is done')
         print('')
 
         # OE data
@@ -213,7 +214,7 @@ def project_files(
 
             binary_csv_name = f'{pid}_binary.csv'
             create_binary_file(delivery_date_path, binary_csv_name, oe_data)
-            create_ascii_file(delivery_date_path, binary_csv_name, f'{title_name}_OE.csv')
+            create_ascii_file(delivery_date_path, binary_csv_name, f'OE.csv')
             
             print(' 🔔 The OE data download is done')
         except :
@@ -229,7 +230,7 @@ def project_files(
             
             binary_excel_name = f'{pid}_excel_binary.csv'
             create_binary_file(delivery_date_path, binary_excel_name, excel_data)
-            create_ascii_file(delivery_date_path, binary_excel_name, f'{title_name}_excel.csv')
+            create_ascii_file(delivery_date_path, binary_excel_name, f'excel.csv')
 
             print(' 🔔 The excel data download is done')
         except :
@@ -240,7 +241,7 @@ def project_files(
         try :
             print(' 🌏 Data map(xlsx) downloading... ⌛')
             map_xlsx = api.get(f'{path}/datamap', format='xlsx')
-            create_binary_file(delivery_date_path, f'{title_name}_map.xlsx', map_xlsx)
+            create_binary_file(delivery_date_path, f'map.xlsx', map_xlsx)
 
             time.sleep(3)
 
