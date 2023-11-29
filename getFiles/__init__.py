@@ -93,11 +93,12 @@ def project_files(
         now_day = '{0:02}'.format(now.day)
         date_dir = f'{now_year}{now_month}{now_day}'
 
+        original_path = os.getcwd()
         delivery_date_path = os.path.join(delivery_path, date_dir)
         chk_mkdir(delivery_date_path)
 
         info = api.get(f'rh/{path}')
-        # title_name = info['title']
+        title_name = info['title']
         layouts = api.get(f'{path}/layouts')
         datamap = api.get(f'{path}/datamap', format='json')
         time.sleep(3)
@@ -370,3 +371,33 @@ def project_files(
 
     print('✅ BackUp is done ✅')
     print('')
+
+
+def get_layout_id(
+        pid,
+        key = api_key,
+        server = api_server,
+    ) :
+    #pd.io.formats.excel.ExcelFormatter.header_style = None
+    excel.ExcelFormatter.header_style = None
+    
+    if pid == None or pid == '' :
+        print('❌ [ERROR] : pid is blank')
+        return
+
+    path = f'surveys/selfserve/548/{pid}'
+
+    try :
+        api.login(key, server)
+    except :
+        print('❌ [ERROR] : Decipher api login failed')
+        return     
+
+    layouts = api.get(f'{path}/layouts')
+    datamap = api.get(f'{path}/datamap', format='json')
+    
+    layout_summary = [(layout['description'], layout['id']) for layout in layouts if layout['id']]
+    layout_dict = {id: name for name, id in layout_summary}
+
+    return layout_dict
+
