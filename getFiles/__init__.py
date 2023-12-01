@@ -44,8 +44,8 @@ def project_files(
     layout=False,
     quota=False,
     lang=False,
-    ce=None,
-    oe=None) :
+    ce='input',
+    oe='input') :
 
     #pd.io.formats.excel.ExcelFormatter.header_style = None
     excel.ExcelFormatter.header_style = None
@@ -114,10 +114,20 @@ def project_files(
         print('')
         time.sleep(2)
         if layout_ids :
+            str_id = [str(each) for each in layout_ids]
+            if (not ce in ['input', 'standard']) and (not str(ce) in str_id) :
+                print('❌ [ERROR] : The CE Layout ID does not exist.')
+                return
+            
+            if (not oe in ['input', 'standard']) and (not str(oe) in str_id) :
+                print('❌ [ERROR] : The OE Layout ID does not exist.')
+                return
+
+            layout_ids
             print(' ❗ If you want to use the Standard layout, press the ESC button')
             print(' 📊 Enter the CE data layout')
             ce_layout_id = None
-            if ce == None :
+            if ce == 'input' :
                 while True :
                     ce_layout_id = input('📊 CE data layout id : ')
                     if ce_layout_id == '' :
@@ -128,8 +138,10 @@ def project_files(
                         print('  ❌ [ERROR] : Please check the layout id')
                     else :
                         break
+            elif ce == 'standard' :
+                ce_layout_id = None
             else :
-                ce_layout_id = int(ce)
+                ce_layout_id = str(ce)
 
             if ce_layout_id == '' :
                 ce_layout_id = None
@@ -142,7 +154,7 @@ def project_files(
 
             print(' 📝 Enter the OE data layout')
             oe_layout_id = None
-            if oe == None :
+            if oe == 'input' :
                 while True :
                     oe_layout_id = input('📝 OE data layout id : ')
                     if oe_layout_id == '' :
@@ -153,8 +165,10 @@ def project_files(
                         print('  ❌ [ERROR] : Please check the layout id')
                     else :
                         break
+            elif oe == 'standard' :
+                oe_layout_id = None
             else :
-                oe_layout_id = int(oe)
+                oe_layout_id = str(oe)
 
             if oe_layout_id == '' :
                 oe_layout_id = None
