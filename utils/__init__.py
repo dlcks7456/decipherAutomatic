@@ -10,29 +10,49 @@ key_vars = [i for i in key.variables.split('\n') if not i == '']
 
 def create_maxdiff(num_versions, num_tasks, item_list, num_attributes):
     """
-    Generate unique combinations of items for each version and task.
+    Generate MaxDiff survey combinations of items for each version and task.
+    Ensuring balance, completeness, and efficiency, with shuffled item order in each combination.
 
     :param num_versions: Number of versions
     :param num_tasks: Number of tasks in each version
     :param item_list: List of items to choose from
     :param num_attributes: Number of attributes to select for each combination
-    :return: DataFrame with the combinations
+    :return: DataFrame with the MaxDiff combinations
     """
+    # Check if the number of combinations is feasible
+    total_combinations = itertools.combinations(item_list, num_attributes)
+    if sum(1 for _ in total_combinations) < num_versions * num_tasks:
+        raise ValueError("Not enough unique combinations available for the given parameters.")
+
     # Generate all possible combinations of items
     all_combinations = list(itertools.combinations(item_list, num_attributes))
     random.shuffle(all_combinations)  # Shuffle for randomness
+
+    # Balance: Ensure each item appears roughly equally across all tasks
+    counts = {item: 0 for item in item_list}
+    selected_combinations = []
+
+    for combination in all_combinations:
+        if len(selected_combinations) == num_versions * num_tasks:
+            break  # Stop if we have enough combinations
+
+        # Check balance
+        if all(counts[item] < (num_versions * num_tasks / len(item_list)) for item in combination):
+            shuffled_combination = list(combination)
+            random.shuffle(shuffled_combination)  # Shuffle items in the combination
+            selected_combinations.append(shuffled_combination)
+            for item in combination:
+                counts[item] += 1
 
     # Create a list to hold the data
     data = []
 
     # Assign combinations to each version and task
-    for version in range(1, num_versions + 1):
-        for task in range(1, num_tasks + 1):
-            combination = all_combinations.pop()
-            combination = list(combination)
-            random.shuffle(combination)
-            row = [version, task] + combination
-            data.append(row)
+    for i, combination in enumerate(selected_combinations):
+        version = (i // num_tasks) + 1
+        task = (i % num_tasks) + 1
+        row = [version, task] + combination
+        data.append(row)
 
     # Create a DataFrame
     columns = ['Version', 'Set'] + [f'Item{i+1}' for i in range(num_attributes)]
