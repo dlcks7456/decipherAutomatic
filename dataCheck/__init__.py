@@ -1323,6 +1323,26 @@ comp = (df.status == 3)
 
     ipynb_cell.append(nbf.v4.new_code_cell(default))
 
+    # # Additional functions
+    # functions = '''def scale_datacheck(qid, cond=None) :
+    # print(f'📌 {qid} Check')
+    # base = eval(qid)
+    # print(f'- Variables : {base}')
+    # print(f'- Length : {len(base)}')
+    # err_flag = False
+    # for x in base :
+    #     err = dc.safreq(x, cond=cond, err=True)
+    #     err_idx = list(err.index)
+    #     if err_idx :
+    #         print(f'❌ {x} has Error')
+    #         err_flag = True
+
+    # if not err_flag :
+    #     print(f'✅ {qid} confirm')
+    # '''
+
+    # ipynb_cell.append(nbf.v4.new_code_cell(functions))
+
     # qids setting
     for idx, attrs in enumerate(order_qid) :
         qid = attrs[0]
