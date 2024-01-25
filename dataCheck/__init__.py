@@ -1322,6 +1322,14 @@ comp = (df.status == 3)
 '''
 
     ipynb_cell.append(nbf.v4.new_code_cell(default))
+    ipynb_cell.append(nbf.v4.new_code_cell('''lambda_count = lambda x: x.count() - (x==0).sum()
+
+def lp(print_word) :
+    print(f'🟢 {print_word}')
+
+def lchk() :
+    print(f'-------- 🔽 LIVE CHECK 🔽--------')'''))
+
 
     # # Additional functions
     # functions = '''def scale_datacheck(qid, cond=None) :
