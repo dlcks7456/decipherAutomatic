@@ -1328,7 +1328,13 @@ def lp(print_word) :
     print(f'🟢 {print_word}')
 
 def lchk() :
-    print(f'-------- 🔽 LIVE CHECK 🔽--------')'''))
+    print(f'-------- 🔽 LIVE CHECK 🔽--------')
+
+def ep(err_df, err_qid) :
+    if len(err_df) >= 1 :
+        print(f'❌ {err_qid} has Error')
+    else :
+        print(f'✅ {err_qid} is OK')'''))
 
 
     # # Additional functions
