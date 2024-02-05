@@ -397,7 +397,9 @@ class Ready :
         err_col = self.err_col
         only_col = self.only_col
         curr_df[err_col] = np.nan
+        curr_df[err_col] = curr_df[err_col].astype('object')
         curr_df[only_col] = np.nan
+        curr_df[only_col] = curr_df[only_col].astype('object')
         
         sa_cols = [err_col, only_col, sa]
         show_cols = sum_list(show_cols, sa_cols, with_cols)
@@ -493,11 +495,12 @@ class Ready :
             base =  curr_df[cond][sa] if cond_flag == True else curr_df[sa]
             if not base.dtype == 'object' :
                 curr_desc = base.describe()
-                print_str+='🧮 Description\n'
-                print_str+='  - Mean : %s\n'%(round(float(curr_desc['mean']), 2))
-                print_str+='  - Median : %s\n'%(curr_desc['50%'])
-                print_str+='  - Max : %s\n'%(curr_desc['max'])
-                print_str+='  - Min : %s\n'%(curr_desc['min'])
+                if not curr_desc.dtype == 'object' :
+                    print_str+='🧮 Description\n'
+                    print_str+='  - Mean : %s\n'%(round(float(curr_desc['mean']), 2))
+                    print_str+='  - Median : %s\n'%(curr_desc['50%'])
+                    print_str+='  - Max : %s\n'%(curr_desc['max'])
+                    print_str+='  - Min : %s\n'%(curr_desc['min'])
             print(print_str)
         else :
             return outputs
@@ -521,6 +524,7 @@ class Ready :
         
         err_col = self.err_col
         curr_df[err_col] = np.nan
+        curr_df[err_col] = curr_df[err_col].astype('object')
         
         cond_flag = cond_check(cond)
         if cond_flag == False : return
@@ -657,11 +661,12 @@ class Ready :
         for idx in raw_index :
             r = dup_df.loc[idx ,rk_cols]
             answers = list(r)
+            answers = [x for x in answers if x is not pd.NA]
             dup_del = set(answers)
 
             dup_values = []
             for dup in dup_del :
-                if not pd.isnull(dup) and not dup in okUnique:
+                if not pd.isnull(dup) and not dup in okUnique :
                     cnt = answers.count(dup)
                     if cnt > 1 :
                         dup_values.append(dup)
@@ -714,6 +719,7 @@ class Ready :
         curr_df = self.df.copy()
         err_col = self.err_col
         curr_df[err_col] = np.nan
+        curr_df[err_col] = curr_df[err_col].astype('object')
     
         check_index = list(curr_df[(input_cond) & ~(output_cond)].index)
         
@@ -785,8 +791,11 @@ class Ready :
             curr_df = self.df[cond].copy()
 
         curr_df[ms_col] = np.nan
+        curr_df[ms_col] = curr_df[ms_col].astype('object')
         curr_df[exist] = np.nan
+        curr_df[exist] = curr_df[exist].astype('object')
         curr_df[ma_base] = np.nan
+        curr_df[ma_base] = curr_df[ma_base].astype('object')
     
         filt_df = curr_df[~curr_df[sa].isnull()].copy()
         filt_index = list(filt_df.index)
@@ -817,7 +826,7 @@ class Ready :
             
             if base in ma_cols :
                 base_v = filt_df.loc[idx, base]
-                if pd.isnull(base_v) or base_v.astype(int) == 0 :
+                if pd.isnull(base_v) or base_v == 0 :
                     filt_df.loc[idx, ms_col] = base
             else :
                 filt_df.loc[idx, exist] = base
@@ -906,9 +915,13 @@ class Ready :
         if cond_flag :
             curr_df = self.df[cond].copy()
         curr_df[ms_col] = np.nan
+        curr_df[ms_col] = curr_df[ms_col].astype('object')
         curr_df[exist] = np.nan
+        curr_df[exist] = curr_df[exist].astype('object')
         curr_df[ma_base] = np.nan
+        curr_df[ma_base] = curr_df[ma_base].astype('object')
         curr_df[ma_answer] = np.nan
+        curr_df[ma_answer] = curr_df[ma_answer].astype('object')
 
         filt_df = curr_df[~(curr_df[ma_cols].isnull()).all(axis=1)].copy()
         filt_index = list(filt_df.index)
@@ -945,7 +958,7 @@ class Ready :
                     base = f"{base_id}{v}"                    
                     if base in base_ma_cols :
                         base_v = filt_df.loc[idx, base]
-                        if pd.isnull(base_v) or base_v.astype(int) == 0 :
+                        if pd.isnull(base_v) or base_v == 0 :
                             err_vars.append(base)
                     else :
                         exist_vars.append(base)
@@ -1301,7 +1314,7 @@ from variables_{pid} import *
 
 file_name = '{pid}.xlsx'
 
-raw = pd.read_excel(file_name, engine='openpyxl')
+raw = pd.read_excel(file_name, engine='openpyxl', dtype_backend='pyarrow')
 
 # if data sheet is more than 1
 # example)
