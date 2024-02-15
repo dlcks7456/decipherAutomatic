@@ -1249,6 +1249,7 @@ def Setting(pid,
         base_map = maps[0]
 
         variables = base_map['variables']
+        # print(variables)
         exactly_diff_vars = key_vars + sys_vars
         ce_vars = ['radio', 'checkbox', 'number', 'float', 'select']
         oe_vars = ['text', 'textarea']
@@ -1272,6 +1273,9 @@ def Setting(pid,
             qtype = var['qtype']
             fwidth = var['fwidth']
             altlabel = var['altlabel']
+            shown = var['shown']
+            if not shown :
+                continue
 
             write_text = f'{label},{altlabel},{fwidth}\n'
             if (not label in exactly_diff_vars and not qlabel in exactly_diff_vars) :
