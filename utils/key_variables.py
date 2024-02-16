@@ -10,4 +10,7 @@ psid
 baid
 uid
 userid
+seq
+dskey
+dsid
 '''
