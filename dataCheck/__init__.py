@@ -655,6 +655,7 @@ class Ready :
         
         dup_col = 'dupchk'
         dup_df[dup_col] = np.nan
+        dup_df[dup_col] = dup_df[dup_col].astype('object')
         
         show_cols = sum_list(show_cols, [dup_col], rk_cols, with_cols)
         

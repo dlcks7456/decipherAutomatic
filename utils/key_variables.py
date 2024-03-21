@@ -11,6 +11,7 @@ baid
 uid
 userid
 seq
-dskey
 dsid
+GUID
+dsmcpID
 '''
