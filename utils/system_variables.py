@@ -470,4 +470,5 @@ ctTerm
 ctComp
 mlQual
 dsmcpKEY
+dskey
 '''
