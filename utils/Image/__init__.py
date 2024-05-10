@@ -257,12 +257,12 @@ def image_re_all(image_path=None, save_folder=None, name_format="%s", file_forma
 
 
 
-def create_dummy_img(save_name, save_path=None, width=500, height=500) :
+def create_dummy_img(save_name, save_path=None, width=500, height=500):
     '''### 더미 이미지 생성
-- `save_name` : 이미지 이름
-- `save_path` : 저장할 경로 (기본값 : None) / 경로가 지정되지 않으면 현재 경로를 저장 경로로 사용
-- `width` : 이미지 너비 (기본값 : 500)
-- `height` : 이미지 높이 (기본값 : 500)
+    - `save_name` : 이미지 이름
+    - `save_path` : 저장할 경로 (기본값 : None) / 경로가 지정되지 않으면 현재 경로를 저장 경로로 사용
+    - `width` : 이미지 너비 (기본값 : 500)
+    - `height` : 이미지 높이 (기본값 : 500)
     '''
 
     # 이미지 생성
@@ -271,18 +271,32 @@ def create_dummy_img(save_name, save_path=None, width=500, height=500) :
     # 드로잉 객체 생성
     draw = ImageDraw.Draw(image)
 
-    try:
-        font = ImageFont.truetype("arial.ttf", 70)  # 폰트 설정
-    except IOError:
-        font = ImageFont.load_default()
+    # 목표 텍스트 너비 설정 (이미지 너비의 65%)
+    target_text_width = width * 0.65
 
-    # 'TEMP' 텍스트 크기 측정
-    img_name = f'{save_name}.png'
+    # 폰트 크기 결정을 위한 초기 값 설정
+    font_size = 10
+    font = ImageFont.truetype("arial.ttf", font_size)
+    text_width = 0
+
+    # 적절한 폰트 크기 찾기
+    while text_width < target_text_width:
+        font_size += 1
+        font = ImageFont.truetype("arial.ttf", font_size)
+        img_name = f'{save_name}.png'
+        text_bbox = draw.textbbox((0, 0), img_name, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        if text_width > target_text_width:
+            font_size -= 1
+            break
+
+    # 최종 폰트 설정
+    font = ImageFont.truetype("arial.ttf", font_size)
     text_bbox = draw.textbbox((0, 0), img_name, font=font)
-    text_width = text_bbox[2] - text_bbox[0]  # 폭 계산
-    text_height = text_bbox[3] - text_bbox[1]  # 높이 계산
+    text_width = text_bbox[2] - text_bbox[0]
+    text_height = text_bbox[3] - text_bbox[1]
 
-    # 텍스트를 이미지 중앙에 배치하기 위한 좌표 계산
+    # 텍스트 중앙 배치
     x = (width - text_width) / 2
     y = (height - text_height) / 2
 
