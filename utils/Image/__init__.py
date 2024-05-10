@@ -257,4 +257,44 @@ def image_re_all(image_path=None, save_folder=None, name_format="%s", file_forma
 
 
 
+def create_dummy_img(save_name, save_path=None, width=500, height=500) :
+    '''### 더미 이미지 생성
+- `save_name` : 이미지 이름
+- `save_path` : 저장할 경로 (기본값 : None) / 경로가 지정되지 않으면 현재 경로를 저장 경로로 사용
+- `width` : 이미지 너비 (기본값 : 500)
+- `height` : 이미지 높이 (기본값 : 500)
+    '''
 
+    # 이미지 생성
+    image = Image.new('RGBA', (width, height), (255, 255, 255, 0))
+
+    # 드로잉 객체 생성
+    draw = ImageDraw.Draw(image)
+
+    try:
+        font = ImageFont.truetype("arial.ttf", 70)  # 폰트 설정
+    except IOError:
+        font = ImageFont.load_default()
+
+    # 'TEMP' 텍스트 크기 측정
+    img_name = f'{save_name}.png'
+    text_bbox = draw.textbbox((0, 0), img_name, font=font)
+    text_width = text_bbox[2] - text_bbox[0]  # 폭 계산
+    text_height = text_bbox[3] - text_bbox[1]  # 높이 계산
+
+    # 텍스트를 이미지 중앙에 배치하기 위한 좌표 계산
+    x = (width - text_width) / 2
+    y = (height - text_height) / 2
+
+    # 텍스트 그리기
+    draw.text((x, y), img_name, fill="black", font=font)
+
+    # 저장 경로 설정
+    if save_path is None:
+        img_save_path = os.getcwd()  # 현재 작업 디렉토리 사용
+    else:
+        img_save_path = os.path.join(*os.path.split(save_path))  # 주어진 경로의 폴더 부분 사용
+        os.makedirs(img_save_path, exist_ok=True) # 폴더 생성
+
+    path = os.path.join(img_save_path, img_name)
+    image.save(path)
