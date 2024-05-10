@@ -37,7 +37,7 @@ def list_image_files(path=None):
 
 
 def image_rename(image_path, save_folder=None, name_format="%s", file_format='png', display_print=True):
-    ''' 이미지 파일 이름을 코드로 변환
+    '''### 이미지 파일 이름을 코드로 변환
     - `image_path`: 이미지 경로 및 이름
     - `save_folder`: 저장할 폴더 이름 (기본값: None)
     - `name_format`: 저장할 파일 이름 형식 (기본값: "%s") / %s 부분이 변환된 파일 이름으로 대체
@@ -128,7 +128,7 @@ def image_rename(image_path, save_folder=None, name_format="%s", file_format='pn
 
 
 def image_resize(image_path, width, height, save_folder=None, display_print=True):
-    ''' 이미지를 캔버스에 맞게 크기를 조정하고 투명 배경의 PNG로 저장하는 함수
+    '''### 이미지를 캔버스에 맞게 크기를 조정하고 투명 배경의 PNG로 저장하는 함수
     - 기본적으로 `png`로 저장되며, 원본 이미지를 제외한 배경은 투명이 된다.
     - `image_path`: 이미지 파일 경로
     - `width`: 이미지의 width
