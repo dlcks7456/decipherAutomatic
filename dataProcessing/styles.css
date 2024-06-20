@@ -1,0 +1,128 @@
+.datcheck-title .title-type {
+    color: #2d6df6;
+    font-weight: bold;
+}
+
+.datcheck-title .title-msg {
+    font-size: 0.7rem;
+    font-style: italic;
+}
+
+.datacheck-head {
+    margin-top: 7px;
+    font-weight: bold;
+}
+
+.check-bold {
+    font-weight: bold;
+}
+
+.check-correct {
+    color: #11f725;
+}
+.check-fail {
+    color: #ff2b9f;
+}
+.check-warn {
+    color: #ffa600;
+}
+
+.datacheck-check {
+    margin-top: 3px;
+}
+
+
+.datacheck-warning {
+    margin-top: 3px;
+    font-weight: bold;
+}
+
+.print-comment {
+    font-size: 0.8rem;
+    font-style: italic;
+}
+
+.print-padding-left {
+    padding-left: 10px;
+}
+
+.datacheck-desc {
+    font-weight: bold;
+    margin-top: 10px;
+}
+
+.datacheck-print, .datacheck-apply {
+    max-width: 400px;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.alt-main {
+    border: 1px solid #2d6df6;
+}
+
+.alt-sub {
+    border: 1px solid #ffa600;
+}
+
+.datacheck-alt {
+    font-weight: bold;
+    font-style: italic;
+    padding: 7px;
+    font-weight: bold;
+    margin-bottom: 7px;
+}
+
+.datacheck-alt {
+    padding: 7px;
+}
+
+.alt-main .datacheck-alt {
+    color: white;
+    background-color: #2d6df6;
+}
+
+.alt-sub .datacheck-alt {
+    color: black;
+    background-color: #ffa600;
+}
+
+.apply-title {
+    margin-top: 5px;
+}
+
+.datacheck-result {
+    padding: 5px;
+}
+
+.datacheck-print-mw {
+    max-width: 500px;
+}
+
+.datacheck-logic-print {
+    font-weight: bold;
+    font-style: italic;
+    padding: 7px;
+    border-radius: 5px;
+    background-color: #ffa600;
+    color: black;
+    font-weight: bold;
+    width: fit-content;
+}
+
+.datacheck-live-check {
+    text-align: center;
+    font-weight: bold;
+    font-style: italic;
+    padding: 7px;
+    border-radius: 5px;
+    color: white;
+    background-color: #2d6df6;
+    font-weight: bold;
+    width: fit-content;
+}
+
+.example_text {
+    color: #ffa600;
+    font-size:0.7rem;
+}

@@ -1433,47 +1433,29 @@ def Setting(pid: str,
 
     # set_file_name = 'pd.read_excel(file_name)' if mode == 'file' else 'pd.read_csv(file_name, low_memory=False)'
 
-    default = f'''from decipherAutomatic.dataCheck import *
-import pandas as pd
+    default = f'''import pandas as pd
 import numpy as np
 from variables_{pid} import * 
 
-file_name = '{pid}.xlsx'
-
-raw = pd.read_excel(file_name, engine='openpyxl')
-
-# if data sheet is more than 1
-# example)
-# df_all = pd.read_excel('XXX.xlsx', sheet_name = None)
-# del df_all['MAP_SHEET']
-# df_all.keys()
-# raw = pd.merge(df_all['A1'], df_all['A2'],  left_index=True, right_index=True, how='left')
-
-dc = Ready(raw)
-
-# show all cols, rows setting
-pd.set_option('display.max_columns', None)
-pd.set_option('display.max_rows', None)
-df = dc.df
-
-# Qualified only
+file_name = "{pid}.xlsx"
+df = DataCheck(pd.read_excel(file_name, engine="openpyxl"), keyid="record")
 comp = (df.status == 3)
 '''
 
     ipynb_cell.append(nbf.v4.new_code_cell(default))
-    ipynb_cell.append(nbf.v4.new_code_cell('''lambda_count = lambda x: x.count() - (x==0).sum()
+#     ipynb_cell.append(nbf.v4.new_code_cell('''lambda_count = lambda x: x.count() - (x==0).sum()
 
-def lp(print_word) :
-    print(f'🟢 {print_word}')
+# def lp(print_word) :
+#     print(f'🟢 {print_word}')
 
-def lchk() :
-    print(f'-------- 🔽 LIVE CHECK 🔽--------')
+# def lchk() :
+#     print(f'-------- 🔽 LIVE CHECK 🔽--------')
 
-def ep(err_df, err_qid) :
-    if len(err_df) >= 1 :
-        print(f'❌ {err_qid} has Error')
-    else :
-        print(f'✅ {err_qid} is OK')'''))
+# def ep(err_df, err_qid) :
+#     if len(err_df) >= 1 :
+#         print(f'❌ {err_qid} has Error')
+#     else :
+#         print(f'✅ {err_qid} is OK')'''))
 
 
     # # Additional functions
@@ -1484,7 +1466,7 @@ def ep(err_df, err_qid) :
     # print(f'- Length : {len(base)}')
     # err_flag = False
     # for x in base :
-    #     err = dc.safreq(x, cond=cond, err=True)
+    #     err = df.safreq(x, cond=cond, err=True)
     #     err_idx = list(err.index)
     #     if err_idx :
     #         print(f'❌ {x} has Error')
@@ -1525,8 +1507,8 @@ def ep(err_df, err_qid) :
                         if na in qel :
                             cell_texts.append(f'# The {qid} contains {qel}')
                         else :
-                            safreq = f"dc.safreq('{qel}')"
-                            if use_variable : safreq = f"dc.safreq({qel})"
+                            safreq = f"df.safreq('{qel}')"
+                            if use_variable : safreq = f"df.safreq({qel})"
 
                             py_file.write(f"{qel} = '{qel}'\n")
                             cell_texts.append(safreq)
@@ -1553,8 +1535,8 @@ def ep(err_df, err_qid) :
 
                             py_file.write(f"{qid} = {dup_diff_na}\n")
                             #cell_texts.append(f'{qid} = {set_qid}')
-                            dupchk = f"dc.dupchk({set_qid})"
-                            if use_variable : dupchk = f"dc.dupchk({qid})"
+                            dupchk = f"df.dupchk({set_qid})"
+                            if use_variable : dupchk = f"df.dupchk({qid})"
 
                             cell_texts.append(dupchk)
                 else :
@@ -1564,8 +1546,8 @@ def ep(err_df, err_qid) :
                         py_file.write(f'{qid}_value = [0, 1]\n')
                         
                         cell_texts.append(val_chk)
-                        safreq = f"dc.safreq('{qels[0]}')"
-                        if use_variable : safreq = f"dc.safreq({qels[0]})"
+                        safreq = f"df.safreq('{qels[0]}')"
+                        if use_variable : safreq = f"df.safreq({qels[0]})"
                         cell_texts.append(safreq)
             ### sa end ###
 
@@ -1595,8 +1577,8 @@ def ep(err_df, err_qid) :
                             py_file.write(f'{qid}_value = [0, 1]\n')
                     # cell_texts.append(f'{qid} = {set_qid}')
 
-                    mafreq = f"dc.mafreq({set_qid})"
-                    if use_variable : mafreq = f"dc.mafreq({qid})"
+                    mafreq = f"df.mafreq({set_qid})"
+                    if use_variable : mafreq = f"df.mafreq({qid})"
 
                     cell_texts.append(mafreq)
 
@@ -1622,11 +1604,11 @@ def ep(err_df, err_qid) :
                         cell_texts.append(f'# The {qid} contains {qel}')
                     else :
                         if range_set :
-                            safreq = f"dc.safreq('{qel}', {range_set})"
-                            if use_variable : safreq = f"dc.safreq({qel}, {range_set})"
+                            safreq = f"df.safreq('{qel}', {range_set})"
+                            if use_variable : safreq = f"df.safreq({qel}, {range_set})"
                         else :
-                            safreq = f"dc.safreq('{qel}')"
-                            if use_variable : safreq = f"dc.safreq({qel})"
+                            safreq = f"df.safreq('{qel}')"
+                            if use_variable : safreq = f"df.safreq({qel})"
 
                         py_file.write(f"{qel} = '{qel}'\n")
                         cell_texts.append(safreq)
@@ -1643,8 +1625,8 @@ def ep(err_df, err_qid) :
                     if na in qel :
                         cell_texts.append(f'# The {qid} contains {qel}')
                     else :
-                        safreq = f"dc.safreq('{qel}')"
-                        if use_variable : safreq = f"dc.safreq({qel})"
+                        safreq = f"df.safreq('{qel}')"
+                        if use_variable : safreq = f"df.safreq({qel})"
 
                         py_file.write(f"{qel} = '{qel}'\n")
                         cell_texts.append(safreq)
@@ -1653,8 +1635,8 @@ def ep(err_df, err_qid) :
             # other open check #
             elif qtype == 'OTHER_OE' :
                 for qel in qels :
-                    safreq = f"dc.safreq('{qel}')"
-                    if use_variable : safreq = f"dc.safreq({qel})"
+                    safreq = f"df.safreq('{qel}')"
+                    if use_variable : safreq = f"df.safreq({qel})"
 
                     py_file.write(f"{qel} = '{qel}'\n")
                     cell_texts.append(safreq)
