@@ -717,7 +717,7 @@ class DataCheck(pd.DataFrame):
 
     def logchk(self, 
                base_cond: Optional[pd.Series] = None, 
-               answer_cond: pd.Series = None,
+               ans: pd.Series = None,
                alt: Optional[str]=None) -> 'ErrorDataFrame':
         """
         특정 로직에 대한 응답 체크
@@ -727,7 +727,7 @@ class DataCheck(pd.DataFrame):
         `answer_cond` (pd.Series): 베이스 조건이 True일 때 응답 조건.
         """
         chk_df = self[self.attrs['default_filter']].copy()
-        if answer_cond is None :
+        if ans is None :
             display(HTML("""<div class="check-bold check-fail">❌ [ERROR]  answer_cond cannot be None</div>"""))
             return 
         err_list = []
@@ -742,18 +742,17 @@ class DataCheck(pd.DataFrame):
         answer_col = 'ANSWER_COND'
         err_list += [base_col, answer_col]
         chk_df.loc[base_cond, base_col] = 1
-        chk_df.loc[answer_cond, answer_col] = 1
+        chk_df.loc[ans, answer_col] = 1
 
         # Logic Check
         lg_err = 'LOGIC'
         base = self.comp() if base_cond is None else base_cond
-        chk_df.loc[(base) & (~answer_cond), lg_err] = 1
+        chk_df.loc[(base) & (~ans), lg_err] = 1
         err_list.append(lg_err)
 
 
         chk_df = chk_df[base.reindex(chk_df.index, fill_value=False)]
         
-        qid = 'LOGIC CHECK'
         edf = ErrorDataFrame('LOGIC CHECK', 'LOGIC', [], chk_df, err_list, warnings, alt)
         self.show_message(edf)
         
