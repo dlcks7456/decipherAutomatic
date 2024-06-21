@@ -1,5 +1,4 @@
 import pandas as pd
-import pyreadstat
 from IPython.display import display, HTML
 from typing import Union, List, Tuple, Dict, Optional, Literal, Callable, Any, NoReturn
 import numpy as np
@@ -10,7 +9,6 @@ import openpyxl
 import re
 import nbformat as nbf
 from collections import OrderedDict
-from zipfile import ZipFile
 import json
 from decipher.beacon import api
 import time
@@ -18,7 +16,7 @@ from ..key import api_key, api_server
 from decipherAutomatic.getFiles import *
 from decipherAutomatic.utils import *
 from pandas.io.formats import excel
-
+import zipfile
 
 def check_print(variables: Union[List[str], Tuple[str, ...], str], 
                 error_type: Literal['SA', 'MA', 'LOGIC', 'DUP'], 
@@ -93,7 +91,9 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
         else :
             print_str += fail.format(html_title=html_title, err_cnt=err_cnt)
         
-        err_answer = list(set(list(df[df[only_err]==1][variables].values)))
+        err_answer = list(df[df[only_err]==1][variables].values)
+        err_answer = ['NA' if pd.isna(x) else x for x in err_answer]
+        err_answer = list(set(err_answer))
         if err_answer :
             print_str += f"""<div class="print-padding-left">🗒️ <span class="print-comment">Invalid response</span> : {list(err_answer)}</div>"""
 
@@ -181,8 +181,12 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
             print_str += f"""<div class="print-padding-left">🗒️ <span class="print-comment">Invalid response</span> : {summary}</div>"""
 
 
-    print_str = f"""
-    <div class="datacheck-print alt-main">
+    print_type = "alt-main"
+    if "check-fail" in print_str :
+        print_type = "alt-fail"
+
+    final_print = f"""
+    <div class="datacheck-print {print_type}">
         <div class="datacheck-alt">{alt if alt is not None else qid}</div>
         <div class="datacheck-result">
             {print_str}
@@ -190,7 +194,7 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
     </div>
     """
 
-    return print_str
+    return final_print
 
 def get_key_id(base: List[str]) -> Union[None, str]:
     """`base`가 `qid`를 포함하는지 확인합니다."""
@@ -212,6 +216,23 @@ def get_key_id(base: List[str]) -> Union[None, str]:
             return qid
         
     return qid
+
+def css_apply() -> None :
+    module_path = os.path.dirname(__file__)
+    css_file_path = os.path.join(module_path, 'styles.css')  # Assuming 'styles.css' is the CSS file in the module
+
+    try:
+        with open(css_file_path, 'r') as file:
+            css_content = file.read()
+        css = f"""
+        <style>
+        {css_content}
+        </style>
+        <div class="check-correct check-bold">❇️ DataCheck CSS Set UP</div>
+        """
+        display(HTML(css))
+    except Exception as e:
+        print(f"Failed to load CSS file: {e}")
 
 def lambda_ma_to_list(row, qids) :
     qid_key = get_key_id(qids)
@@ -244,20 +265,23 @@ class ErrorDataFrame:
         self.err = PrintDataFrame(self.show_col_with_err, err_df)
         self.full = PrintDataFrame(self.show_col_with_err, self.df)
         self.chk_msg = check_print(self.chk_id, self.qid_type, self.full(), self.warnings, self.alt)
+        self.extra_cols = []
 
     def __getitem__(self, key):
         extra_cols = [key] if isinstance(key, str) else key
+        self.extra_cols = extra_cols
         return self.err()[self.base + extra_cols]
 
     def __repr__(self):
         return ''
 
 class DataCheck(pd.DataFrame):
-    _metadata = ['_keyid']
-    _css_applied = False
+    _metadata = ['_keyid', '_spssmeta']
 
     def __init__(self, *args, **kwargs):
         self._keyid = kwargs.pop('keyid', None)
+        self._spssmeta = kwargs.pop('spssmeta', None)
+        
         super().__init__(*args, **kwargs)
         if self._keyid is not None:
             self[self._keyid] = self[self._keyid].astype(int)
@@ -269,29 +293,8 @@ class DataCheck(pd.DataFrame):
         self._count_fnc: Callable[[pd.Series], int] = lambda x: x.count() - (x==0).sum()
         self.attrs['display_msg'] = 'all'
         self.attrs['default_filter'] = pd.Series([True] * len(self), index=self.index)
-
-        if not DataCheck._css_applied:
-            self.apply_css()
-            DataCheck._css_applied = True
-
-    @staticmethod
-    def apply_css():
-        # Get the path of the current file (this module)
-        module_path = os.path.dirname(__file__)
-        css_file_path = os.path.join(module_path, 'styles.css')  # Assuming 'styles.css' is the CSS file in the module
-
-        try:
-            with open(css_file_path, 'r') as file:
-                css_content = file.read()
-            css = f"""
-            <style>
-            {css_content}
-            </style>
-            """
-            display(HTML(css))
-            display(HTML("""<div class="check-correct check-bold">❇️ DataCheck Set UP</div>"""))
-        except Exception as e:
-            print(f"Failed to load CSS file: {e}")
+        self.attrs['result_html'] = []
+        self.attrs['meta'] = self._spssmeta
 
     @property
     def _constructor(self) -> Callable[..., 'DataCheck']:
@@ -314,6 +317,14 @@ class DataCheck(pd.DataFrame):
     @keyid.setter
     def keyid(self, value: Optional[str]) -> None:
         self._keyid = value
+
+    # @property
+    # def meta(self) -> Any :
+    #     return self.attrs['meta']
+
+    # @meta.setter
+    # def meta(self, meta_data: Optional[Any]) -> None :
+    #     self.attrs['meta'] = meta_data
 
     @property
     def display_msg(self) -> Optional[Literal['all', 'error', None]]:
@@ -340,6 +351,28 @@ class DataCheck(pd.DataFrame):
             raise ValueError("The value must be a callable.")
         self._count_fnc = fnc
 
+    @staticmethod
+    def result_alt(qid: Union[str, List], alt: Optional[str]=None) -> str :
+        alt_qid = qid
+        if isinstance(qid, list) :
+            alt_qid = f'{qid[0]}-{qid[-1]}'
+        result_alt = alt_qid if alt is None else f'{alt_qid}: {alt}'
+        return result_alt
+
+    def result_html_update(self, **kwargs) :
+        result_html = self.attrs['result_html'].copy()            
+        key = 'alt'
+        updated = False
+        if key in kwargs :
+            chk_alt = {idx: result[key].strip().replace(' ', '') for idx, result in enumerate(result_html) if key in result and isinstance(result[key], str)}
+            curr = kwargs[key].strip().replace(' ', '')
+            for idx, value in chk_alt.items() :
+                if curr == value :
+                    result_html[idx] = kwargs
+                    updated = True
+        if not updated :
+            result_html.append(kwargs)
+        self.attrs['result_html'] = result_html
 
     def comp(self) :
         """
@@ -603,14 +636,12 @@ class DataCheck(pd.DataFrame):
             disable_err = 'DISABLE'
             chk_df.loc[disabled_cond, disable_err] = 1
             err_list.append(disable_err)
-
-        chk_df[err_list] = chk_df[err_list].astype(pd.Int64Dtype())
         
         chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
         
         edf = ErrorDataFrame(qid, 'SA', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
-        
+        self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
 
     def mafreq(self, 
@@ -675,14 +706,12 @@ class DataCheck(pd.DataFrame):
         check_answer(exactly, '==', 'EXACTLY')
 
         show_cols = [cnt] + show_cols
-
-        chk_df[err_list] = chk_df[err_list].astype(pd.Int64Dtype())
         
         chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
 
         edf = ErrorDataFrame(qid, 'MA', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
-        
+        self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
 
 
@@ -721,13 +750,15 @@ class DataCheck(pd.DataFrame):
         chk_df.loc[(base) & (~answer_cond), lg_err] = 1
         err_list.append(lg_err)
 
-        chk_df[err_list] = chk_df[err_list].astype(pd.Int64Dtype())
 
         chk_df = chk_df[base.reindex(chk_df.index, fill_value=False)]
         
+        qid = 'LOGIC CHECK'
         edf = ErrorDataFrame('LOGIC CHECK', 'LOGIC', [], chk_df, err_list, warnings, alt)
         self.show_message(edf)
         
+        if alt is not None :
+            self.result_html_update(alt=alt, result_html=edf.chk_msg, dataframe=edf.err()[edf.extra_cols].to_json())
         return edf
 
     def dupchk(self, 
@@ -772,11 +803,10 @@ class DataCheck(pd.DataFrame):
         chk_df[dup_err] = chk_df[show_cols].apply(check_duplicates, axis=1)
         err_list.append(dup_err)
 
-        chk_df[err_list] = chk_df[err_list].astype(pd.Int64Dtype())
 
         edf = ErrorDataFrame(show_cols, 'DUP', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
-        
+        self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
 
     def masa(self, 
@@ -809,7 +839,6 @@ class DataCheck(pd.DataFrame):
         sa = sa_qid
 
         show_cols = [sa] + ma
-        chk_df[show_cols] = chk_df[show_cols].astype(pd.Int64Dtype())
 
         filt = ~chk_df[sa].isna()
 
@@ -817,7 +846,6 @@ class DataCheck(pd.DataFrame):
         if cond is not None :
             chk_df.loc[cond, base_col] = 1
             err_list.append(base_col)
-            chk_df[base_col] = chk_df[base_col].astype(pd.Int64Dtype())
             filt = (filt) & (cond)
 
         err_col = 'LOGIC'
@@ -855,13 +883,12 @@ class DataCheck(pd.DataFrame):
         chk_df[ma_ans] = chk_df[filt].apply(lambda_ma_to_list, axis=1, qids=ma)
 
         err_list += [err_col, ma_ans]
-        chk_df[err_col] = chk_df[err_col].astype(pd.Int64Dtype())
 
         chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
         
         edf = ErrorDataFrame(f"""{sa}(SA) in {ma[0]}-{ma[-1]}(MA)""", 'MASA', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
-        
+        self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
 
     def mama(self,
@@ -894,7 +921,6 @@ class DataCheck(pd.DataFrame):
 
         zip_cols = [list(x) for x in zip(base, chkm)]
         show_cols = sum(zip_cols, [])
-        chk_df[show_cols] = chk_df[show_cols].astype(pd.Int64Dtype())
 
         chk_cnt = 'CHK_CNT'
         chk_df[chk_cnt] = chk_df[chkm].apply(lambda x: x.count() - (x==0).sum(), axis=1)
@@ -904,7 +930,6 @@ class DataCheck(pd.DataFrame):
         if cond is not None :
             chk_df.loc[cond, base_col] = 1
             err_list.append(base_col)
-            chk_df[base_col] = chk_df[base_col].astype(pd.Int64Dtype())
             filt = (filt) & (cond)
         
         err_col = 'LOGIC'
@@ -952,7 +977,6 @@ class DataCheck(pd.DataFrame):
         chk_df[chk_ans] = chk_df[filt].apply(lambda_ma_to_list, axis=1, qids=chkm)
         chk_df[diff_ans] = chk_df[filt].apply(diff_ans_update, axis=1, cols=zip_cols)
         
-        chk_df[err_col] = chk_df[err_col].astype(pd.Int64Dtype())
         
         err_list += [err_col, base_ans, chk_ans, diff_ans]
 
@@ -960,7 +984,7 @@ class DataCheck(pd.DataFrame):
         
         edf = ErrorDataFrame(f"""{chkm[0]}-{chkm[-1]}(MA) in {base[0]}-{base[-1]}(MA)""", 'MAMA', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
-        
+        self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
 
     def mark(self,
@@ -990,8 +1014,6 @@ class DataCheck(pd.DataFrame):
         qid_key = get_key_id(base)
 
         show_cols = rank
-        chk_df[show_cols] = chk_df[show_cols].astype(pd.Int64Dtype())
-        chk_df[base] = chk_df[base].astype(pd.Int64Dtype())
 
         dv = []
         if diff_value is not None:
@@ -1018,7 +1040,6 @@ class DataCheck(pd.DataFrame):
         if cond is not None :
             chk_df.loc[cond, base_col] = 1
             err_list.append(base_col)
-            chk_df[base_col] = chk_df[base_col].astype(pd.Int64Dtype())
             filt = (filt) & (cond)
 
         err_col = 'LOGIC'
@@ -1073,7 +1094,7 @@ class DataCheck(pd.DataFrame):
         
         edf = ErrorDataFrame(f"""{rank[0]}-{rank[-1]}(RANK) in {base[0]}-{base[-1]}(MA)""", 'MARK', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
-
+        self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
 
 
@@ -1107,7 +1128,6 @@ class DataCheck(pd.DataFrame):
         if cond is not None :
             chk_df.loc[cond, base_col] = 1
             err_list.append(base_col)
-            chk_df[base_col] = chk_df[base_col].astype(pd.Int64Dtype())
             filt = (filt) & (cond)
 
         err_col = 'LOGIC'
@@ -1158,14 +1178,13 @@ class DataCheck(pd.DataFrame):
 
 
         err_list.append(err_col)
-        chk_df[err_list] = chk_df[err_list].astype(pd.Int64Dtype())
         show_cols = [able_col] + rank + rate
 
         chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
         
         edf = ErrorDataFrame(f"""{rank[0]}-{rank[-1]}(RANK) / {rate[0]}-{rate[-1]}(RATE)""", 'RATERANK', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
-        
+        self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
     
     def lp(self, print_word: str) -> None:
@@ -1212,16 +1231,40 @@ class DataCheck(pd.DataFrame):
         if isinstance(code, range) :
             chk_code.append(chk_code[-1]+1)
 
-        filt = [col for col in cols if col.startswith(qid) and any(col.endswith(str(c)) for c in chk_code)]
+        filt = [col for col in cols if re.match(rf'^{qid}(?!\d)', col) and any(col.endswith(str(c)) for c in chk_code)]
         if not filt :
             display(HTML("""<div class="check-bold check-warn">⚠️ The variable does not exist in the dataframe</div>"""))
         return filt
 
 
 
-
-
 #### Decipher Ready
+def unzip_and_delete(zip_path, extract_to='.'):
+    """
+    Function to unzip a file and delete the zip file
+
+    Parameters:
+    zip_path (str): Path to the zip file
+    extract_to (str): Directory path where the contents will be extracted (default: current directory)
+    """
+    try:
+        # Open the zip file
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            # Extract all the contents of the zip file to the specified directory
+            zip_ref.extractall(extract_to)
+        
+        # Delete the zip file
+        os.remove(zip_path)
+    
+    except FileNotFoundError:
+        print(f"File not found: {zip_path}")
+    
+    except zipfile.BadZipFile:
+        print(f"Invalid zip file: {zip_path}")
+    
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
 def ensure_directory_exists(directory_path: str) -> None:
     if not os.path.exists(directory_path):
         os.makedirs(directory_path)
@@ -1322,10 +1365,10 @@ def DecipherSetting(pid: str,
         # get csv data
         try :
             csv_data = api.get(f'{path}/data', format='csv', cond=delivery_cond)
+            sav_data = api.get(f'{path}/data', format='spss16', cond=delivery_cond)
         except :
             print('❌ Error : Please check the cond argument')
             return
-
 
         csv_binary = f'binary_{pid}.csv'
         ensure_directory_exists('data')
@@ -1333,6 +1376,9 @@ def DecipherSetting(pid: str,
         create_binary_file(data_path, csv_binary, csv_data)
         create_ascii_file(data_path, csv_binary, f'{pid}.csv')
         
+        sav_zip = f'{pid}_sav.zip'
+        create_binary_file(data_path, sav_zip, sav_data)
+        unzip_and_delete(os.path.join(data_path, sav_zip), data_path)
         time.sleep(3)
 
         # get datamap xlsx
@@ -1592,15 +1638,22 @@ def DecipherSetting(pid: str,
 import pyreadstat
 import numpy as np
 from map.variables_{pid} import * 
-from decipherAutomatic.dataProcessing import DataCheck
+from decipherAutomatic.dataProcessing import *
+css_apply() # CSS APPLY
 
-file_name = "data/{pid}.xlsx"
-df = DataCheck(pd.read_excel(file_name, engine="openpyxl"), keyid="record")
+# Use Excel
+# file_name = "data/{pid}.xlsx"
+# df = DataCheck(pd.read_excel(file_name, engine="openpyxl"), keyid="record")
+
+# Use SPSS
+file_name = "data/{pid}.sav"
+df, meta = pyreadstat.read_sav(file_name)
+df = DataCheck(df, keyid="record", spssmeta=meta)
 '''
     
+    ipynb_cell.append(nbf.v4.new_code_cell(default))
     ipynb_cell.append(nbf.v4.new_code_cell("""# df.display_msg = 'error'"""))
 
-    ipynb_cell.append(nbf.v4.new_code_cell(default))
     for idx, attrs in enumerate(order_qid) :
         qid = attrs[0]
         els = attrs[1]

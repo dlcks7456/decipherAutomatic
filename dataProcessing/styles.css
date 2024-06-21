@@ -65,6 +65,10 @@
     border: 1px solid #ffa600;
 }
 
+.alt-fail {
+    border: 1px solid #ff2b9f;
+}
+
 .datacheck-alt {
     font-weight: bold;
     font-style: italic;
@@ -85,6 +89,11 @@
 .alt-sub .datacheck-alt {
     color: black;
     background-color: #ffa600;
+}
+
+.alt-fail .datacheck-alt {
+    color: white;
+    background-color: #ff2b9f;
 }
 
 .apply-title {
