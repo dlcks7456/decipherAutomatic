@@ -18,6 +18,7 @@ from decipherAutomatic.utils import *
 from pandas.io.formats import excel
 import zipfile
 
+
 def check_print(variables: Union[List[str], Tuple[str, ...], str], 
                 error_type: Literal['SA', 'MA', 'LOGIC', 'MASA', 'MAMA', 'MARK', 'RATERANK', 'DUP'], 
                 df: pd.DataFrame, 
@@ -49,6 +50,7 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
 
     print_str = ''
     print_str += f"""<div class="datcheck-title">📢 <span class="title-type">{error_type}</span> <span class="title-msg">({error_type_msg[error_type]})</span></div>""" # Error Text Title
+    print_str += f"""👨‍👩‍👧‍👦 <span class="print-comment">Check Sample : <span class="check-bold">{len(df)}'s</span></span>"""
 
     # Result HTML
     correct = """<div class="datacheck-head check-correct">✅ {html_title}</div>"""
@@ -56,17 +58,17 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
     check   = """<div class="datacheck-check">📌 <span class="print-comment">{check_title}</span></div>"""
     warning  = """<div class="datacheck-warning check-warn">⚠️ {warn_title}</div>"""
 
+    # Base Check
+    err_cols = df.columns
+
+
     if warnings is not None :
         for warn in warnings :
             print_str += warning.format(warn_title=warn)
 
-    # Base Check
-    err_cols = df.columns
-    
-    ms_err = 'BASE_CHECK'
+    ms_err = 'DC_BASE'
     if ms_err in err_cols :
         err_cnt = len(df[df[ms_err]==1])
-        print_str += f"""👨‍👩‍👧‍👦 <span class="print-comment">Check Sample : <span class="check-bold">{len(df)}'s</span></span>"""
         html_title = f"""Answer Base Check"""
         if err_cnt == 0 :
             print_str += correct.format(html_title=html_title)
@@ -74,7 +76,7 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
             print_str += fail.format(html_title=html_title, err_cnt=err_cnt)
 
     # Cases responded to other than base 
-    add_err = 'NO_BASE_CHECK'
+    add_err = 'DC_NO_BASE'
     if add_err in err_cols :
         err_cnt = len(df[df[add_err]==1])
         html_title = "Other than Base Check"
@@ -113,7 +115,7 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
 
     # MA Variable Answer Count Check
     if (error_type in ['MA']) :
-        for lg in ['ATLEAST_CHECK', 'ATMOST_CHECK', 'EXACTLY_CHECK'] :
+        for lg in ['DC_ATLEAST', 'DC_ATMOST', 'DC_EXACTLY'] :
             if not lg in err_cols :
                 continue
             err_cnt = len(df[df[lg]==1])
@@ -122,6 +124,16 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
                 print_str += correct.format(html_title=html_title)
             else :
                 print_str += fail.format(html_title=html_title, err_cnt=err_cnt)
+        
+        for isx in ['MA_ISIN', 'MA_ISALL'] :
+            if isx in list(df.columns) :
+                err_cnt = len(df[df[isx]==1])
+                ma, istype = isx.split('_')
+                html_title = f"{ma} {istype.capitalize()} Answer Check"
+                if err_cnt == 0 :
+                    print_str += correct.format(html_title=html_title)
+                else :
+                    print_str += fail.format(html_title=html_title, err_cnt=err_cnt)
 
     # Answer Description Print
     desc_table = None
@@ -152,7 +164,7 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
 
     # Logic Check
     if (error_type in ['LOGIC', 'MASA', 'MAMA', 'MARK', 'RATERANK']) :
-        err_cnt = len(df[df['LOGIC_CHECK']==1])
+        err_cnt = len(df[df['DC_LOGIC']==1])
         base_cond = 'BASE_COND'
         if base_cond in list(df.columns) :
             base_cnt = len(df[df[base_cond]==1])
@@ -164,11 +176,11 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
 
     # Duplicate Check
     if (error_type in ['DUP']) :
-        err_cnt = len(df[df['DUP_CHECK']==1])
+        err_cnt = len(df[df['DC_DUP']==1])
         if err_cnt == 0 :
             print_str += correct.format(html_title="No Duplicate")
         else :
-            dup_rows = df[df['DUP_CHECK'] == 1]
+            dup_rows = df[df['DC_DUP'] == 1]
             summary = []
             
             for index, row in dup_rows.iterrows():
@@ -219,7 +231,15 @@ def get_key_id(base: List[str]) -> Union[None, str]:
 
 def lambda_ma_to_list(row, qids) :
     qid_key = get_key_id(qids)
-    return [int(x.replace(qid_key, '')) for x in qids if not (pd.isna(row[x]) or row[x] == 0)]
+
+    def return_int_or_str(txt: str) :
+        rp = txt.replace(qid_key, '')
+        if rp.isdigit() :
+            return int(rp)
+        else :
+            return rp
+    
+    return [return_int_or_str(x) for x in qids if not (pd.isna(row[x]) or row[x] == 0)]
 
 @dataclass
 class PrintDataFrame:
@@ -245,6 +265,7 @@ class ErrorDataFrame:
         self.show_col_with_err = self.err_list + self.show_cols
         self.err_base = [x for x in self.err_list if x not in ['BASE_COND', 'ANSWER_COND']]
         err_df = self.df[(self.df[self.err_base]==1).any(axis=1)]
+        self.df[self.err_list] = self.df[self.err_list].applymap(lambda x: int(x) if pd.notna(x) else x)
         self.err = PrintDataFrame(self.show_col_with_err, err_df)
         self.full = PrintDataFrame(self.show_col_with_err, self.df)
         self.chk_msg = check_print(self.chk_id, self.qid_type, self.full(), self.warnings, self.alt)
@@ -300,14 +321,6 @@ class DataCheck(pd.DataFrame):
     @keyid.setter
     def keyid(self, value: Optional[str]) -> None:
         self._keyid = value
-
-    # @property
-    # def meta(self) -> Any :
-    #     return self.attrs['meta']
-
-    # @meta.setter
-    # def meta(self, meta_data: Optional[Any]) -> None :
-    #     self.attrs['meta'] = meta_data
 
     @property
     def display_msg(self) -> Optional[Literal['all', 'error', None]]:
@@ -370,11 +383,13 @@ class DataCheck(pd.DataFrame):
         """
         if filter_cond is None :
             self.attrs['default_filter'] = self.comp()
-            display(HTML(f"""🛠️ <span class="check-bold">Data Filter <span class="check-warn">Reset</span> : {len(self)}'s</span>"""))
+            if self.attrs['display_msg'] == 'all' :
+                display(HTML(f"""🛠️ <span class="check-bold">Data Filter <span class="check-warn">Reset</span> : {len(self)}'s</span>"""))
         else :
             self.attrs['default_filter'] = filter_cond
             filt_data = self[filter_cond]
-            display(HTML(f"""🛠️ <span class="check-bold">Data Filter <span class="check-warn">Setting</span> : {len(filt_data)}'s</span>"""))
+            if self.attrs['display_msg'] == 'all' :
+                display(HTML(f"""🛠️ <span class="check-bold">Data Filter <span class="check-warn">Setting</span> : {len(filt_data)}'s</span>"""))
 
     def col_name_check(self, *variables: str) -> bool:
         """`qid`에 지정된 열이 데이터프레임에 있는지 확인"""
@@ -549,7 +564,7 @@ class DataCheck(pd.DataFrame):
         elif self.attrs['display_msg'] ==  'error' :
             if len(export_df.err()) > 1 :
                 display(HTML(export_df.chk_msg))
-        elif self._display_msg is None :
+        elif self.attrs['display_msg'] is None :
             return
 
 
@@ -573,7 +588,7 @@ class DataCheck(pd.DataFrame):
         # Answer Base Check
         warnings = []
 
-        ms_err = 'BASE_CHECK'
+        ms_err = 'DC_BASE'
         filt = (chk_df[qid].isna())  # Default
         if cond is not None:
             filt = (filt) & (cond)
@@ -586,7 +601,7 @@ class DataCheck(pd.DataFrame):
 
         # Cases responded to other than base
         if cond is not None :
-            ans_err = 'NO_BASE_CHECK'
+            ans_err = 'DC_NO_BASE'
             chk_df.loc[(~chk_df[qid].isna()) & ~(cond), ans_err] = 1
             err_list.append(ans_err)
 
@@ -633,6 +648,8 @@ class DataCheck(pd.DataFrame):
             atleast: Optional[int] = None, 
             atmost: Optional[int] = None, 
             exactly: Optional[int] = None,
+            isin: Optional[Union[range, List[Union[int, str]], int, str]] = None,
+            isall: Optional[Union[range, List[Union[int, str]], int, str]] = None,
             alt: Optional[str]=None) -> 'ErrorDataFrame':
         """
         복수 응답(다중 변수) 데이터 체크 메서드
@@ -642,8 +659,10 @@ class DataCheck(pd.DataFrame):
         
         chk_df = self[self.attrs['default_filter']].copy()
         show_cols = self.ma_return(qid)
+        qid_key = get_key_id(show_cols)
+        if qid_key is None: return
         if not self.col_name_check(*show_cols) : return
-
+        
         cnt = 'ANSWER_CNT'
         chk_df[cnt] = chk_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
 
@@ -652,7 +671,7 @@ class DataCheck(pd.DataFrame):
         # Answer Base Check
         warnings = []
 
-        ms_err = 'BASE_CHECK'
+        ms_err = 'DC_BASE'
         filt = (chk_df[cnt]==0)  # Default
         if cond is not None:
             filt = (filt) & (cond)
@@ -665,7 +684,7 @@ class DataCheck(pd.DataFrame):
 
         # Cases responded to other than base
         if cond is not None :
-            ans_err = 'NO_BASE_CHECK'
+            ans_err = 'DC_NO_BASE'
             chk_df.loc[(chk_df[cnt]>=1) & ~(cond), ans_err] = 1
             err_list.append(ans_err)
 
@@ -687,9 +706,45 @@ class DataCheck(pd.DataFrame):
                 err_list.append(err_label)
 
         # AT LEAST, AT MOST, EXACTLY Answer Checks
-        check_answer(atleast, '<', 'ATLEAST_CHECK')
-        check_answer(atmost, '>', 'ATMOST_CHECK')
-        check_answer(exactly, '==', 'EXACTLY_CHECK')
+        check_answer(atleast, '<', 'DC_ATLEAST')
+        check_answer(atmost, '>', 'DC_ATMOST')
+        check_answer(exactly, '==', 'DC_EXACTLY')
+
+        def process_check(check_type, check_value, check_func, err_label):
+            warnings.append(f"{check_type.capitalize()} value : {check_value}")
+            if isinstance(check_value, range):
+                check_list = list(check_value) + [check_value[-1] + 1]
+            elif isinstance(check_value, (int, str)):
+                check_list = [check_value]
+            elif isinstance(check_value, list):
+                check_list = check_value
+
+            chk_cols = [f'{qid_key}{m}' for m in check_list]
+
+            def apply_func(row):
+                return 1 if check_func(row, chk_cols) else np.nan
+
+            if cond is None:
+                chk_df[err_label] = chk_df.apply(apply_func, axis=1)
+            else:
+                chk_df[err_label] = chk_df[cond].apply(apply_func, axis=1)
+
+            err_list.append(err_label)
+
+        # Check Functions
+        def ma_isin_check(row, cols):
+            return not any(not (pd.isna(row[c]) or row[c] == 0) for c in cols)
+
+        def ma_isall_check(row, cols):
+            return any(pd.isna(row[c]) or row[c] == 0 for c in cols)
+
+        # Is In Check        
+        if isin is not None:
+            process_check('isin', isin, ma_isin_check, 'MA_ISIN')
+
+        # Is All Check
+        if isall is not None:
+            process_check('isall', isall, ma_isall_check, 'MA_ISALL')
 
         show_cols = [cnt] + show_cols
         
@@ -710,7 +765,7 @@ class DataCheck(pd.DataFrame):
         `base` (pd.Series): 베이스 조건.
         `ans` (pd.Series): 베이스 조건이 True일 때 응답 조건.
         """
-        chk_df = self[self.attrs['default_filter']].copy()
+
         if ans is None :
             display(HTML("""<div class="check-bold check-fail">❌ [ERROR]  answer_cond cannot be None</div>"""))
             return 
@@ -719,7 +774,11 @@ class DataCheck(pd.DataFrame):
         # Base Condition Answer Check
         warnings = []
         base_cond = self.comp() if base is None else base
-        if len(chk_df[base_cond]) == 0:
+        base_cond = (self.attrs['default_filter']) & (base_cond)
+        ans_cond  = (self.attrs['default_filter']) & (ans)
+        chk_df = self[base_cond].copy()
+
+        if len(chk_df) == 0:
             warnings.append("No response to this condition")
         
         # Base Filter
@@ -727,11 +786,11 @@ class DataCheck(pd.DataFrame):
         answer_col = 'ANSWER_COND'
         err_list += [base_col, answer_col]
         chk_df.loc[base_cond, base_col] = 1
-        chk_df.loc[ans, answer_col] = 1
+        chk_df.loc[ans_cond, answer_col] = 1
 
         # Logic Check
-        lg_err = 'LOGIC_CHECK'
-        chk_df.loc[(base_cond) & (~ans), lg_err] = 1
+        lg_err = 'DC_LOGIC'
+        chk_df.loc[(base_cond) & (~ans_cond), lg_err] = 1
         err_list.append(lg_err)
 
         chk_df = chk_df[base_cond.reindex(chk_df.index, fill_value=False)]
@@ -776,7 +835,7 @@ class DataCheck(pd.DataFrame):
         else:
             okUnique = []
 
-        dup_err = 'DUP_CHECK'
+        dup_err = 'DC_DUP'
         def check_duplicates(row):
             row_values = row.tolist()
             filtered_values = [value for value in row_values if value not in okUnique]
@@ -830,7 +889,7 @@ class DataCheck(pd.DataFrame):
             err_list.append(base_col)
             filt = (filt) & (cond)
 
-        err_col = 'LOGIC_CHECK'
+        err_col = 'DC_LOGIC'
         # MA Base SA
         if len(chk_df[filt]) == 0 :
             warnings.append("No response to this condition")
@@ -850,7 +909,7 @@ class DataCheck(pd.DataFrame):
             warnings.append(f"""Do not check the code : {dv}""")
         
         def ma_base_check(x) :
-            sa_ans = x[sa]
+            sa_ans = int(x[sa])
             ma_var = f'{qid_key}{sa_ans}'
             ma_ans = x[ma_var]
             if sa_ans in dv :
@@ -859,15 +918,17 @@ class DataCheck(pd.DataFrame):
             return 1 if pd.isna(ma_ans) or ma_ans == 0 else np.nan
 
         chk_df[err_col] = chk_df[filt].apply(ma_base_check, axis=1)
+        err_list.append(err_col)
 
-        ma_ans = 'BASE_MA_ANSWER'
+        ma_ans = 'BASE_MA'
         chk_df[ma_ans] = chk_df[filt].apply(lambda_ma_to_list, axis=1, qids=ma)
 
-        err_list += [err_col, ma_ans]
+        show_cols = [ma_ans] + show_cols
 
         chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
         
-        edf = ErrorDataFrame(f"""{sa}(SA) in {ma[0]}-{ma[-1]}(MA)""", 'MASA', show_cols, chk_df, err_list, warnings, alt)
+        qid = f"""{sa}(SA) in {ma[0]}-{ma[-1]}(MA)"""
+        edf = ErrorDataFrame(qid, 'MASA', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
         self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
@@ -913,7 +974,7 @@ class DataCheck(pd.DataFrame):
             err_list.append(base_col)
             filt = (filt) & (cond)
         
-        err_col = 'LOGIC_CHECK'
+        err_col = 'DC_LOGIC'
         # MA Base MA
         if len(chk_df[filt]) == 0 :
             warnings.append("No response to this condition")
@@ -948,21 +1009,27 @@ class DataCheck(pd.DataFrame):
 
 
         def diff_ans_update(row, cols) :
-            return [int(base.replace(qid_key, '')) for base, ans in cols if (pd.isna(row[base]) or row[base] == 0) and not (pd.isna(row[ans]) or row[ans] == 0)]
+            def return_int_or_str(txt: str) :
+                    rp = txt.replace(qid_key, '')
+                    if rp.isdigit() :
+                        return int(rp)
+                    else :
+                        return rp
+            return [return_int_or_str(base) for base, ans in cols if (pd.isna(row[base]) or row[base] == 0) and not (pd.isna(row[ans]) or row[ans] == 0)]
 
-        base_ans = 'BASE_MA_ANSWER'
-        chk_ans = 'CHECK_MA_ANSWER'
-        diff_ans = 'DIFF_ANSWER'
+        base_ans = 'BASE_MA'
+        chk_ans = 'CHECK_MA'
+        diff_ans = 'DIFF_ANS'
         chk_df[base_ans] = chk_df[filt].apply(lambda_ma_to_list, axis=1, qids=base)
         chk_df[chk_ans] = chk_df[filt].apply(lambda_ma_to_list, axis=1, qids=chkm)
         chk_df[diff_ans] = chk_df[filt].apply(diff_ans_update, axis=1, cols=zip_cols)
         
-        
-        err_list += [err_col, base_ans, chk_ans, diff_ans]
-
+        err_list.append(err_col)
+        show_cols = [base_ans, chk_ans, diff_ans] + show_cols
         chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
         
-        edf = ErrorDataFrame(f"""{chkm[0]}-{chkm[-1]}(MA) in {base[0]}-{base[-1]}(MA)""", 'MAMA', show_cols, chk_df, err_list, warnings, alt)
+        qid = f"""{chkm[0]}-{chkm[-1]}(MA) in {base[0]}-{base[-1]}(MA)"""
+        edf = ErrorDataFrame(qid, 'MAMA', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
         self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
@@ -1022,7 +1089,7 @@ class DataCheck(pd.DataFrame):
             err_list.append(base_col)
             filt = (filt) & (cond)
 
-        err_col = 'LOGIC_CHECK'
+        err_col = 'DC_LOGIC'
         # MA Base MA
         if len(chk_df[filt]) == 0 :
             warnings.append("No response to this condition")
@@ -1038,7 +1105,7 @@ class DataCheck(pd.DataFrame):
 
         chk_df[err_col] = chk_df[filt].apply(ma_base_rank_check, axis=1)
 
-        base_ans = 'BASE_MA_ANSWER'
+        base_ans = 'BASE_MA'
         chk_df[base_ans] = chk_df[filt][base].apply(base_ans_update, axis=1)
 
         # Each Rank masa
@@ -1066,12 +1133,13 @@ class DataCheck(pd.DataFrame):
         chk_df[masa_err] = chk_df[filt].apply(masa_rank_err, axis=1)
         chk_df.loc[~chk_df[masa_err].isna(), err_col] = 1
         
-        show_cols = [base_cnt, masa_err] + rank_err_list + rank + base
-        err_list += [err_col, base_ans]
+        show_cols = [base_cnt, base_ans] + rank + base
+        err_list += [err_col, rank_err_list, masa_err]
 
         chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
         
-        edf = ErrorDataFrame(f"""{rank[0]}-{rank[-1]}(RANK) in {base[0]}-{base[-1]}(MA)""", 'MARK', show_cols, chk_df, err_list, warnings, alt)
+        qid = f"""{rank[0]}-{rank[-1]}(RANK) in {base[0]}-{base[-1]}(MA)"""
+        edf = ErrorDataFrame(qid, 'MARK', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
         self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
@@ -1112,7 +1180,7 @@ class DataCheck(pd.DataFrame):
         if len(chk_df[filt]) == 0 :
             warnings.append("No response to this condition")
 
-        err_col = 'LOGIC_CHECK'
+        err_col = 'DC_LOGIC'
         def rate_rank_validate(row, rate_base, rank_base):
             scores = {int(x.replace(qid_key, '')): row[x] for x in rate_base}
             result = {}
@@ -1164,23 +1232,27 @@ class DataCheck(pd.DataFrame):
 
         chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
         
-        edf = ErrorDataFrame(f"""{rank[0]}-{rank[-1]}(RANK) / {rate[0]}-{rate[-1]}(RATE)""", 'RATERANK', show_cols, chk_df, err_list, warnings, alt)
+        qid = f"""{rank[0]}-{rank[-1]}(RANK) / {rate[0]}-{rate[-1]}(RATE)"""
+        edf = ErrorDataFrame(qid, 'RATERANK', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
         self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
     
-    def lp(self, print_word: str) -> None:
+    def note(self, print_word: str) -> None:
         """
         별도 표시를 위한 메서드
         """
         if self.attrs['display_msg'] ==  'all' :
             display(HTML(f"""
                          <div class="datacheck-print-mw">
-                            <div class="datacheck-logic-print">{print_word}</div>
+                            <div class="datacheck-note-print">
+                                <div class="note-title">📝 NOTE</div>
+                                <div class="note-desc">{print_word}</div>
+                            </div>
                          </div>
                          """))
 
-    def lchk(self) -> None:
+    def live_only(self) -> None:
         """
         LIVE 상태에서 검토해야하는 부분 표기
         """
@@ -1219,24 +1291,26 @@ class DataCheck(pd.DataFrame):
         return filt
 
 
-def SetUpDataCheck(dataframe: pd.DataFrame, **kwargs) :
-    module_path = os.path.dirname(__file__)
-    css_file_path = os.path.join(module_path, 'styles.css')  # Assuming 'styles.css' is the CSS file in the module
-
+def get_css(path: os.path) -> str:
+    css_file_path = os.path.join(path)
+    css = None
     try:
         with open(css_file_path, 'r') as file:
             css_content = file.read()
         css = f"""
-        <style>
-        {css_content}
-        </style>
-        <div class="check-correct check-bold">❇️ DataCheck Set UP</div>
-        """
-        display(HTML(css))
+<style>
+{css_content}
+</style>
+"""
     except Exception as e:
         print(f"Failed to load CSS file: {e}")
 
-    
+    return css
+
+def SetUpDataCheck(dataframe: pd.DataFrame, **kwargs) :
+    module_path = os.path.dirname(__file__)
+    css = get_css(os.path.join(module_path, 'styles.css'))
+    display(HTML(css))
     return DataCheck(dataframe, **kwargs)
 
 

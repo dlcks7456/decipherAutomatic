@@ -108,15 +108,23 @@
     max-width: 500px;
 }
 
-.datacheck-logic-print {
-    font-weight: bold;
-    font-style: italic;
+.datacheck-note-print {
     padding: 7px;
     border-radius: 5px;
     background-color: #ffa600;
     color: black;
-    font-weight: bold;
     width: fit-content;
+}
+
+.note-title {
+    font-size: 1rem;
+    font-weight: bold;
+    font-style: italic;
+}
+
+.note-desc {
+    margin-top: 5px;
+    font-size: 0.8rem;
 }
 
 .datacheck-live-check {
