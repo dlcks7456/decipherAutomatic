@@ -96,7 +96,7 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
         
         err_answer = list(df[df[only_err]==1][variables].values)
         err_answer = ['NA' if pd.isna(x) else x for x in err_answer]
-        err_answer = list(set(err_answer))
+        err_answer = sorted(set(err_answer))
         if err_answer :
             print_str += f"""<div class="print-padding-left">🗒️ <span class="print-comment">Invalid response</span> : {list(err_answer)}</div>"""
 
@@ -111,6 +111,7 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
             print_str += fail.format(html_title=html_title, err_cnt=err_cnt)
         
         err_answer = list(set(list(df[df[isnot_err]==1][variables].values)))
+        err_answer = sorted(set(err_answer))
         if err_answer :
             print_str += f"""<div class="print-padding-left">🗒️ <span class="print-comment">Invalid response</span> : {list(err_answer)}</div>"""
 
@@ -534,7 +535,7 @@ class DataCheck(pd.DataFrame):
             result = self.assign(**{sum_col_name: new_col})
             self.__dict__.update(result.__dict__)
 
-        show_title = f"""<div>📊 <span class="check-bold check-warn">{sum_col_name}</span> : Sum of values</div>"""
+        show_title = f"""<span class="check-bold check-warn">{sum_col_name}</span> : Sum of values"""
 
         desc = self[sum_col_name].describe().round(1)
         self.display_description(alt, show_title, desc)
@@ -1154,7 +1155,7 @@ class DataCheck(pd.DataFrame):
                 dv.append(dv[-1] + 1)
             
             warnings.append(f"""Do not check the code : {dv}""")
-            base = [x for x in base if not x in [f'{qid_key}{d}' for d in dv]]
+            # base = [x for x in base if not x in [f'{qid_key}{d}' for d in dv]]
 
         base_cnt = 'BASE_COUNT'
         chk_df[base_cnt] = chk_df[base].apply(lambda x: x.count() - (x==0).sum(), axis=1)
@@ -1172,47 +1173,56 @@ class DataCheck(pd.DataFrame):
         if len(chk_df[filt]) == 0 :
             warnings.append("No response to this condition")
 
-        def base_ans_update(row) :
-            return [x for x in base if not (pd.isna(row[x]) or row[x] == 0)]
-
-
         def ma_base_rank_check(x) :
             able_ans = max_rank if x[base_cnt] > max_rank else x[base_cnt]
             chk_rank = rank[:able_ans]
             return 1 if any(pd.isna(x[rk]) for rk in chk_rank) else np.nan
 
-        chk_df[err_col] = chk_df[filt].apply(ma_base_rank_check, axis=1)
+
+        ma_base_cond = (~chk_df[rank].isna()).any(axis=1)
+        if cond is not None :
+            ma_base_cond = (ma_base_cond) & (cond)
+        
+        chk_df[err_col] = chk_df[ma_base_cond].apply(ma_base_rank_check, axis=1)
 
         base_ans = 'BASE_MA'
-        chk_df[base_ans] = chk_df[filt][base].apply(base_ans_update, axis=1)
+        if cond is not None :
+            chk_df[base_ans] = chk_df[cond][base].apply(lambda_ma_to_list, axis=1, qids=base)
+        else :
+            chk_df[base_ans] = chk_df[base].apply(lambda_ma_to_list, axis=1, qids=base)
 
+
+        def ma_base_check(x, rank_qid) :
+            sa_ans = int(x[rank_qid])
+            ma_var = f'{qid_key}{sa_ans}'
+            ma_ans = x[ma_var]
+            if sa_ans in dv :
+                return np.nan
+
+            return 1 if pd.isna(ma_ans) or ma_ans == 0 else np.nan
         # Each Rank masa
         rank_err_list = []
         for rk in rank :
-            def ma_base_check(x) :
-                sa_ans = x[rk]
-                ma_var = f'{qid_key}{sa_ans}'
-                ma_ans = x[ma_var]
-                if sa_ans in dv :
-                    return np.nan
-
-                return 1 if pd.isna(ma_ans) or ma_ans == 0 else np.nan
             rk_err = f'{rk}_ERR'
-            chk_df[rk_err] = chk_df[(filt) & (~chk_df[rk].isna())].apply(ma_base_check, axis=1)
+            sa_base_cond = ~chk_df[rk].isna()
+            if cond is not None :
+                sa_base_cond = (sa_base_cond) & (cond)
+            chk_df[rk_err] = chk_df[sa_base_cond].apply(ma_base_check, axis=1, rank_qid=rk)
             rank_err_list.append(rk_err)
 
-        masa_err = 'MA_BASE_ERR'
+        masa_err = 'ERR_RK'
         def masa_rank_err(x) :
             if any(x[err]==1 for err in rank_err_list) :
                 return [cnt for cnt, rank in enumerate(rank_err_list, 1) if x[rank]==1]
             else :
                 return np.nan
 
-        chk_df[masa_err] = chk_df[filt].apply(masa_rank_err, axis=1)
+        chk_df[masa_err] = chk_df[(chk_df[rank_err_list]==1).any(axis=1)].apply(masa_rank_err, axis=1)
         chk_df.loc[~chk_df[masa_err].isna(), err_col] = 1
         
-        show_cols = [base_cnt, base_ans] + rank + base
-        err_list += [err_col, rank_err_list, masa_err]
+        show_cols = [base_cnt, base_ans, masa_err] + rank + base
+        err_list += [err_col]
+        err_list += rank_err_list
 
         chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
         
@@ -1272,16 +1282,15 @@ class DataCheck(pd.DataFrame):
             rk = rank_base.copy()
             is_valid = False
             for sc, able in sort_score :
-                if not rk : break
-                for idx in range(0, len(able)) :
-                    if idx < len(rank_base) :
-                        chk = rank_base[idx]
-                        if not chk in rk : break
-                        
-                        rk.remove(chk)
-                        if not row[chk] in able :
-                            is_valid = True
-                            break
+                albe_rk = rk[:len(able)]
+                if not rk :
+                    break
+                
+                for ar in albe_rk :
+                    if not row[ar] in able :
+                        is_valid = True
+                    
+                    rk.remove(ar)
 
             return 1 if is_valid else np.nan
 
@@ -1363,7 +1372,8 @@ class DataCheck(pd.DataFrame):
         if isinstance(code, range) :
             chk_code.append(chk_code[-1]+1)
 
-        filt = [col for col in cols if re.match(rf'^{qid}(?!\d)', col) and any(col.endswith(str(c)) for c in chk_code)]
+        filt = [col for col in cols if col.startswith(qid) and any(str(c) in re.findall(r'\d+$', col.replace(qid, '')) for c in chk_code)]
+        
         if not filt :
             display(HTML("""<div class="check-bold check-warn">⚠️ The variable does not exist in the dataframe</div>"""))
         return filt
@@ -1736,7 +1746,7 @@ def DecipherSetting(pid: str,
         ce = open(os.path.join(layout_path, f'CE_{pid}.txt'), 'w')
         oe = open(os.path.join(layout_path, f'OE_{pid}.txt'), 'w')
 
-        for label, width in [ ('record', 7), ('uuid', 16) ]:
+        for label, width in [ ('record', 7), ('uuid', 16), ('UID', 16)]:
             write_text = f'{label},{label},{width}\n'
             ce.write(write_text)
             oe.write(write_text)

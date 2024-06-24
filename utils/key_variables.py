@@ -1,7 +1,7 @@
 variables = '''
 record
-uuid
 UID
+uuid
 GID
 test
 gid
