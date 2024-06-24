@@ -1,4 +1,5 @@
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 from IPython.display import display, HTML
 from typing import Union, List, Tuple, Dict, Optional, Literal, Callable, Any, NoReturn
 import numpy as np
@@ -265,7 +266,7 @@ class ErrorDataFrame:
         self.show_col_with_err = self.err_list + self.show_cols
         self.err_base = [x for x in self.err_list if x not in ['BASE_COND', 'ANSWER_COND']]
         err_df = self.df[(self.df[self.err_base]==1).any(axis=1)]
-        self.df[self.err_list] = self.df[self.err_list].applymap(lambda x: int(x) if pd.notna(x) else x)
+        self.df[self.err_list] = self.df[self.err_list].apply(lambda col: col.map(lambda x: int(x) if pd.notna(x) else x))
         self.err = PrintDataFrame(self.show_col_with_err, err_df)
         self.full = PrintDataFrame(self.show_col_with_err, self.df)
         self.chk_msg = check_print(self.chk_id, self.qid_type, self.full(), self.warnings, self.alt)
@@ -280,11 +281,12 @@ class ErrorDataFrame:
         return ''
 
 class DataCheck(pd.DataFrame):
-    _metadata = ['_keyid', '_spssmeta']
+    _metadata = ['_keyid', '_spssmeta', '_css']
 
     def __init__(self, *args, **kwargs):
         self._keyid = kwargs.pop('keyid', None)
         self._spssmeta = kwargs.pop('spssmeta', None)
+        self._css = kwargs.pop('css', None)
         
         super().__init__(*args, **kwargs)
         if self._keyid is not None:
@@ -299,35 +301,54 @@ class DataCheck(pd.DataFrame):
         self.attrs['default_filter'] = pd.Series([True] * len(self), index=self.index)
         self.attrs['result_html'] = []
         self.attrs['meta'] = self._spssmeta
+        self.attrs['css'] = self._css
 
     @property
     def _constructor(self) -> Callable[..., 'DataCheck']:
         return DataCheck
 
     def any(self, *args, **kwargs) -> pd.Series:
+        """
+        DataFrame의 any 메서드를 확장하여, 기본 축(axis)을 1로 설정
+        """
         if 'axis' not in kwargs:
             kwargs['axis'] = 1
         return super().any(*args, **kwargs)
 
     def all(self, *args, **kwargs) -> pd.Series:
+        """
+        DataFrame의 all 메서드를 확장하여, 기본 축(axis)을 1로 설정
+        """
         if 'axis' not in kwargs:
             kwargs['axis'] = 1
         return super().all(*args, **kwargs)
 
     @property
     def keyid(self) -> Optional[str]:
+        """
+        DataCheck 클래스의 keyid 속성을 반환
+        """
         return self._keyid
 
     @keyid.setter
     def keyid(self, value: Optional[str]) -> None:
+        """
+        DataCheck 클래스의 keyid 속성을 설정
+        """
         self._keyid = value
 
     @property
     def display_msg(self) -> Optional[Literal['all', 'error', None]]:
+        """
+        DataCheck 클래스의 display_msg 속성을 반환
+        """
         return self.attrs['display_msg']
 
     @display_msg.setter
     def display_msg(self, option: Optional[Literal['all', 'error', None]]) -> None:
+        """
+        DataCheck 클래스의 display_msg 속성을 설정
+        """
         if not option in ['all', 'error', None] :
             display(HTML(f"""<div class="check-bold check-fail">❌ The argument option can only be a 'all', 'error', None</div>"""))
             return
@@ -335,20 +356,32 @@ class DataCheck(pd.DataFrame):
 
     @property
     def default_filter(self) -> pd.Series :
+        """
+        DataCheck 클래스의 기본 필터 조건을 반환
+        """
         return self.attrs['default_filter']
 
     @property
     def count_fnc(self) -> Callable[[pd.Series], int]:
+        """
+        DataCheck 클래스의 count_fnc 속성을 반환
+        """
         return self._count_fnc
 
     @count_fnc.setter
     def count_fnc(self, fnc: Callable[[pd.Series], int]) -> None:
+        """
+        DataCheck 클래스의 count_fnc 속성을 설정
+        """
         if not callable(fnc):
             raise ValueError("The value must be a callable.")
         self._count_fnc = fnc
 
     @staticmethod
     def result_alt(qid: Union[str, List], alt: Optional[str]=None) -> str :
+        """
+        qid와 alt 값을 사용하여 결과 대체 텍스트를 생성하는 정적 메서드
+        """
         alt_qid = qid
         if isinstance(qid, list) :
             alt_qid = f'{qid[0]}-{qid[-1]}'
@@ -356,7 +389,10 @@ class DataCheck(pd.DataFrame):
         return result_alt
 
     def result_html_update(self, **kwargs) :
-        result_html = self.attrs['result_html'].copy()            
+        """
+        결과 HTML을 업데이트하는 메서드로, 제공된 키워드 인수를 사용하여 기존 HTML 결과를 업데이트하거나 새로 추가
+        """
+        result_html = self.attrs['result_html'].copy()
         key = 'alt'
         updated = False
         if key in kwargs :
@@ -401,31 +437,46 @@ class DataCheck(pd.DataFrame):
 
     @contextlib.contextmanager
     def preserve_display_msg(self):
+        """
+        display_msg 속성을 임시로 변경하고, 코드 블록이 끝나면 원래 값으로 복원하는 컨텍스트 관리자
+        """
         original_display_msg = self.attrs['display_msg']
         try:
             yield
         finally:
             self.attrs['display_msg'] = original_display_msg
 
-    def display_descriptin(self, alt: str, title: str, desc: pd.DataFrame) -> None :
-        desc_table = """
+    def display_description(self, alt: str, title: str, desc: pd.DataFrame=None) -> None :
+        print_result = f"""
+<div class="datacheck-apply alt-sub">
+    <div class="datacheck-alt">{alt}</div>
+    <div class="apply-title">✅ {title}</div>
+</div>"""
+
+        if desc is not None :
+            desc_table = """
 <table>
     <tr><td><b>Mean</b></td><td>{mean}</td></tr>
     <tr><td><b>Min</b></td><td>{minv}</td></tr>
     <tr><td><b>Max</b></td><td>{maxv}</td></tr>
 </table>""".format(mean=desc.loc['mean'], minv=desc.loc['min'], maxv=desc.loc['max'])
-        
-        print_result = f"""
+            
+            print_result = f"""
 <div class="datacheck-apply alt-sub">
     <div class="datacheck-alt">{alt}</div>
     <div class="apply-title">📊 {title}</div>
     <div class="print-padding-left">{desc_table}</div>
 </div>
-"""
+    """
         if self.attrs['display_msg'] ==  'all' :
             display(HTML(print_result))
 
     def count_col(self, cnt_col_name: str, cols: Union[List[str], Tuple[str], str], value: Optional[Union[int, List[int]]] = None) -> None:
+        """
+        주어진 열의 응답을 세어 새로운 열을 추가하는 메서드  
+        (`nan` / `0` 이 아닌 컬럼 카운트)  
+        결과를 요약하여 출력  
+        """
         if not self.col_name_check(*cols) : return
         
         cnt_col = []
@@ -456,10 +507,14 @@ class DataCheck(pd.DataFrame):
             show_title += f"""<span class="check-bold check-warn">{cnt_col_name}</span> : Value count ({value})"""
 
         desc = self[cnt_col_name].describe().round(1)
-        self.display_descriptin(alt, show_title, desc)
+        self.display_description(alt, show_title, desc)
         
 
     def sum_col(self, sum_col_name: str, cols: Union[List[str], Tuple[str], str]) -> None:
+        """
+        주어진 열의 값을 합산하여 새로운 열을 추가하는 메서드  
+        결과를 요약하여 출력
+        """
         if not self.col_name_check(*cols):
             return
 
@@ -482,12 +537,7 @@ class DataCheck(pd.DataFrame):
         show_title = f"""<div>📊 <span class="check-bold check-warn">{sum_col_name}</span> : Sum of values</div>"""
 
         desc = self[sum_col_name].describe().round(1)
-        self.display_descriptin(alt, show_title, desc)
-
-    def _update_self(self, new_data):
-        # self의 내부 데이터를 new_data로 업데이트
-        self.__dict__.update(new_data.__dict__)
-     
+        self.display_description(alt, show_title, desc)
 
     def ma_to_list(self, list_col_name: str, cols: Union[List[str], Tuple[str], str]) -> None:
         if not self.col_name_check(*cols):
@@ -499,19 +549,29 @@ class DataCheck(pd.DataFrame):
         elif isinstance(cols, str):
             ma_col = [cols]
 
+        alt = f"{cols[0]}-{cols[-1]} : MA List" if len(cols) > 1 else f"{cols[0]} : MA List"
         new_col = self[ma_col].apply(lambda_ma_to_list, axis=1, qids=ma_col).rename(list_col_name)
         result = self.assign(**{list_col_name: new_col})
         self.__dict__.update(result.__dict__)
 
-        print_result = f"""<div>📊 <span class="check-bold check-warn">{list_col_name}</span> : MA Variable to List</div>"""
+        show_title = f"""<span class="check-bold check-warn">{list_col_name}</span> : MA Variable to List"""
 
-        if self.attrs['display_msg'] ==  'all' :
-            display(HTML(print_result))
+        self.display_description(alt, show_title)
+
+
+    def _update_self(self, new_data):
+        """
+        self의 내부 데이터를 `new_data`로 업데이트
+        """
+        self.__dict__.update(new_data.__dict__)
+     
 
     def ma_check(self, 
                 ma: Union[List[str], Tuple[str]],
                 len_chk: bool = True) -> bool:
-        """`ma`가 리스트나 튜플인지, 그리고 다른 조건들을 만족하는지 확인"""
+        """
+        `ma`가 리스트나 튜플인지, 그리고 다른 조건들을 만족하는지 확인
+        """
         fail = """<div class="check-bold check-fail">❌ [ERROR] {warn_text}</div>"""
         example_text = """<div class="example-text">Example) {ex_text}</div>"""
         print_str = ""
@@ -548,7 +608,9 @@ class DataCheck(pd.DataFrame):
 
     def ma_return(self,
                   ma: Union[List[str], Tuple[str]]) -> List[str]:
-        """`ma`에 지정된 열을 반환"""
+        """
+        `ma`에 지정된 열을 반환
+        """
         if isinstance(ma, tuple):
             cols = list(self.columns)
             first_index = cols.index(ma[0])
@@ -559,11 +621,18 @@ class DataCheck(pd.DataFrame):
 
     def show_message(self, 
                      export_df: ErrorDataFrame) -> None :
+        """
+        ErrorDataFrame 객체의 메시지를 표시하는 메서드  
+        display_msg 속성에 따라 메시지를 출력
+        """
+        css = self.attrs['css']
+        msg = export_df.chk_msg
+        display_msg = """%s<br/>%s"""%(css, msg)
         if self.attrs['display_msg'] ==  'all' :
-            display(HTML(export_df.chk_msg))    
+            display(HTML(display_msg))
         elif self.attrs['display_msg'] ==  'error' :
             if len(export_df.err()) > 1 :
-                display(HTML(export_df.chk_msg))
+                display(HTML(display_msg))
         elif self.attrs['display_msg'] is None :
             return
 
@@ -1311,7 +1380,7 @@ def SetUpDataCheck(dataframe: pd.DataFrame, **kwargs) :
     module_path = os.path.dirname(__file__)
     css = get_css(os.path.join(module_path, 'styles.css'))
     display(HTML(css))
-    return DataCheck(dataframe, **kwargs)
+    return DataCheck(dataframe, css=css, **kwargs)
 
 
 #### Decipher Ready
