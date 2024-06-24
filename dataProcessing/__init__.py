@@ -478,16 +478,19 @@ class DataCheck(pd.DataFrame):
         (`nan` / `0` 이 아닌 컬럼 카운트)  
         결과를 요약하여 출력  
         """
-        if not self.col_name_check(*cols) : return
         
         cnt_col = []
         alt = ""
-        if isinstance(cols, tuple) or isinstance(cols, list):
-            cnt_col = self.ma_return(cols)
-            alt = f"{cnt_col[0]}-{cnt_col[-1]} Answer Count"
         if isinstance(cols, str) :
             cnt_col = [cols]
             alt = f"{cols} Answer Count"
+        elif isinstance(cols, tuple) or isinstance(cols, list):
+            if not self.col_name_check(*cols) : return
+            cnt_col = self.ma_return(cols)
+            if len(cnt_col) == 1 :
+                alt = f"{cols[0]} Answer Count"
+            else :
+                alt = f"{cnt_col[0]}-{cnt_col[-1]} Answer Count"
         
         if value is None:
             new_col = self[cnt_col].apply(self._count_fnc, axis=1).rename(cnt_col_name)
@@ -495,7 +498,10 @@ class DataCheck(pd.DataFrame):
             new_col = self[cnt_col].apply(lambda row: row.isin([value]).sum(), axis=1).rename(cnt_col_name)
         elif isinstance(value, list):
             new_col = self[cnt_col].apply(lambda row: row.isin(value).sum(), axis=1).rename(cnt_col_name)
-        
+        if isinstance(value, range):
+            value = list(value) + [value[-1] + 1]
+            new_col = self[cnt_col].apply(lambda row: row.isin(value).sum(), axis=1).rename(cnt_col_name)
+
         with self.preserve_display_msg():
             result = self.assign(**{cnt_col_name: new_col})
             self.__dict__.update(result.__dict__)
