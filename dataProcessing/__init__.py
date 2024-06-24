@@ -101,16 +101,16 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
             print_str += f"""<div class="print-padding-left">🗒️ <span class="print-comment">Invalid response</span> : {list(err_answer)}</div>"""
 
     # Disable Value Check  / SA 
-    disable_err = 'DISABLED_ANS'
-    if disable_err in err_cols :
-        err_cnt = len(df[df[disable_err]==1])
-        html_title = "Answer Disable Value Check"
+    isnot_err = 'ISNOT_ANS'
+    if isnot_err in err_cols :
+        err_cnt = len(df[df[isnot_err]==1])
+        html_title = "Answer Is Not Value Check"
         if err_cnt == 0 :
             print_str += correct.format(html_title=html_title)
         else :
             print_str += fail.format(html_title=html_title, err_cnt=err_cnt)
         
-        err_answer = list(set(list(df[df[disable_err]==1][variables].values)))
+        err_answer = list(set(list(df[df[isnot_err]==1][variables].values)))
         if err_answer :
             print_str += f"""<div class="print-padding-left">🗒️ <span class="print-comment">Invalid response</span> : {list(err_answer)}</div>"""
 
@@ -126,7 +126,7 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
             else :
                 print_str += fail.format(html_title=html_title, err_cnt=err_cnt)
         
-        for isx in ['MA_ISIN', 'MA_ISALL'] :
+        for isx in ['MA_ISIN', 'MA_ISALL', 'MA_ISNOT'] :
             if isx in list(df.columns) :
                 err_cnt = len(df[df[isx]==1])
                 ma, istype = isx.split('_')
@@ -641,7 +641,7 @@ class DataCheck(pd.DataFrame):
            qid: Optional[str] = None, 
            cond: Optional[pd.Series] = None, 
            only: Optional[Union[range, List[Union[int, float, str]], int, float, str]] = None,
-           disabled: Optional[Union[range, List[Union[int, float, str]], int, float, str]] = None,
+           isnot: Optional[Union[range, List[Union[int, float, str]], int, float, str]] = None,
            alt: Optional[str]=None) -> 'ErrorDataFrame':
         """
         단수 응답(단일 변수) 데이터 체크 메서드
@@ -691,20 +691,20 @@ class DataCheck(pd.DataFrame):
             err_list.append(only_err)
         
         # DONT ANSWER CHECK
-        if disabled is not None:
-            warnings.append(f"Disable value : {disabled}")
-            if isinstance(disabled, range):
-                disabled = list(disabled) + [disabled[-1] + 1]
-            elif isinstance(disabled, (int, float, str)):
-                disabled = [disabled]
+        if isnot is not None:
+            warnings.append(f"Disable value : {isnot}")
+            if isinstance(isnot, range):
+                isnot = list(isnot) + [isnot[-1] + 1]
+            elif isinstance(isnot, (int, float, str)):
+                isnot = [isnot]
             
-            disabled_cond = (chk_df[qid].isin(disabled))
+            isnot_cond = (chk_df[qid].isin(isnot))
             if cond is not None:
-                disabled_cond = (disabled_cond) & (cond)
+                isnot_cond = (isnot_cond) & (cond)
             
-            disable_err = 'DISABLED_ANS'
-            chk_df.loc[disabled_cond, disable_err] = 1
-            err_list.append(disable_err)
+            isnot_err = 'ISNOT_ANS'
+            chk_df.loc[isnot_cond, isnot_err] = 1
+            err_list.append(isnot_err)
         
         edf = ErrorDataFrame(qid, 'SA', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
@@ -719,6 +719,7 @@ class DataCheck(pd.DataFrame):
             exactly: Optional[int] = None,
             isin: Optional[Union[range, List[Union[int, str]], int, str]] = None,
             isall: Optional[Union[range, List[Union[int, str]], int, str]] = None,
+            isnot: Optional[Union[range, List[Union[int, str]], int, str]] = None,
             alt: Optional[str]=None) -> 'ErrorDataFrame':
         """
         복수 응답(다중 변수) 데이터 체크 메서드
@@ -807,6 +808,9 @@ class DataCheck(pd.DataFrame):
         def ma_isall_check(row, cols):
             return any(pd.isna(row[c]) or row[c] == 0 for c in cols)
 
+        def ma_isnot_check(row, cols) :
+            return any(not (pd.isna(row[c]) or row[c] == 0) for c in cols)
+
         # Is In Check        
         if isin is not None:
             process_check('isin', isin, ma_isin_check, 'MA_ISIN')
@@ -814,6 +818,11 @@ class DataCheck(pd.DataFrame):
         # Is All Check
         if isall is not None:
             process_check('isall', isall, ma_isall_check, 'MA_ISALL')
+
+        # Is Not Check
+        if isnot is not None:
+            process_check('isnot', isnot, ma_isnot_check, 'MA_ISNOT')
+
 
         show_cols = [cnt] + show_cols
         
