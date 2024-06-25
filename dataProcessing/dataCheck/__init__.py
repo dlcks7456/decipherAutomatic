@@ -666,19 +666,14 @@ class DataCheck(pd.DataFrame):
 
         # Answer Base Check
         warnings = []
-
-        chk_df = self[self.attrs['default_filter']].copy()
+        cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
+        chk_df = self[cond].copy()
 
         if len(chk_df) == 0 :
             warnings.append("No response to this condition")
         else :
             ms_err = 'DC_BASE'
             filt = (chk_df[qid].isna())  # Default
-            if cond is not None:
-                filt = (filt) & (cond)
-                if len(chk_df[cond.reindex(chk_df.index, fill_value=False)]) == 0:
-                    warnings.append("No response to this condition")
-
             chk_df.loc[filt, ms_err] = 1
 
             err_list.append(ms_err)
@@ -751,7 +746,8 @@ class DataCheck(pd.DataFrame):
         if qid_key is None: return
         if not self.col_name_check(*show_cols) : return
 
-        chk_df = self[self.attrs['default_filter']].copy()
+        cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
+        chk_df = self[cond].copy()
 
         if len(chk_df) == 0 :
             warnings.append("No response to this condition")
@@ -761,11 +757,6 @@ class DataCheck(pd.DataFrame):
 
             ms_err = 'DC_BASE'
             filt = (chk_df[cnt]==0)  # Default
-            if cond is not None:
-                filt = (filt) & (cond)
-                if len(chk_df[cond.reindex(chk_df.index, fill_value=False)]) == 0:
-                    warnings.append("No response to this condition")
-
             chk_df.loc[filt, ms_err] = 1
 
             err_list.append(ms_err)
@@ -973,7 +964,8 @@ class DataCheck(pd.DataFrame):
         qid_key = get_key_id(base_qid)
         if qid_key is None: return
 
-        chk_df = self[self.attrs['default_filter']].copy()
+        cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
+        chk_df = self[cond].copy()
 
         ma = base_qid
         sa = sa_qid
@@ -984,12 +976,6 @@ class DataCheck(pd.DataFrame):
             warnings.append("No response to this condition")
         else :
             filt = ~chk_df[sa].isna()
-
-            base_col = 'BASE_COND'
-            if cond is not None :
-                chk_df.loc[cond, base_col] = 1
-                err_list.append(base_col)
-                filt = (filt) & (cond)
 
             err_col = 'DC_LOGIC'
             # MA Base SA
@@ -1065,7 +1051,8 @@ class DataCheck(pd.DataFrame):
         zip_cols = [list(x) for x in zip(base, chkm)]
         show_cols = sum(zip_cols, [])
 
-        chk_df = self[self.attrs['default_filter']].copy()
+        cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
+        chk_df = self[cond].copy()
 
         if len(chk_df) == 0 :
             warnings.append("No response to this condition")
@@ -1073,12 +1060,6 @@ class DataCheck(pd.DataFrame):
             chk_cnt = 'CHK_CNT'
             chk_df[chk_cnt] = chk_df[chkm].apply(lambda x: x.count() - (x==0).sum(), axis=1)
             filt = chk_df[chk_cnt]>=1
-
-            base_col = 'BASE_COND'
-            if cond is not None :
-                chk_df.loc[cond, base_col] = 1
-                err_list.append(base_col)
-                filt = (filt) & (cond)
             
             err_col = 'DC_LOGIC'
             # MA Base MA
@@ -1167,7 +1148,8 @@ class DataCheck(pd.DataFrame):
 
         show_cols = rank
 
-        chk_df = self[self.attrs['default_filter']].copy()
+        cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
+        chk_df = self[cond].copy()
 
         if len(chk_df) == 0 :
             warnings.append("No response to this condition")
@@ -1192,12 +1174,6 @@ class DataCheck(pd.DataFrame):
             chk_df[base_cnt] = chk_df[base].apply(lambda x: x.count() - (x==0).sum(), axis=1)
 
             filt = chk_df[base_cnt]>=1
-
-            base_col = 'BASE_COND'
-            if cond is not None :
-                chk_df.loc[cond, base_col] = 1
-                err_list.append(base_col)
-                filt = (filt) & (cond)
 
             err_col = 'DC_LOGIC'
             # MA Base MA
@@ -1287,21 +1263,13 @@ class DataCheck(pd.DataFrame):
         if not self.col_name_check(*rank): return
 
         qid_key = get_key_id(rate_qid)
-
-        chk_df = self[self.attrs['default_filter']].copy()
+        cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
+        chk_df = self[cond].copy()
 
         if len(chk_df) == 0 :
             warnings.append("No response to this condition")
         else :
-            base_col = 'BASE_COND'
             filt = (~chk_df[rank].isna()).any(axis=1)
-            if cond is not None :
-                chk_df.loc[cond, base_col] = 1
-                err_list.append(base_col)
-                filt = (filt) & (cond)
-
-            if len(chk_df[filt]) == 0 :
-                warnings.append("No response to this condition")
 
             err_col = 'DC_LOGIC'
             def rate_rank_validate(row, rate_base, rank_base):
