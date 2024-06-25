@@ -151,14 +151,15 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
     </table>""".format(qid=qid, cnt=desc.loc['count'], mean=desc.loc['mean'], minv=desc.loc['min'], maxv=desc.loc['max'])
 
     if (error_type in ['MA']) :
-        desc = df['ANSWER_CNT'].describe().round(1)
-        desc_table = """
-    <div class="datacheck-desc">📋 {qid} Answer Count Describe</div>
-    <table class="print-padding-left">
-        <tr><td><b>Mean</b></td><td>{mean}</td></tr>
-        <tr><td><b>Min</b></td><td>{minv}</td></tr>
-        <tr><td><b>Max</b></td><td>{maxv}</td></tr>
-    </table>""".format(qid=qid, mean=desc.loc['mean'], minv=desc.loc['min'], maxv=desc.loc['max'])
+        if 'ANSWER_CNT' in df.columns :
+            desc = df['ANSWER_CNT'].describe().round(1)
+            desc_table = """
+        <div class="datacheck-desc">📋 {qid} Answer Count Describe</div>
+        <table class="print-padding-left">
+            <tr><td><b>Mean</b></td><td>{mean}</td></tr>
+            <tr><td><b>Min</b></td><td>{minv}</td></tr>
+            <tr><td><b>Max</b></td><td>{maxv}</td></tr>
+        </table>""".format(qid=qid, mean=desc.loc['mean'], minv=desc.loc['min'], maxv=desc.loc['max'])
 
     if desc_table is not None :
         print_str += desc_table
@@ -166,33 +167,35 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
 
     # Logic Check
     if (error_type in ['LOGIC', 'MASA', 'MAMA', 'MARK', 'RATERANK']) :
-        err_cnt = len(df[df['DC_LOGIC']==1])
-        base_cond = 'BASE_COND'
-        if base_cond in list(df.columns) :
-            base_cnt = len(df[df[base_cond]==1])
-            print_str += check.format(check_title=f"Base Cond Answer Count : <b>{base_cnt}'s</b>")
-        if err_cnt == 0 :
-            print_str += correct.format(html_title=f"Logic Correct")
-        else :
-            print_str += fail.format(html_title="Logic has Error", err_cnt=err_cnt)
+        if 'DC_LOGIC' in df.columns :
+            err_cnt = len(df[df['DC_LOGIC']==1])
+            base_cond = 'BASE_COND'
+            if base_cond in list(df.columns) :
+                base_cnt = len(df[df[base_cond]==1])
+                print_str += check.format(check_title=f"Base Cond Answer Count : <b>{base_cnt}'s</b>")
+            if err_cnt == 0 :
+                print_str += correct.format(html_title=f"Logic Correct")
+            else :
+                print_str += fail.format(html_title="Logic has Error", err_cnt=err_cnt)
 
     # Duplicate Check
     if (error_type in ['DUP']) :
-        err_cnt = len(df[df['DC_DUP']==1])
-        if err_cnt == 0 :
-            print_str += correct.format(html_title="No Duplicate")
-        else :
-            dup_rows = df[df['DC_DUP'] == 1]
-            summary = []
-            
-            for index, row in dup_rows.iterrows():
-                row_values = row[variables]
-                duplicates = row_values[row_values.duplicated(keep=False)]
-                summary.extend(duplicates.unique().tolist())
-            
-            summary = list(set(summary))
-            print_str += fail.format(html_title=f"Duplicate Answer", err_cnt=err_cnt)
-            print_str += f"""<div class="print-padding-left">🗒️ <span class="print-comment">Invalid response</span> : {summary}</div>"""
+        if 'DC_DUP' in df.columns :
+            err_cnt = len(df[df['DC_DUP']==1])
+            if err_cnt == 0 :
+                print_str += correct.format(html_title="No Duplicate")
+            else :
+                dup_rows = df[df['DC_DUP'] == 1]
+                summary = []
+                
+                for index, row in dup_rows.iterrows():
+                    row_values = row[variables]
+                    duplicates = row_values[row_values.duplicated(keep=False)]
+                    summary.extend(duplicates.unique().tolist())
+                
+                summary = list(set(summary))
+                print_str += fail.format(html_title=f"Duplicate Answer", err_cnt=err_cnt)
+                print_str += f"""<div class="print-padding-left">🗒️ <span class="print-comment">Invalid response</span> : {summary}</div>"""
 
 
     print_type = "alt-main"
@@ -654,7 +657,6 @@ class DataCheck(pd.DataFrame):
         단수 응답(단일 변수) 데이터 체크 메서드
         """
         
-        chk_df = self[self.attrs['default_filter']].copy()
         if not self.col_name_check(qid) : return
 
         show_cols = [qid]
@@ -664,55 +666,60 @@ class DataCheck(pd.DataFrame):
         # Answer Base Check
         warnings = []
 
-        ms_err = 'DC_BASE'
-        filt = (chk_df[qid].isna())  # Default
-        if cond is not None:
-            filt = (filt) & (cond)
-            if len(chk_df[cond.reindex(chk_df.index, fill_value=False)]) == 0:
-                warnings.append("No response to this condition")
+        chk_df = self[self.attrs['default_filter']].copy()
 
-        chk_df.loc[filt, ms_err] = 1
-
-        err_list.append(ms_err)
-
-        # Cases responded to other than base
-        if cond is not None :
-            ans_err = 'DC_NO_BASE'
-            chk_df.loc[(~chk_df[qid].isna()) & ~(cond), ans_err] = 1
-            err_list.append(ans_err)
-
-        # ONLY ANSWER CHECK
-        if only is not None:
-            warnings.append(f"Only value : {only}")
-            if isinstance(only, range):
-                only = list(only) + [only[-1] + 1]
-            elif isinstance(only, (int, float, str)):
-                only = [only]
-
-            only_cond = (~chk_df[qid].isin(only))
+        if len(chk_df) == 0 :
+            warnings.append("No response to this condition")
+        else :
+            ms_err = 'DC_BASE'
+            filt = (chk_df[qid].isna())  # Default
             if cond is not None:
-                only_cond = (only_cond) & (cond)
+                filt = (filt) & (cond)
+                if len(chk_df[cond.reindex(chk_df.index, fill_value=False)]) == 0:
+                    warnings.append("No response to this condition")
+
+            chk_df.loc[filt, ms_err] = 1
+
+            err_list.append(ms_err)
+
+            # Cases responded to other than base
+            if cond is not None :
+                ans_err = 'DC_NO_BASE'
+                chk_df.loc[(~chk_df[qid].isna()) & ~(cond), ans_err] = 1
+                err_list.append(ans_err)
+
+            # ONLY ANSWER CHECK
+            if only is not None:
+                warnings.append(f"Only value : {only}")
+                if isinstance(only, range):
+                    only = list(only) + [only[-1] + 1]
+                elif isinstance(only, (int, float, str)):
+                    only = [only]
+
+                only_cond = (~chk_df[qid].isin(only))
+                if cond is not None:
+                    only_cond = (only_cond) & (cond)
+                
+                only_err = 'ONLY_ANS'
+                chk_df.loc[only_cond, only_err] = 1
+                err_list.append(only_err)
             
-            only_err = 'ONLY_ANS'
-            chk_df.loc[only_cond, only_err] = 1
-            err_list.append(only_err)
-        
-        # DONT ANSWER CHECK
-        if isnot is not None:
-            warnings.append(f"Disable value : {isnot}")
-            if isinstance(isnot, range):
-                isnot = list(isnot) + [isnot[-1] + 1]
-            elif isinstance(isnot, (int, float, str)):
-                isnot = [isnot]
-            
-            isnot_cond = (chk_df[qid].isin(isnot))
-            if cond is not None:
-                isnot_cond = (isnot_cond) & (cond)
-            
-            isnot_err = 'ISNOT_ANS'
-            chk_df.loc[isnot_cond, isnot_err] = 1
-            err_list.append(isnot_err)
-        
+            # DONT ANSWER CHECK
+            if isnot is not None:
+                warnings.append(f"Disable value : {isnot}")
+                if isinstance(isnot, range):
+                    isnot = list(isnot) + [isnot[-1] + 1]
+                elif isinstance(isnot, (int, float, str)):
+                    isnot = [isnot]
+                
+                isnot_cond = (chk_df[qid].isin(isnot))
+                if cond is not None:
+                    isnot_cond = (isnot_cond) & (cond)
+                
+                isnot_err = 'ISNOT_ANS'
+                chk_df.loc[isnot_cond, isnot_err] = 1
+                err_list.append(isnot_err)
+
         edf = ErrorDataFrame(qid, 'SA', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
         self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
@@ -734,104 +741,107 @@ class DataCheck(pd.DataFrame):
         if (self.ma_check(qid)) :
             return
         
-        chk_df = self[self.attrs['default_filter']].copy()
-        show_cols = self.ma_return(qid)
-        qid_key = get_key_id(show_cols)
-        if qid_key is None: return
-        if not self.col_name_check(*show_cols) : return
-        
-        cnt = 'ANSWER_CNT'
-        chk_df[cnt] = chk_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
-
         err_list = []
 
         # Answer Base Check
         warnings = []
+        show_cols = self.ma_return(qid)
+        qid_key = get_key_id(show_cols)
+        if qid_key is None: return
+        if not self.col_name_check(*show_cols) : return
 
-        ms_err = 'DC_BASE'
-        filt = (chk_df[cnt]==0)  # Default
-        if cond is not None:
-            filt = (filt) & (cond)
-            if len(chk_df[cond.reindex(chk_df.index, fill_value=False)]) == 0:
-                warnings.append("No response to this condition")
+        chk_df = self[self.attrs['default_filter']].copy()
 
-        chk_df.loc[filt, ms_err] = 1
+        if len(chk_df) == 0 :
+            warnings.append("No response to this condition")
+        else :            
+            cnt = 'ANSWER_CNT'
+            chk_df[cnt] = chk_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
 
-        err_list.append(ms_err)
+            ms_err = 'DC_BASE'
+            filt = (chk_df[cnt]==0)  # Default
+            if cond is not None:
+                filt = (filt) & (cond)
+                if len(chk_df[cond.reindex(chk_df.index, fill_value=False)]) == 0:
+                    warnings.append("No response to this condition")
 
-        # Cases responded to other than base
-        if cond is not None :
-            ans_err = 'DC_NO_BASE'
-            chk_df.loc[(chk_df[cnt]>=1) & ~(cond), ans_err] = 1
-            err_list.append(ans_err)
+            chk_df.loc[filt, ms_err] = 1
 
-        # Generalized Answer Check Function
-        def check_answer(condition, operator, err_label):
-            if condition is not None:
-                if operator == '==':
-                    cond_err = (chk_df[cnt] != condition)
-                    warnings.append(f"Exactly : {condition}")
-                elif operator == '<':
-                    cond_err = (chk_df[cnt] < condition)
-                    warnings.append(f"Atleast : {condition}")
-                elif operator == '>':
-                    cond_err = (chk_df[cnt] > condition)
-                    warnings.append(f"Atmost : {condition}")
-                if cond is not None:
-                    cond_err = (cond_err) & (cond)
-                chk_df.loc[cond_err, err_label] = 1
+            err_list.append(ms_err)
+
+            # Cases responded to other than base
+            if cond is not None :
+                ans_err = 'DC_NO_BASE'
+                chk_df.loc[(chk_df[cnt]>=1) & ~(cond), ans_err] = 1
+                err_list.append(ans_err)
+
+            # Generalized Answer Check Function
+            def check_answer(condition, operator, err_label):
+                if condition is not None:
+                    if operator == '==':
+                        cond_err = (chk_df[cnt] != condition)
+                        warnings.append(f"Exactly : {condition}")
+                    elif operator == '<':
+                        cond_err = (chk_df[cnt] < condition)
+                        warnings.append(f"Atleast : {condition}")
+                    elif operator == '>':
+                        cond_err = (chk_df[cnt] > condition)
+                        warnings.append(f"Atmost : {condition}")
+                    if cond is not None:
+                        cond_err = (cond_err) & (cond)
+                    chk_df.loc[cond_err, err_label] = 1
+                    err_list.append(err_label)
+
+            # AT LEAST, AT MOST, EXACTLY Answer Checks
+            check_answer(atleast, '<', 'DC_ATLEAST')
+            check_answer(atmost, '>', 'DC_ATMOST')
+            check_answer(exactly, '==', 'DC_EXACTLY')
+
+            def process_check(check_type, check_value, check_func, err_label):
+                warnings.append(f"{check_type.capitalize()} value : {check_value}")
+                if isinstance(check_value, range):
+                    check_list = list(check_value) + [check_value[-1] + 1]
+                elif isinstance(check_value, (int, str)):
+                    check_list = [check_value]
+                elif isinstance(check_value, list):
+                    check_list = check_value
+
+                chk_cols = [f'{qid_key}{m}' for m in check_list]
+
+                def apply_func(row):
+                    return 1 if check_func(row, chk_cols) else np.nan
+
+                if cond is None:
+                    chk_df[err_label] = chk_df.apply(apply_func, axis=1)
+                else:
+                    chk_df[err_label] = chk_df[cond].apply(apply_func, axis=1)
+
                 err_list.append(err_label)
 
-        # AT LEAST, AT MOST, EXACTLY Answer Checks
-        check_answer(atleast, '<', 'DC_ATLEAST')
-        check_answer(atmost, '>', 'DC_ATMOST')
-        check_answer(exactly, '==', 'DC_EXACTLY')
+            # Check Functions
+            def ma_isin_check(row, cols):
+                return not any(not (pd.isna(row[c]) or row[c] == 0) for c in cols)
 
-        def process_check(check_type, check_value, check_func, err_label):
-            warnings.append(f"{check_type.capitalize()} value : {check_value}")
-            if isinstance(check_value, range):
-                check_list = list(check_value) + [check_value[-1] + 1]
-            elif isinstance(check_value, (int, str)):
-                check_list = [check_value]
-            elif isinstance(check_value, list):
-                check_list = check_value
+            def ma_isall_check(row, cols):
+                return any(pd.isna(row[c]) or row[c] == 0 for c in cols)
 
-            chk_cols = [f'{qid_key}{m}' for m in check_list]
+            def ma_isnot_check(row, cols) :
+                return any(not (pd.isna(row[c]) or row[c] == 0) for c in cols)
 
-            def apply_func(row):
-                return 1 if check_func(row, chk_cols) else np.nan
+            # Is In Check        
+            if isin is not None:
+                process_check('isin', isin, ma_isin_check, 'MA_ISIN')
 
-            if cond is None:
-                chk_df[err_label] = chk_df.apply(apply_func, axis=1)
-            else:
-                chk_df[err_label] = chk_df[cond].apply(apply_func, axis=1)
+            # Is All Check
+            if isall is not None:
+                process_check('isall', isall, ma_isall_check, 'MA_ISALL')
 
-            err_list.append(err_label)
-
-        # Check Functions
-        def ma_isin_check(row, cols):
-            return not any(not (pd.isna(row[c]) or row[c] == 0) for c in cols)
-
-        def ma_isall_check(row, cols):
-            return any(pd.isna(row[c]) or row[c] == 0 for c in cols)
-
-        def ma_isnot_check(row, cols) :
-            return any(not (pd.isna(row[c]) or row[c] == 0) for c in cols)
-
-        # Is In Check        
-        if isin is not None:
-            process_check('isin', isin, ma_isin_check, 'MA_ISIN')
-
-        # Is All Check
-        if isall is not None:
-            process_check('isall', isall, ma_isall_check, 'MA_ISALL')
-
-        # Is Not Check
-        if isnot is not None:
-            process_check('isnot', isnot, ma_isnot_check, 'MA_ISNOT')
+            # Is Not Check
+            if isnot is not None:
+                process_check('isnot', isnot, ma_isnot_check, 'MA_ISNOT')
 
 
-        show_cols = [cnt] + show_cols
+            show_cols = [cnt] + show_cols
         
         edf = ErrorDataFrame(qid, 'MA', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
@@ -865,21 +875,21 @@ class DataCheck(pd.DataFrame):
 
         if len(chk_df) == 0:
             warnings.append("No response to this condition")
-        
-        # Base Filter
-        base_col = 'BASE_COND'
-        answer_col = 'ANSWER_COND'
-        err_list += [base_col, answer_col]
-        chk_df.loc[base_cond, base_col] = 1
-        chk_df.loc[ans_cond, answer_col] = 1
+        else :
+            # Base Filter
+            base_col = 'BASE_COND'
+            answer_col = 'ANSWER_COND'
+            err_list += [base_col, answer_col]
+            chk_df.loc[base_cond, base_col] = 1
+            chk_df.loc[ans_cond, answer_col] = 1
 
-        # Logic Check
-        lg_err = 'DC_LOGIC'
-        chk_df.loc[(base_cond) & (~ans_cond), lg_err] = 1
-        err_list.append(lg_err)
+            # Logic Check
+            lg_err = 'DC_LOGIC'
+            chk_df.loc[(base_cond) & (~ans_cond), lg_err] = 1
+            err_list.append(lg_err)
 
-        chk_df = chk_df[base_cond.reindex(chk_df.index, fill_value=False)]
-        
+            chk_df = chk_df[base_cond.reindex(chk_df.index, fill_value=False)]
+            
         edf = ErrorDataFrame('LOGIC CHECK', 'LOGIC', [], chk_df, err_list, warnings, alt)
         self.show_message(edf)
         
@@ -899,36 +909,38 @@ class DataCheck(pd.DataFrame):
         if (self.ma_check(qid)) :
             return
         
-        chk_df = self[self.attrs['default_filter']].copy()
         show_cols = self.ma_return(qid)
         if not self.col_name_check(*show_cols): return
 
         warnings = []
         err_list = []
 
-        if okUnique is not None:
-            if not isinstance(okUnique, (list, range, int, str)):
-                display(HTML("""<div class="check-bold check-fail">❌ [ERROR] Type of okUnique must be list, range, int, or str</div>"""))
-                return
-            if isinstance(okUnique, range):
-                okUnique = list(okUnique)
-                okUnique.append(okUnique[-1] + 1)
-            elif isinstance(okUnique, (int, str)):
-                okUnique = [okUnique]
+        chk_df = self[self.attrs['default_filter']].copy()
+        if len(chk_df) == 0 :
+            warnings.append("No response to this condition")
+        else :
+            if okUnique is not None:
+                if not isinstance(okUnique, (list, range, int, str)):
+                    display(HTML("""<div class="check-bold check-fail">❌ [ERROR] Type of okUnique must be list, range, int, or str</div>"""))
+                    return
+                if isinstance(okUnique, range):
+                    okUnique = list(okUnique)
+                    okUnique.append(okUnique[-1] + 1)
+                elif isinstance(okUnique, (int, str)):
+                    okUnique = [okUnique]
+                
+                warnings.append(f"""Allow Duplicates : {okUnique}""")
+            else:
+                okUnique = []
+
+            dup_err = 'DC_DUP'
+            def check_duplicates(row):
+                row_values = row.tolist()
+                filtered_values = [value for value in row_values if value not in okUnique]
+                return 1 if len(filtered_values) != len(set(filtered_values)) else None
             
-            warnings.append(f"""Allow Duplicates : {okUnique}""")
-        else:
-            okUnique = []
-
-        dup_err = 'DC_DUP'
-        def check_duplicates(row):
-            row_values = row.tolist()
-            filtered_values = [value for value in row_values if value not in okUnique]
-            return 1 if len(filtered_values) != len(set(filtered_values)) else None
-        
-        chk_df[dup_err] = chk_df[show_cols].apply(check_duplicates, axis=1)
-        err_list.append(dup_err)
-
+            chk_df[dup_err] = chk_df[show_cols].apply(check_duplicates, axis=1)
+            err_list.append(dup_err)
 
         edf = ErrorDataFrame(show_cols, 'DUP', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
@@ -953,7 +965,6 @@ class DataCheck(pd.DataFrame):
         warnings = []
         err_list = []
          
-        chk_df = self[self.attrs['default_filter']].copy()
         base_qid = self.ma_return(ma_qid)
         if not self.col_name_check(*base_qid): return
         if not self.col_name_check(sa_qid): return
@@ -961,56 +972,61 @@ class DataCheck(pd.DataFrame):
         qid_key = get_key_id(base_qid)
         if qid_key is None: return
 
+        chk_df = self[self.attrs['default_filter']].copy()
+
         ma = base_qid
         sa = sa_qid
 
         show_cols = [sa] + ma
 
-        filt = ~chk_df[sa].isna()
-
-        base_col = 'BASE_COND'
-        if cond is not None :
-            chk_df.loc[cond, base_col] = 1
-            err_list.append(base_col)
-            filt = (filt) & (cond)
-
-        err_col = 'DC_LOGIC'
-        # MA Base SA
-        if len(chk_df[filt]) == 0 :
+        if len(chk_df) == 0 :
             warnings.append("No response to this condition")
+        else :
+            filt = ~chk_df[sa].isna()
 
-        dv = []
-        if diff_value is not None:
-            if not isinstance(diff_value, (list, range, int, str)):
-                display(HTML("""<div class="check-bold check-fail">❌ [ERROR] Type of diff_value must be list, range, int, or str</div>"""))
-                return
-            if isinstance(diff_value, (int, str)) :
-                dv = [diff_value]
-            if isinstance(diff_value, list) :
-                dv = diff_value
-            if isinstance(diff_value, range):
-                dv = list(diff_value)
-                dv.append(dv[-1] + 1)
-            warnings.append(f"""Do not check the code : {dv}""")
-        
-        def ma_base_check(x) :
-            sa_ans = int(x[sa])
-            ma_var = f'{qid_key}{sa_ans}'
-            ma_ans = x[ma_var]
-            if sa_ans in dv :
-                return np.nan
+            base_col = 'BASE_COND'
+            if cond is not None :
+                chk_df.loc[cond, base_col] = 1
+                err_list.append(base_col)
+                filt = (filt) & (cond)
 
-            return 1 if pd.isna(ma_ans) or ma_ans == 0 else np.nan
+            err_col = 'DC_LOGIC'
+            # MA Base SA
+            if len(chk_df[filt]) == 0 :
+                warnings.append("No response to this condition")
 
-        chk_df[err_col] = chk_df[filt].apply(ma_base_check, axis=1)
-        err_list.append(err_col)
+            dv = []
+            if diff_value is not None:
+                if not isinstance(diff_value, (list, range, int, str)):
+                    display(HTML("""<div class="check-bold check-fail">❌ [ERROR] Type of diff_value must be list, range, int, or str</div>"""))
+                    return
+                if isinstance(diff_value, (int, str)) :
+                    dv = [diff_value]
+                if isinstance(diff_value, list) :
+                    dv = diff_value
+                if isinstance(diff_value, range):
+                    dv = list(diff_value)
+                    dv.append(dv[-1] + 1)
+                warnings.append(f"""Do not check the code : {dv}""")
+            
+            def ma_base_check(x) :
+                sa_ans = int(x[sa])
+                ma_var = f'{qid_key}{sa_ans}'
+                ma_ans = x[ma_var]
+                if sa_ans in dv :
+                    return np.nan
 
-        ma_ans = 'BASE_MA'
-        chk_df[ma_ans] = chk_df[filt].apply(lambda_ma_to_list, axis=1, qids=ma)
+                return 1 if pd.isna(ma_ans) or ma_ans == 0 else np.nan
 
-        show_cols = [ma_ans] + show_cols
+            chk_df[err_col] = chk_df[filt].apply(ma_base_check, axis=1)
+            err_list.append(err_col)
 
-        chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
+            ma_ans = 'BASE_MA'
+            chk_df[ma_ans] = chk_df[filt].apply(lambda_ma_to_list, axis=1, qids=ma)
+
+            show_cols = [ma_ans] + show_cols
+
+            chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
         
         qid = f"""{sa}(SA) in {ma[0]}-{ma[-1]}(MA)"""
         edf = ErrorDataFrame(qid, 'MASA', show_cols, chk_df, err_list, warnings, alt)
@@ -1036,7 +1052,6 @@ class DataCheck(pd.DataFrame):
         warnings = []
         err_list = []
          
-        chk_df = self[self.attrs['default_filter']].copy()
         base = self.ma_return(base_ma)
         chkm = self.ma_return(chk_ma)
         if not self.col_name_check(*base): return
@@ -1049,69 +1064,74 @@ class DataCheck(pd.DataFrame):
         zip_cols = [list(x) for x in zip(base, chkm)]
         show_cols = sum(zip_cols, [])
 
-        chk_cnt = 'CHK_CNT'
-        chk_df[chk_cnt] = chk_df[chkm].apply(lambda x: x.count() - (x==0).sum(), axis=1)
-        filt = chk_df[chk_cnt]>=1
+        chk_df = self[self.attrs['default_filter']].copy()
 
-        base_col = 'BASE_COND'
-        if cond is not None :
-            chk_df.loc[cond, base_col] = 1
-            err_list.append(base_col)
-            filt = (filt) & (cond)
-        
-        err_col = 'DC_LOGIC'
-        # MA Base MA
-        if len(chk_df[filt]) == 0 :
+        if len(chk_df) == 0 :
             warnings.append("No response to this condition")
+        else :
+            chk_cnt = 'CHK_CNT'
+            chk_df[chk_cnt] = chk_df[chkm].apply(lambda x: x.count() - (x==0).sum(), axis=1)
+            filt = chk_df[chk_cnt]>=1
 
-        dv = []
-        diff_qids = []
-        if diff_value is not None:
-            if not isinstance(diff_value, (list, range, int, str)):
-                display(HTML("""<div class="check-bold check-fail">❌ [ERROR] Type of diff_value must be list, range, int, or str</div>"""))
-                return
-            if isinstance(diff_value, (int, str)) :
-                dv = [diff_value]
-            if isinstance(diff_value, list) :
-                dv = diff_value
-            if isinstance(diff_value, range):
-                dv = list(diff_value)
-                dv.append(dv[-1] + 1)
+            base_col = 'BASE_COND'
+            if cond is not None :
+                chk_df.loc[cond, base_col] = 1
+                err_list.append(base_col)
+                filt = (filt) & (cond)
             
-            warnings.append(f"""Do not check the code : {dv}""")
-            diff_qids = [f'{qid_key}{x}' for x in dv]
+            err_col = 'DC_LOGIC'
+            # MA Base MA
+            if len(chk_df[filt]) == 0 :
+                warnings.append("No response to this condition")
 
-        def ma_base_check(x) :
-            def flag(b, a) :
-                if pd.isna(b) or b == 0 :
-                    if not (pd.isna(a) or a == 0) :
-                        return True
+            dv = []
+            diff_qids = []
+            if diff_value is not None:
+                if not isinstance(diff_value, (list, range, int, str)):
+                    display(HTML("""<div class="check-bold check-fail">❌ [ERROR] Type of diff_value must be list, range, int, or str</div>"""))
+                    return
+                if isinstance(diff_value, (int, str)) :
+                    dv = [diff_value]
+                if isinstance(diff_value, list) :
+                    dv = diff_value
+                if isinstance(diff_value, range):
+                    dv = list(diff_value)
+                    dv.append(dv[-1] + 1)
                 
-                return False
-            return 1 if any(flag(x[base], x[ans]) for base, ans in zip_cols if not base in diff_qids) else np.nan
+                warnings.append(f"""Do not check the code : {dv}""")
+                diff_qids = [f'{qid_key}{x}' for x in dv]
+
+            def ma_base_check(x) :
+                def flag(b, a) :
+                    if pd.isna(b) or b == 0 :
+                        if not (pd.isna(a) or a == 0) :
+                            return True
+                    
+                    return False
+                return 1 if any(flag(x[base], x[ans]) for base, ans in zip_cols if not base in diff_qids) else np.nan
+                
+            chk_df[err_col] = chk_df[filt].apply(ma_base_check, axis=1)
+
+
+            def diff_ans_update(row, cols) :
+                def return_int_or_str(txt: str) :
+                        rp = txt.replace(qid_key, '')
+                        if rp.isdigit() :
+                            return int(rp)
+                        else :
+                            return rp
+                return [return_int_or_str(base) for base, ans in cols if (pd.isna(row[base]) or row[base] == 0) and not (pd.isna(row[ans]) or row[ans] == 0)]
+
+            base_ans = 'BASE_MA'
+            chk_ans = 'CHECK_MA'
+            diff_ans = 'DIFF_ANS'
+            chk_df[base_ans] = chk_df[filt].apply(lambda_ma_to_list, axis=1, qids=base)
+            chk_df[chk_ans] = chk_df[filt].apply(lambda_ma_to_list, axis=1, qids=chkm)
+            chk_df[diff_ans] = chk_df[filt].apply(diff_ans_update, axis=1, cols=zip_cols)
             
-        chk_df[err_col] = chk_df[filt].apply(ma_base_check, axis=1)
-
-
-        def diff_ans_update(row, cols) :
-            def return_int_or_str(txt: str) :
-                    rp = txt.replace(qid_key, '')
-                    if rp.isdigit() :
-                        return int(rp)
-                    else :
-                        return rp
-            return [return_int_or_str(base) for base, ans in cols if (pd.isna(row[base]) or row[base] == 0) and not (pd.isna(row[ans]) or row[ans] == 0)]
-
-        base_ans = 'BASE_MA'
-        chk_ans = 'CHECK_MA'
-        diff_ans = 'DIFF_ANS'
-        chk_df[base_ans] = chk_df[filt].apply(lambda_ma_to_list, axis=1, qids=base)
-        chk_df[chk_ans] = chk_df[filt].apply(lambda_ma_to_list, axis=1, qids=chkm)
-        chk_df[diff_ans] = chk_df[filt].apply(diff_ans_update, axis=1, cols=zip_cols)
-        
-        err_list.append(err_col)
-        show_cols = [base_ans, chk_ans, diff_ans] + show_cols
-        chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
+            err_list.append(err_col)
+            show_cols = [base_ans, chk_ans, diff_ans] + show_cols
+            chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
         
         qid = f"""{chkm[0]}-{chkm[-1]}(MA) in {base[0]}-{base[-1]}(MA)"""
         edf = ErrorDataFrame(qid, 'MAMA', show_cols, chk_df, err_list, warnings, alt)
@@ -1136,7 +1156,6 @@ class DataCheck(pd.DataFrame):
         warnings = []
         err_list = []
          
-        chk_df = self[self.attrs['default_filter']].copy()
         base = self.ma_return(base_qid)
         rank = self.ma_return(rank_qid)
         max_rank = len(rank)
@@ -1147,90 +1166,95 @@ class DataCheck(pd.DataFrame):
 
         show_cols = rank
 
-        dv = []
-        if diff_value is not None:
-            if not isinstance(diff_value, (list, range, int, str)):
-                display(HTML("""<div class="check-bold check-fail">❌ [ERROR] Type of diff_value must be list, range, int, or str</div>"""))
-                return
-            if isinstance(diff_value, (int, str)) :
-                dv = [diff_value]
-            if isinstance(diff_value, list) :
-                dv = diff_value
-            if isinstance(diff_value, range):
-                dv = list(diff_value)
-                dv.append(dv[-1] + 1)
-            
-            warnings.append(f"""Do not check the code : {dv}""")
-            # base = [x for x in base if not x in [f'{qid_key}{d}' for d in dv]]
+        chk_df = self[self.attrs['default_filter']].copy()
 
-        base_cnt = 'BASE_COUNT'
-        chk_df[base_cnt] = chk_df[base].apply(lambda x: x.count() - (x==0).sum(), axis=1)
-
-        filt = chk_df[base_cnt]>=1
-
-        base_col = 'BASE_COND'
-        if cond is not None :
-            chk_df.loc[cond, base_col] = 1
-            err_list.append(base_col)
-            filt = (filt) & (cond)
-
-        err_col = 'DC_LOGIC'
-        # MA Base MA
-        if len(chk_df[filt]) == 0 :
+        if len(chk_df) == 0 :
             warnings.append("No response to this condition")
-
-        def ma_base_rank_check(x) :
-            able_ans = max_rank if x[base_cnt] > max_rank else x[base_cnt]
-            chk_rank = rank[:able_ans]
-            return 1 if any(pd.isna(x[rk]) for rk in chk_rank) else np.nan
-
-
-        ma_base_cond = (~chk_df[rank].isna()).any(axis=1)
-        if cond is not None :
-            ma_base_cond = (ma_base_cond) & (cond)
-        
-        chk_df[err_col] = chk_df[ma_base_cond].apply(ma_base_rank_check, axis=1)
-
-        base_ans = 'BASE_MA'
-        if cond is not None :
-            chk_df[base_ans] = chk_df[cond][base].apply(lambda_ma_to_list, axis=1, qids=base)
         else :
-            chk_df[base_ans] = chk_df[base].apply(lambda_ma_to_list, axis=1, qids=base)
+            dv = []
+            if diff_value is not None:
+                if not isinstance(diff_value, (list, range, int, str)):
+                    display(HTML("""<div class="check-bold check-fail">❌ [ERROR] Type of diff_value must be list, range, int, or str</div>"""))
+                    return
+                if isinstance(diff_value, (int, str)) :
+                    dv = [diff_value]
+                if isinstance(diff_value, list) :
+                    dv = diff_value
+                if isinstance(diff_value, range):
+                    dv = list(diff_value)
+                    dv.append(dv[-1] + 1)
+                
+                warnings.append(f"""Do not check the code : {dv}""")
+                # base = [x for x in base if not x in [f'{qid_key}{d}' for d in dv]]
 
+            base_cnt = 'BASE_COUNT'
+            chk_df[base_cnt] = chk_df[base].apply(lambda x: x.count() - (x==0).sum(), axis=1)
 
-        def ma_base_check(x, rank_qid) :
-            sa_ans = int(x[rank_qid])
-            ma_var = f'{qid_key}{sa_ans}'
-            ma_ans = x[ma_var]
-            if sa_ans in dv :
-                return np.nan
+            filt = chk_df[base_cnt]>=1
 
-            return 1 if pd.isna(ma_ans) or ma_ans == 0 else np.nan
-        # Each Rank masa
-        rank_err_list = []
-        for rk in rank :
-            rk_err = f'{rk}_ERR'
-            sa_base_cond = ~chk_df[rk].isna()
+            base_col = 'BASE_COND'
             if cond is not None :
-                sa_base_cond = (sa_base_cond) & (cond)
-            chk_df[rk_err] = chk_df[sa_base_cond].apply(ma_base_check, axis=1, rank_qid=rk)
-            rank_err_list.append(rk_err)
+                chk_df.loc[cond, base_col] = 1
+                err_list.append(base_col)
+                filt = (filt) & (cond)
 
-        masa_err = 'ERR_RK'
-        def masa_rank_err(x) :
-            if any(x[err]==1 for err in rank_err_list) :
-                return [cnt for cnt, rank in enumerate(rank_err_list, 1) if x[rank]==1]
+            err_col = 'DC_LOGIC'
+            # MA Base MA
+            if len(chk_df[filt]) == 0 :
+                warnings.append("No response to this condition")
+
+            def ma_base_rank_check(x) :
+                able_ans = max_rank if x[base_cnt] > max_rank else x[base_cnt]
+                chk_rank = rank[:able_ans]
+                return 1 if any(pd.isna(x[rk]) for rk in chk_rank) else np.nan
+
+
+            ma_base_cond = (~chk_df[rank].isna()).any(axis=1)
+            if cond is not None :
+                ma_base_cond = (ma_base_cond) & (cond)
+            
+            chk_df[err_col] = chk_df[ma_base_cond].apply(ma_base_rank_check, axis=1)
+
+            base_ans = 'BASE_MA'
+            if cond is not None :
+                chk_df[base_ans] = chk_df[cond][base].apply(lambda_ma_to_list, axis=1, qids=base)
             else :
-                return np.nan
+                chk_df[base_ans] = chk_df[base].apply(lambda_ma_to_list, axis=1, qids=base)
 
-        chk_df[masa_err] = chk_df[(chk_df[rank_err_list]==1).any(axis=1)].apply(masa_rank_err, axis=1)
-        chk_df.loc[~chk_df[masa_err].isna(), err_col] = 1
-        
-        show_cols = [base_cnt, base_ans, masa_err] + rank + base
-        err_list += [err_col]
-        err_list += rank_err_list
 
-        chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
+            def ma_base_check(x, rank_qid) :
+                sa_ans = int(x[rank_qid])
+                ma_var = f'{qid_key}{sa_ans}'
+                ma_ans = x[ma_var]
+                if sa_ans in dv :
+                    return np.nan
+
+                return 1 if pd.isna(ma_ans) or ma_ans == 0 else np.nan
+            # Each Rank masa
+            rank_err_list = []
+            for rk in rank :
+                rk_err = f'{rk}_ERR'
+                sa_base_cond = ~chk_df[rk].isna()
+                if cond is not None :
+                    sa_base_cond = (sa_base_cond) & (cond)
+                chk_df[rk_err] = chk_df[sa_base_cond].apply(ma_base_check, axis=1, rank_qid=rk)
+                rank_err_list.append(rk_err)
+
+            masa_err = 'ERR_RK'
+            def masa_rank_err(x) :
+                if any(x[err]==1 for err in rank_err_list) :
+                    return [cnt for cnt, rank in enumerate(rank_err_list, 1) if x[rank]==1]
+                else :
+                    return np.nan
+
+            chk_df[masa_err] = chk_df[(chk_df[rank_err_list]==1).any(axis=1)].apply(masa_rank_err, axis=1)
+            chk_df.loc[~chk_df[masa_err].isna(), err_col] = 1
+            
+            show_cols = [base_cnt, base_ans, masa_err] + rank + base
+            err_list += [err_col]
+            err_list += rank_err_list
+
+            chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
         
         qid = f"""{rank[0]}-{rank[-1]}(RANK) in {base[0]}-{base[-1]}(MA)"""
         edf = ErrorDataFrame(qid, 'MARK', show_cols, chk_df, err_list, warnings, alt)
@@ -1256,7 +1280,6 @@ class DataCheck(pd.DataFrame):
         warnings = []
         err_list = []
          
-        chk_df = self[self.attrs['default_filter']].copy()
         rate = self.ma_return(rate_qid)
         rank = self.ma_return(rank_qid)
         if not self.col_name_check(*rate): return
@@ -1264,66 +1287,71 @@ class DataCheck(pd.DataFrame):
 
         qid_key = get_key_id(rate_qid)
 
-        base_col = 'BASE_COND'
-        filt = (~chk_df[rank].isna()).any(axis=1)
-        if cond is not None :
-            chk_df.loc[cond, base_col] = 1
-            err_list.append(base_col)
-            filt = (filt) & (cond)
+        chk_df = self[self.attrs['default_filter']].copy()
 
-        if len(chk_df[filt]) == 0 :
+        if len(chk_df) == 0 :
             warnings.append("No response to this condition")
+        else :
+            base_col = 'BASE_COND'
+            filt = (~chk_df[rank].isna()).any(axis=1)
+            if cond is not None :
+                chk_df.loc[cond, base_col] = 1
+                err_list.append(base_col)
+                filt = (filt) & (cond)
 
-        err_col = 'DC_LOGIC'
-        def rate_rank_validate(row, rate_base, rank_base):
-            scores = {int(x.replace(qid_key, '')): row[x] for x in rate_base}
-            result = {}
-            for key, value in scores.items():
-                if value not in result:
-                    result[value] = []
-                result[value].append(key)
-            
-            sort_score = [[key, result[key]] for key in sorted(result.keys(), reverse=True)]
-            
-            rk = rank_base.copy()
-            is_valid = False
-            for sc, able in sort_score :
-                albe_rk = rk[:len(able)]
-                if not rk :
-                    break
+            if len(chk_df[filt]) == 0 :
+                warnings.append("No response to this condition")
+
+            err_col = 'DC_LOGIC'
+            def rate_rank_validate(row, rate_base, rank_base):
+                scores = {int(x.replace(qid_key, '')): row[x] for x in rate_base}
+                result = {}
+                for key, value in scores.items():
+                    if value not in result:
+                        result[value] = []
+                    result[value].append(key)
                 
-                for ar in albe_rk :
-                    if not row[ar] in able :
-                        is_valid = True
+                sort_score = [[key, result[key]] for key in sorted(result.keys(), reverse=True)]
+                
+                rk = rank_base.copy()
+                is_valid = False
+                for sc, able in sort_score :
+                    albe_rk = rk[:len(able)]
+                    if not rk :
+                        break
                     
-                    rk.remove(ar)
+                    for ar in albe_rk :
+                        if not row[ar] in able :
+                            is_valid = True
+                        
+                        rk.remove(ar)
 
-            return 1 if is_valid else np.nan
+                return 1 if is_valid else np.nan
 
 
-        chk_df[err_col] = chk_df[filt].apply(rate_rank_validate, axis=1, rate_base=rate, rank_base=rank)
+            chk_df[err_col] = chk_df[filt].apply(rate_rank_validate, axis=1, rate_base=rate, rank_base=rank)
 
 
-        def rate_rank_able_attrs(row, rate_base):
-            scores = {int(x.replace(qid_key, '')): row[x] for x in rate_base}
-            result = {}
-            for key, value in scores.items():
-                if value not in result:
-                    result[value] = []
-                result[value].append(key)
+            def rate_rank_able_attrs(row, rate_base):
+                scores = {int(x.replace(qid_key, '')): row[x] for x in rate_base}
+                result = {}
+                for key, value in scores.items():
+                    if value not in result:
+                        result[value] = []
+                    result[value].append(key)
+                
+                sort_score = {int(key): result[key] for key in sorted(result.keys(), reverse=True)}
+                
+                return sort_score
             
-            sort_score = {int(key): result[key] for key in sorted(result.keys(), reverse=True)}
-            
-            return sort_score
-        
-        able_col = 'SCORE_ATTR'
-        chk_df[able_col] = chk_df[filt].apply(rate_rank_able_attrs, axis=1, rate_base=rate)
+            able_col = 'SCORE_ATTR'
+            chk_df[able_col] = chk_df[filt].apply(rate_rank_able_attrs, axis=1, rate_base=rate)
 
 
-        err_list.append(err_col)
-        show_cols = [able_col] + rank + rate
+            err_list.append(err_col)
+            show_cols = [able_col] + rank + rate
 
-        chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
+            chk_df = chk_df if cond is None else chk_df[cond.reindex(chk_df.index, fill_value=False)]
         
         qid = f"""{rank[0]}-{rank[-1]}(RANK) / {rate[0]}-{rate[-1]}(RATE)"""
         edf = ErrorDataFrame(qid, 'RATERANK', show_cols, chk_df, err_list, warnings, alt)
