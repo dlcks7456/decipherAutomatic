@@ -141,14 +141,15 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
     desc_table = None
     if (error_type in ['SA']) and (pd.api.types.is_numeric_dtype(df[qid])) :
         desc = df[qid].describe().round(1)
-        desc_table = """
-    <div class="datacheck-desc">📋 {qid} Describe</div>
-    <table class="print-padding-left"">
-        <tr><td><b>Count</b></td><td>{cnt}</td></tr>
-        <tr><td><b>Mean</b></td><td>{mean}</td></tr>
-        <tr><td><b>Min</b></td><td>{minv}</td></tr>
-        <tr><td><b>Max</b></td><td>{maxv}</td></tr>
-    </table>""".format(qid=qid, cnt=desc.loc['count'], mean=desc.loc['mean'], minv=desc.loc['min'], maxv=desc.loc['max'])
+        if not pd.isna(desc.loc['mean']) :
+            desc_table = """
+        <div class="datacheck-desc">📋 {qid} Describe</div>
+        <table class="print-padding-left"">
+            <tr><td><b>Count</b></td><td>{cnt}</td></tr>
+            <tr><td><b>Mean</b></td><td>{mean}</td></tr>
+            <tr><td><b>Min</b></td><td>{minv}</td></tr>
+            <tr><td><b>Max</b></td><td>{maxv}</td></tr>
+        </table>""".format(qid=qid, cnt=desc.loc['count'], mean=desc.loc['mean'], minv=desc.loc['min'], maxv=desc.loc['max'])
 
     if (error_type in ['MA']) :
         if 'ANSWER_CNT' in df.columns :
