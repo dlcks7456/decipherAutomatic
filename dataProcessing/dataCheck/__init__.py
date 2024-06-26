@@ -1398,11 +1398,22 @@ def get_css(path: os.path) -> str:
 
     return css
 
+def convert_columns_to_nullable_int(df):
+    for col in df.columns:
+        if pd.api.types.is_numeric_dtype(df[col]):
+            # 소수점이 포함된 데이터가 있는지 확인
+            if all(df[col].dropna() == df[col].dropna().astype(int)):
+                df[col] = df[col].astype(pd.Int64Dtype())
+            else:
+                df[col] = df[col].astype(float)
+    return df
+
 def SetUpDataCheck(dataframe: pd.DataFrame, **kwargs) :
     module_path = os.path.dirname(__file__)
     css = get_css(os.path.join(module_path, 'styles.css'))
     display(HTML(css))
-    return DataCheck(dataframe, css=css, **kwargs)
+    df = convert_columns_to_nullable_int(dataframe)
+    return DataCheck(df, css=css, **kwargs)
 
 
 #### Decipher Ready
