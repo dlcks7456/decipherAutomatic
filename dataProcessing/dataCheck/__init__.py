@@ -678,12 +678,6 @@ class DataCheck(pd.DataFrame):
 
             err_list.append(ms_err)
 
-            # Cases responded to other than base
-            if cond is not None :
-                ans_err = 'DC_NO_BASE'
-                chk_df.loc[(~chk_df[qid].isna()) & ~(cond), ans_err] = 1
-                err_list.append(ans_err)
-
             # ONLY ANSWER CHECK
             if only is not None:
                 warnings.append(f"Only value : {only}")
@@ -711,6 +705,17 @@ class DataCheck(pd.DataFrame):
                 isnot_err = 'ISNOT_ANS'
                 chk_df.loc[isnot_cond, isnot_err] = 1
                 err_list.append(isnot_err)
+
+            # Cases responded to other than base
+            if cond is not None :
+                ans_err = 'DC_NO_BASE'
+                add_df = self[(self.attrs['default_filter']) & ~(cond)].copy()
+                if len(add_df) > 0 :
+                    add_df[ans_err] = 1
+                    err_list.append(ans_err)
+
+                    chk_df = pd.concat([chk_df, add_df], ignore_index=True)
+
 
         edf = ErrorDataFrame(qid, 'SA', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
@@ -756,12 +761,6 @@ class DataCheck(pd.DataFrame):
             chk_df.loc[filt, ms_err] = 1
 
             err_list.append(ms_err)
-
-            # Cases responded to other than base
-            if cond is not None :
-                ans_err = 'DC_NO_BASE'
-                chk_df.loc[(chk_df[cnt]>=1) & ~(cond), ans_err] = 1
-                err_list.append(ans_err)
 
             # Generalized Answer Check Function
             def check_answer(condition, operator, err_label):
@@ -829,6 +828,17 @@ class DataCheck(pd.DataFrame):
                 # Is Not Check
                 if isnot is not None:
                     process_check('isnot', isnot, ma_isnot_check, 'MA_ISNOT')
+
+            # Cases responded to other than base
+            if cond is not None :
+                ans_err = 'DC_NO_BASE'
+                add_df = self[self.attrs['default_filter'] & ~(cond)].copy()
+                if len(add_df) > 0 :
+                    add_df[cnt] = add_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
+                    add_df.loc[add_df[cnt]>=1, ans_err] = 1
+                    err_list.append(ans_err)
+
+                    chk_df = pd.concat([chk_df, add_df], ignore_index=True)
 
 
             show_cols = [cnt] + show_cols
