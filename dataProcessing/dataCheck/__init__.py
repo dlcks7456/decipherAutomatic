@@ -227,9 +227,6 @@ def get_key_id(base: List[str]) -> Union[None, str]:
 
     for ma in base:
         if qid not in ma:
-            print_text = """<div class="check-bold check-fail">❌ [ERROR] Please check multi question variable names</div>"""
-            print_text += f"""<div class="print-paiddng-left">Base MA variable key name : <span class="check-correct">{qid}</span></div>"""
-            display(HTML(print_text))
             qid = None
             return qid
         
@@ -732,7 +729,9 @@ class DataCheck(pd.DataFrame):
             isin: Optional[Union[range, List[Union[int, str]], int, str]] = None,
             isall: Optional[Union[range, List[Union[int, str]], int, str]] = None,
             isnot: Optional[Union[range, List[Union[int, str]], int, str]] = None,
-            alt: Optional[str]=None) -> 'ErrorDataFrame':
+            nobase: bool = True,
+            alt: Optional[str]=None,
+            key_var: Optional[str]=None) -> 'ErrorDataFrame':
         """
         복수 응답(다중 변수) 데이터 체크 메서드
         """
@@ -758,7 +757,8 @@ class DataCheck(pd.DataFrame):
             chk_df[cnt] = chk_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
 
             ms_err = 'DC_BASE'
-            filt = (chk_df[cnt]==0)  # Default
+            # filt = (chk_df[cnt]==0)  # Default
+            filt = (chk_df[show_cols].isna() | (chk_df[show_cols] == 0)).all(axis=1)
             chk_df.loc[filt, ms_err] = 1
 
             err_list.append(ms_err)
@@ -831,11 +831,14 @@ class DataCheck(pd.DataFrame):
                     process_check('isnot', isnot, ma_isnot_check, 'MA_ISNOT')
 
             # Cases responded to other than base
-            if cond is not None :
+            if not nobase : 
+                warnings.append('No Base Check does not run')
+            if cond is not None and nobase :
                 ans_err = 'DC_NO_BASE'
                 add_df = self[self.attrs['default_filter'] & ~(cond)].copy()
                 add_df[cnt] = add_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
-                add_df = add_df[add_df[cnt]>=1].copy()
+                add_filt = (add_df[show_cols].isna() | (add_df[show_cols] == 0)).all(axis=1)
+                add_df = add_df[~add_filt].copy()
                 if len(add_df) > 0 :
                     add_df[ans_err] = 1
                     err_list.append(ans_err)
@@ -949,12 +952,17 @@ class DataCheck(pd.DataFrame):
         self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
 
+    def display_key_var_error(self, arg_name:str) -> None :
+            print_text = """<div class="check-bold check-fail">❌ [ERROR] Please check multi question variable names : `arg_name`</div>"""
+            display(HTML(print_text))
+
     def masa(self, 
              ma_qid: Union[List[str], Tuple[str]], 
              sa_qid: str, 
              cond: Optional[pd.Series] = None, 
              diff_value: Optional[Union[List[Any], range, int, str]] = None,
-             alt: Optional[str]=None) -> 'ErrorDataFrame' :
+             alt: Optional[str]=None,
+             key_var: Optional[str]=None) -> 'ErrorDataFrame' :
         """
         `복수 응답`을 베이스로 하는 `단수 응답` 로직 체크.
         `ma_qid` (Union[List[str], Tuple[str]]): 복수 응답 열 목록.
@@ -972,7 +980,9 @@ class DataCheck(pd.DataFrame):
         if not self.col_name_check(sa_qid): return
 
         qid_key = get_key_id(base_qid)
-        if qid_key is None: return
+        if qid_key is None: 
+            self.display_key_var_error('ma_qid')
+            return
 
         cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
         chk_df = self[cond].copy()
@@ -1038,7 +1048,8 @@ class DataCheck(pd.DataFrame):
              chk_ma: Union[List[str], Tuple[str]], 
              cond: Optional[pd.Series] = None, 
              diff_value: Optional[Union[List[Any], range, int, str]] = None,
-             alt: Optional[str]=None) -> 'ErrorDataFrame' :
+             alt: Optional[str]=None,
+             key_var: Optional[str]=None) -> 'ErrorDataFrame' :
         """
         `복수 응답`을 베이스로 하는 `복수 응답` 로직 체크.
         `base_ma` (Union[List[str], Tuple[str]]): 기준이 되는 복수 응답 열 목록.
@@ -1058,7 +1069,14 @@ class DataCheck(pd.DataFrame):
 
         qid_key = get_key_id(base)
         ans_key = get_key_id(chkm)
-        if qid_key is None: return
+        if qid_key is None : 
+            self.display_key_var_error('base_ma')
+            return
+
+        if ans_key is None: 
+            self.display_key_var_error('chk_ma')
+            return
+
 
         zip_cols = [list(x) for x in zip(base, chkm)]
         show_cols = sum(zip_cols, [])
@@ -1138,7 +1156,8 @@ class DataCheck(pd.DataFrame):
             rank_qid: Union[List[str], Tuple[str]], 
             cond: Optional[pd.Series] = None, 
             diff_value: Optional[Union[List[Any], range, int, str]] = None,
-            alt: Optional[str]=None) -> 'ErrorDataFrame' :
+            alt: Optional[str]=None,
+            key_var: Optional[str]=None) -> 'ErrorDataFrame' :
         """
         `복수 응답`을 베이스로 하는 `순위 응답` 로직 체크.
         `base_qid` (Union[List[str], Tuple[str]]): 기준이 되는 복수 응답 열 목록.
@@ -1157,6 +1176,9 @@ class DataCheck(pd.DataFrame):
         if not self.col_name_check(*rank): return
 
         qid_key = get_key_id(base)
+        if qid_key is None :
+            self.display_key_var_error('base_qid')
+            return
 
         show_cols = rank
 
@@ -1252,7 +1274,8 @@ class DataCheck(pd.DataFrame):
                   rate_qid: Union[List[str], Tuple[str]], 
                   rank_qid: Union[List[str], Tuple[str]],
                   cond: Optional[pd.Series] = None,
-                  alt: Optional[str]=None)  -> 'ErrorDataFrame' :
+                  alt: Optional[str]=None,
+                  key_var: Optional[str]=None)  -> 'ErrorDataFrame' :
         """
         `척도 응답`을 베이스로 하는 `순위 응답` 로직 체크.
         ()`척도 응답`의 점수 기준으로 `순위 응답`이 순서대로 응답되어야 하는 경우)
@@ -1271,6 +1294,10 @@ class DataCheck(pd.DataFrame):
         if not self.col_name_check(*rank): return
 
         qid_key = get_key_id(rate_qid)
+        if qid_key is None :
+            self.display_key_var_error('rate_qid')
+            return
+
         cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
         chk_df = self[cond].copy()
 
