@@ -739,7 +739,7 @@ class DataCheck(pd.DataFrame):
         warnings = []
         show_cols = self.ma_return(qid)
         qid_key = get_key_id(show_cols)
-        if qid_key is None: return
+        
         if not self.col_name_check(*show_cols) : return
 
         cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
@@ -815,17 +815,20 @@ class DataCheck(pd.DataFrame):
             def ma_isnot_check(row, cols) :
                 return any(not (pd.isna(row[c]) or row[c] == 0) for c in cols)
 
-            # Is In Check        
-            if isin is not None:
-                process_check('isin', isin, ma_isin_check, 'MA_ISIN')
+            # Is In Check
+            if qid_key is None :
+                warnings.append("A variable structure for which the isin/isall/isnot methods are not available")
+            else :
+                if isin is not None:
+                    process_check('isin', isin, ma_isin_check, 'MA_ISIN')
 
-            # Is All Check
-            if isall is not None:
-                process_check('isall', isall, ma_isall_check, 'MA_ISALL')
+                # Is All Check
+                if isall is not None:
+                    process_check('isall', isall, ma_isall_check, 'MA_ISALL')
 
-            # Is Not Check
-            if isnot is not None:
-                process_check('isnot', isnot, ma_isnot_check, 'MA_ISNOT')
+                # Is Not Check
+                if isnot is not None:
+                    process_check('isnot', isnot, ma_isnot_check, 'MA_ISNOT')
 
 
             show_cols = [cnt] + show_cols
