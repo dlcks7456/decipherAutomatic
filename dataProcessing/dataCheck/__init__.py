@@ -693,8 +693,6 @@ class DataCheck(pd.DataFrame):
                     only = [only]
 
                 only_cond = (~chk_df[qid].isin(only))
-                if cond is not None:
-                    only_cond = (only_cond) & (cond)
                 
                 only_err = 'ONLY_ANS'
                 chk_df.loc[only_cond, only_err] = 1
@@ -709,8 +707,6 @@ class DataCheck(pd.DataFrame):
                     isnot = [isnot]
                 
                 isnot_cond = (chk_df[qid].isin(isnot))
-                if cond is not None:
-                    isnot_cond = (isnot_cond) & (cond)
                 
                 isnot_err = 'ISNOT_ANS'
                 chk_df.loc[isnot_cond, isnot_err] = 1
@@ -779,8 +775,7 @@ class DataCheck(pd.DataFrame):
                     elif operator == '>':
                         cond_err = (chk_df[cnt] > condition)
                         warnings.append(f"Atmost : {condition}")
-                    if cond is not None:
-                        cond_err = (cond_err) & (cond)
+                    
                     chk_df.loc[cond_err, err_label] = 1
                     err_list.append(err_label)
 
@@ -1188,17 +1183,13 @@ class DataCheck(pd.DataFrame):
                 return 1 if any(pd.isna(x[rk]) for rk in chk_rank) else np.nan
 
 
-            ma_base_cond = (~chk_df[rank].isna()).any(axis=1)
-            if cond is not None :
-                ma_base_cond = (ma_base_cond) & (cond)
+            # ma_base_cond = (~chk_df[rank].isna()).any(axis=1)
+            ma_base_cond = chk_df[base_cnt]>=1
             
             chk_df[err_col] = chk_df[ma_base_cond].apply(ma_base_rank_check, axis=1)
 
             base_ans = 'BASE_MA'
-            if cond is not None :
-                chk_df[base_ans] = chk_df[cond][base].apply(lambda_ma_to_list, axis=1, qids=base)
-            else :
-                chk_df[base_ans] = chk_df[base].apply(lambda_ma_to_list, axis=1, qids=base)
+            chk_df[base_ans] = chk_df[base].apply(lambda_ma_to_list, axis=1, qids=base)
 
 
             def ma_base_check(x, rank_qid) :
@@ -1216,8 +1207,6 @@ class DataCheck(pd.DataFrame):
             for rk in rank :
                 rk_err = f'{rk}_ERR'
                 sa_base_cond = ~chk_df[rk].isna()
-                if cond is not None :
-                    sa_base_cond = (sa_base_cond) & (cond)
                 chk_df[rk_err] = chk_df[sa_base_cond].apply(ma_base_check, axis=1, rank_qid=rk)
                 rank_err_list.append(rk_err)
 
