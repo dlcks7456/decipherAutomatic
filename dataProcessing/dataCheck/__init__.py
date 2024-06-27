@@ -710,6 +710,7 @@ class DataCheck(pd.DataFrame):
             if cond is not None :
                 ans_err = 'DC_NO_BASE'
                 add_df = self[(self.attrs['default_filter']) & ~(cond)].copy()
+                add_df = add_df[~add_df[qid].isna()].copy()
                 if len(add_df) > 0 :
                     add_df[ans_err] = 1
                     err_list.append(ans_err)
@@ -833,9 +834,10 @@ class DataCheck(pd.DataFrame):
             if cond is not None :
                 ans_err = 'DC_NO_BASE'
                 add_df = self[self.attrs['default_filter'] & ~(cond)].copy()
+                add_df[cnt] = add_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
+                add_df = add_df[add_df[cnt]>=1].copy()
                 if len(add_df) > 0 :
-                    add_df[cnt] = add_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
-                    add_df.loc[add_df[cnt]>=1, ans_err] = 1
+                    add_df[ans_err] = 1
                     err_list.append(ans_err)
 
                     chk_df = pd.concat([chk_df, add_df], ignore_index=True)
