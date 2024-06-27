@@ -928,7 +928,7 @@ class DataCheck(pd.DataFrame):
             dup_err = 'DC_DUP'
             def check_duplicates(row):
                 row_values = row.tolist()
-                filtered_values = [value for value in row_values if value not in okUnique]
+                filtered_values = [value for value in row_values if value not in okUnique and not pd.isna(value)]
                 return 1 if len(filtered_values) != len(set(filtered_values)) else None
             
             chk_df[dup_err] = chk_df[show_cols].apply(check_duplicates, axis=1)
