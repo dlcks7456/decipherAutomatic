@@ -998,10 +998,12 @@ class DataCheck(pd.DataFrame):
             
             def ma_base_check(x) :
                 sa_ans = int(x[sa])
-                ma_var = f'{qid_key}{sa_ans}'
-                ma_ans = x[ma_var]
                 if sa_ans in dv :
                     return np.nan
+                
+                ma_var = f'{qid_key}{sa_ans}'
+                ma_ans = x[ma_var]
+
 
                 return 1 if pd.isna(ma_ans) or ma_ans == 0 else np.nan
 
@@ -1201,10 +1203,12 @@ class DataCheck(pd.DataFrame):
 
             def ma_base_check(x, rank_qid) :
                 sa_ans = int(x[rank_qid])
-                ma_var = f'{qid_key}{sa_ans}'
-                ma_ans = x[ma_var]
                 if sa_ans in dv :
                     return np.nan
+                
+                ma_var = f'{qid_key}{sa_ans}'
+                ma_ans = x[ma_var]
+
 
                 return 1 if pd.isna(ma_ans) or ma_ans == 0 else np.nan
             # Each Rank masa
@@ -1252,7 +1256,7 @@ class DataCheck(pd.DataFrame):
         `rank_qid` (Union[List[str], Tuple[str]]): 체크할 순위 응답 열 목록.
         `cond` (pd.Series, optional): 조건을 적용할 시리즈. 기본값은 None.
         """
-        if (self.ma_check(rate_qid)) or (self.ma_check(rank_qid)) :
+        if (self.ma_check(rate_qid)) or (self.ma_check(rank_qid, len_chk=False)) :
             return
         warnings = []
         err_list = []
@@ -1273,7 +1277,7 @@ class DataCheck(pd.DataFrame):
 
             err_col = 'DC_LOGIC'
             def rate_rank_validate(row, rate_base, rank_base):
-                scores = {int(x.replace(qid_key, '')): row[x] for x in rate_base}
+                scores = {int(x.replace(qid_key, '')): row[x] for x in rate_base if not pd.isna(row[x])}
                 result = {}
                 for key, value in scores.items():
                     if value not in result:
@@ -1302,7 +1306,7 @@ class DataCheck(pd.DataFrame):
 
 
             def rate_rank_able_attrs(row, rate_base):
-                scores = {int(x.replace(qid_key, '')): row[x] for x in rate_base}
+                scores = {int(x.replace(qid_key, '')): row[x] for x in rate_base if not pd.isna(row[x])}
                 result = {}
                 for key, value in scores.items():
                     if value not in result:
