@@ -9,7 +9,7 @@ import os
 import openpyxl
 import re
 import nbformat as nbf
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 import json
 from decipher.beacon import api
 import time
@@ -18,7 +18,6 @@ from decipherAutomatic.getFiles import *
 from decipherAutomatic.utils import *
 from pandas.io.formats import excel
 import zipfile
-
 
 def check_print(variables: Union[List[str], Tuple[str, ...], str], 
                 error_type: Literal['SA', 'MA', 'LOGIC', 'MASA', 'MAMA', 'MARK', 'RATERANK', 'DUP'], 
@@ -214,6 +213,20 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
 
     return final_print
 
+def classify_variables(variable_list: List[str]):
+    # 딕셔너리 생성
+    classified_vars = defaultdict(list)
+    # 변수명의 규칙을 추출하는 정규식
+    pattern = re.compile(r"([A-Za-z]+\d*[_]?[A-Za-z]*)")
+    
+    for variable in variable_list:
+        match = pattern.match(variable)
+        if match:
+            key = match.group(1)
+            classified_vars[key].append(variable)
+    
+    return dict(classified_vars)
+
 def get_key_id(base: List[str]) -> Union[None, str]:
     """`base`가 `qid`를 포함하는지 확인합니다."""
     qid = base[0]
@@ -228,9 +241,10 @@ def get_key_id(base: List[str]) -> Union[None, str]:
     for ma in base:
         if qid not in ma:
             qid = None
-            return qid
+            return classify_variables(base)
         
     return qid
+
 
 def lambda_ma_to_list(row, qids) :
     qid_key = get_key_id(qids)
@@ -720,6 +734,21 @@ class DataCheck(pd.DataFrame):
         self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
 
+    def key_var_setting(self, cols: List, key_var: Optional[str]) -> str :
+        def set_code() :
+            get_qid = get_key_id(cols)
+            if not isinstance(get_qid, str) :
+                return get_qid
+            return "%s{code}"%(get_qid)
+
+        if key_var is None :
+            return set_code()
+        else :
+            if not "{code}" in key_var :
+                display(HTML("""<div class="datacheck-head check-fail">The `key_var` does not contain {code}.</div>"""))
+                return set_code()
+            return key_var
+
     def mafreq(self, 
             qid: Union[List[str], Tuple[str, ...]], 
             cond: Optional[pd.Series] = None, 
@@ -729,7 +758,7 @@ class DataCheck(pd.DataFrame):
             isin: Optional[Union[range, List[Union[int, str]], int, str]] = None,
             isall: Optional[Union[range, List[Union[int, str]], int, str]] = None,
             isnot: Optional[Union[range, List[Union[int, str]], int, str]] = None,
-            nobase: bool = True,
+            no_base: bool = True,
             alt: Optional[str]=None,
             key_var: Optional[str]=None) -> 'ErrorDataFrame':
         """
@@ -743,9 +772,10 @@ class DataCheck(pd.DataFrame):
         # Answer Base Check
         warnings = []
         show_cols = self.ma_return(qid)
-        qid_key = get_key_id(show_cols)
         
         if not self.col_name_check(*show_cols) : return
+
+        qid_key = self.key_var_setting(cols=show_cols, key_var=key_var)
 
         cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
         chk_df = self[cond].copy()
@@ -793,15 +823,12 @@ class DataCheck(pd.DataFrame):
                 elif isinstance(check_value, list):
                     check_list = check_value
 
-                chk_cols = [f'{qid_key}{m}' for m in check_list]
+                chk_cols = [qid_key.format(code=m) for m in check_list]
 
                 def apply_func(row):
                     return 1 if check_func(row, chk_cols) else np.nan
 
-                if cond is None:
-                    chk_df[err_label] = chk_df.apply(apply_func, axis=1)
-                else:
-                    chk_df[err_label] = chk_df[cond].apply(apply_func, axis=1)
+                chk_df[err_label] = chk_df.apply(apply_func, axis=1)
 
                 err_list.append(err_label)
 
@@ -816,7 +843,7 @@ class DataCheck(pd.DataFrame):
                 return any(not (pd.isna(row[c]) or row[c] == 0) for c in cols)
 
             # Is In Check
-            if qid_key is None :
+            if not isinstance(qid_key, str) :
                 warnings.append("A variable structure for which the isin/isall/isnot methods are not available")
             else :
                 if isin is not None:
@@ -831,9 +858,9 @@ class DataCheck(pd.DataFrame):
                     process_check('isnot', isnot, ma_isnot_check, 'MA_ISNOT')
 
             # Cases responded to other than base
-            if not nobase : 
+            if not no_base : 
                 warnings.append('No Base Check does not run')
-            if cond is not None and nobase :
+            if cond is not None and no_base :
                 ans_err = 'DC_NO_BASE'
                 add_df = self[self.attrs['default_filter'] & ~(cond)].copy()
                 add_df[cnt] = add_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
@@ -952,8 +979,10 @@ class DataCheck(pd.DataFrame):
         self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
 
-    def display_key_var_error(self, arg_name:str) -> None :
-            print_text = """<div class="check-bold check-fail">❌ [ERROR] Please check multi question variable names : `arg_name`</div>"""
+    def display_key_var_error(self, arg_name:str, qid_list: List) -> None :
+            print_text = f"""<div class="check-bold check-fail">❌ [ERROR] Please check multi question variable names : `{arg_name}`</div>"""
+            for key, var_list in qid_list.items() :
+                print_text += f"""<div class="check-bold check-fail">[{key}] : {var_list}</div>"""
             display(HTML(print_text))
 
     def masa(self, 
@@ -979,9 +1008,9 @@ class DataCheck(pd.DataFrame):
         if not self.col_name_check(*base_qid): return
         if not self.col_name_check(sa_qid): return
 
-        qid_key = get_key_id(base_qid)
-        if qid_key is None: 
-            self.display_key_var_error('ma_qid')
+        qid_key = self.key_var_setting(cols=base_qid, key_var=key_var)
+        if not isinstance(qid_key, str): 
+            self.display_key_var_error('ma_qid', qid_key)
             return
 
         cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
@@ -1021,7 +1050,7 @@ class DataCheck(pd.DataFrame):
                 if sa_ans in dv :
                     return np.nan
                 
-                ma_var = f'{qid_key}{sa_ans}'
+                ma_var = qid_key.format(code=sa_ans)
                 ma_ans = x[ma_var]
 
 
@@ -1049,7 +1078,8 @@ class DataCheck(pd.DataFrame):
              cond: Optional[pd.Series] = None, 
              diff_value: Optional[Union[List[Any], range, int, str]] = None,
              alt: Optional[str]=None,
-             key_var: Optional[str]=None) -> 'ErrorDataFrame' :
+             base_key_var: Optional[str]=None,
+             chk_key_var: Optional[str]=None,) -> 'ErrorDataFrame' :
         """
         `복수 응답`을 베이스로 하는 `복수 응답` 로직 체크.
         `base_ma` (Union[List[str], Tuple[str]]): 기준이 되는 복수 응답 열 목록.
@@ -1067,14 +1097,16 @@ class DataCheck(pd.DataFrame):
         if not self.col_name_check(*base): return
         if not self.col_name_check(*chkm): return
 
-        qid_key = get_key_id(base)
-        ans_key = get_key_id(chkm)
-        if qid_key is None : 
-            self.display_key_var_error('base_ma')
-            return
+        qid_key = self.key_var_setting(cols=base, key_var=base_key_var)
+        ans_key = self.key_var_setting(cols=chkm, key_var=chk_key_var)
 
-        if ans_key is None: 
-            self.display_key_var_error('chk_ma')
+        if any(x is None for x in [qid_key, ans_key]) :
+            if not isinstance(qid_key, str) : 
+                self.display_key_var_error('base_ma', qid_key)
+
+            if ans_key is None: 
+                self.display_key_var_error('chk_ma', ans_key)
+
             return
 
 
@@ -1111,7 +1143,7 @@ class DataCheck(pd.DataFrame):
                     dv.append(dv[-1] + 1)
                 
                 warnings.append(f"""Do not check the code : {dv}""")
-                diff_qids = [f'{qid_key}{x}' for x in dv]
+                diff_qids = [qid_key.format(code=x) for x in dv]
 
             def ma_base_check(x) :
                 def flag(b, a) :
@@ -1127,7 +1159,7 @@ class DataCheck(pd.DataFrame):
 
             def diff_ans_update(row, cols) :
                 def return_int_or_str(txt: str) :
-                        rp = txt.replace(qid_key, '')
+                        rp = txt.replace(qid_key.format(code=''), '')
                         if rp.isdigit() :
                             return int(rp)
                         else :
@@ -1175,9 +1207,9 @@ class DataCheck(pd.DataFrame):
         if not self.col_name_check(*base): return
         if not self.col_name_check(*rank): return
 
-        qid_key = get_key_id(base)
-        if qid_key is None :
-            self.display_key_var_error('base_qid')
+        qid_key = self.key_var_setting(cols=base, key_var=key_var)
+        if not isinstance(qid_key, str) :
+            self.display_key_var_error('base_qid', qid_key)
             return
 
         show_cols = rank
@@ -1234,7 +1266,7 @@ class DataCheck(pd.DataFrame):
                 if sa_ans in dv :
                     return np.nan
                 
-                ma_var = f'{qid_key}{sa_ans}'
+                ma_var = qid_key.format(code=sa_ans)
                 ma_ans = x[ma_var]
 
 
@@ -1293,9 +1325,9 @@ class DataCheck(pd.DataFrame):
         if not self.col_name_check(*rate): return
         if not self.col_name_check(*rank): return
 
-        qid_key = get_key_id(rate_qid)
-        if qid_key is None :
-            self.display_key_var_error('rate_qid')
+        qid_key = self.key_var_setting(cols=rate_qid, key_var=key_var)
+        if not isinstance(qid_key, str) :
+            self.display_key_var_error('rate_qid', qid_key)
             return
 
         cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
@@ -1308,7 +1340,7 @@ class DataCheck(pd.DataFrame):
 
             err_col = 'DC_LOGIC'
             def rate_rank_validate(row, rate_base, rank_base):
-                scores = {int(x.replace(qid_key, '')): row[x] for x in rate_base if not pd.isna(row[x])}
+                scores = {int(x.replace(qid_key.format(code=''), '')): row[x] for x in rate_base if not pd.isna(row[x])}
                 result = {}
                 for key, value in scores.items():
                     if value not in result:
@@ -1337,7 +1369,7 @@ class DataCheck(pd.DataFrame):
 
 
             def rate_rank_able_attrs(row, rate_base):
-                scores = {int(x.replace(qid_key, '')): row[x] for x in rate_base if not pd.isna(row[x])}
+                scores = {int(x.replace(qid_key.format(code=''), '')): row[x] for x in rate_base if not pd.isna(row[x])}
                 result = {}
                 for key, value in scores.items():
                     if value not in result:
