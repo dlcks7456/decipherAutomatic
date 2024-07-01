@@ -948,33 +948,37 @@ class DataCheck(pd.DataFrame):
         err_list = []
 
         chk_df = self[self.attrs['default_filter']].copy()
+        
+        dup_err = 'DC_DUP'
+        err_list.append(dup_err)
+
         if len(chk_df) == 0 :
             warnings.append("No response to this condition")
-        else :
-            if okUnique is not None:
-                if not isinstance(okUnique, (list, range, int, str)):
-                    display(HTML("""<div class="check-bold check-fail">❌ [ERROR] Type of okUnique must be list, range, int, or str</div>"""))
-                    return
-                if isinstance(okUnique, range):
-                    okUnique = list(okUnique)
-                    okUnique.append(okUnique[-1] + 1)
-                elif isinstance(okUnique, (int, str)):
-                    okUnique = [okUnique]
-                
-                warnings.append(f"""Allow Duplicates : {okUnique}""")
-            else:
-                okUnique = []
 
-            dup_err = 'DC_DUP'
-            def check_duplicates(row):
-                row_values = row.tolist()
-                filtered_values = [value for value in row_values if value not in okUnique and not pd.isna(value)]
-                return 1 if len(filtered_values) != len(set(filtered_values)) else None
+        if okUnique is not None:
+            if not isinstance(okUnique, (list, range, int, str)):
+                display(HTML("""<div class="check-bold check-fail">❌ [ERROR] Type of okUnique must be list, range, int, or str</div>"""))
+                return
+            if isinstance(okUnique, range):
+                okUnique = list(okUnique)
+                okUnique.append(okUnique[-1] + 1)
+            elif isinstance(okUnique, (int, str)):
+                okUnique = [okUnique]
             
-            chk_df[dup_err] = chk_df[show_cols].apply(check_duplicates, axis=1)
-            err_list.append(dup_err)
+            warnings.append(f"""Allow Duplicates : {okUnique}""")
+        else:
+            okUnique = []
 
-        edf = ErrorDataFrame(show_cols, 'DUP', show_cols, chk_df, err_list, warnings, alt)
+        def check_duplicates(row):
+            row_values = row.tolist()
+            filtered_values = [value for value in row_values if value not in okUnique and not pd.isna(value)]
+            return 1 if len(filtered_values) != len(set(filtered_values)) else None
+        
+        chk_df[dup_err] = chk_df[show_cols].apply(check_duplicates, axis=1)
+
+        rk = show_cols
+        qid = f"""{rk[0]}-{rk[-1]} (DUP)"""
+        edf = ErrorDataFrame(qid, 'DUP', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
         self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
