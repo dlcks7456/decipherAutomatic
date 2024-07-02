@@ -172,7 +172,7 @@ def check_print(variables: Union[List[str], Tuple[str, ...], str],
             base_cond = 'BASE_COND'
             if base_cond in list(df.columns) :
                 base_cnt = len(df[df[base_cond]==1])
-                print_str += check.format(check_title=f"Base Cond Answer Count : <b>{base_cnt}'s</b>")
+                # print_str += check.format(check_title=f"Base Cond Answer Count : <b>{base_cnt}'s</b>")
             if err_cnt == 0 :
                 print_str += correct.format(html_title=f"Logic Correct")
             else :
