@@ -339,8 +339,11 @@ def create_crosstab(df: pd.DataFrame,
 
 
 class DataProcessing(DataCheck) :
+    _metadata = ['_deciphermeta']
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
 
     def table(self, index: Union[str, List[str]],
                     columns: Optional[Union[str, List[str]]] = None,
@@ -354,6 +357,11 @@ class DataProcessing(DataCheck) :
                     sort_index: Optional[str] = None) -> pd.DataFrame :
 
             df = self.copy()
+
+            index_meta = self.setting_meta(index_meta, index)
+            columns_meta = self.setting_meta(columns_meta, index)
+
+
             return create_crosstab(df,
                                     index=index,
                                     columns=columns,
@@ -366,11 +374,44 @@ class DataProcessing(DataCheck) :
                                     bottom=bottom,
                                     sort_index=sort_index)
 
-def SetUpDataProcessing(dataframe: pd.DataFrame, **kwargs) :
+def decipher_datamap(pid: Union[str, int]) :
+    api.login(api_key, api_server)
+    json_map = api.get(f"surveys/selfserve/548/{pid}/datamap", format="json")
+    variables = json_map["variables"]
+
+    metadata = {}
+    for v in variables :
+        label = v['label']
+        qtype = v['type']
+
+        if qtype == 'single' :
+            values = v['values']
+            metadata[label] = [{value['value']: value['title']} for value in values]
+        
+        if qtype == 'multiple' :
+            title = v['title'].split('-')[0].strip()
+            metadata[label] = title
+        
+        if qtype in ['number', 'text'] :
+            title = v['title']
+            metadata[label] = title
+
+    return metadata
+
+
+def SetUpDataProcessing(dataframe: pd.DataFrame, platform: Literal['decipher']=None, pid: Optional[Union[str, int]]=None) :
     module_path = os.path.dirname(__file__)
     css_path = os.path.join(os.path.dirname(module_path), 'dataCheck')
     css = get_css(os.path.join(css_path, 'styles.css'))
     display(HTML(css))
     df = convert_columns_to_nullable_int(dataframe)
 
-    return DataProcessing(DataCheck(df, css=css, **kwargs))
+    metadata = None
+    if platform == 'decipher' :
+        if pid is None :
+            raise ValueError("Enter Decipher pid")
+        
+        metadata = decipher_datamap(pid)
+        print(metadata)
+
+    return DataProcessing(DataCheck(df, css=css))
