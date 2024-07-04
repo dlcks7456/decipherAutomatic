@@ -1,1 +1,1 @@
-from .dataCheck import *
+__all__ = ['dataCheck', 'table']
