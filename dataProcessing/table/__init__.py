@@ -1,6 +1,6 @@
 import pandas as pd
 from IPython.display import display, HTML
-from typing import Union, List, Tuple, Dict, Optional, Literal, Callable, Any, NoReturn
+from typing import Union, List, Tuple, Dict, Optional, Literal, Callable, Any, NoReturn, Type
 import numpy as np
 from dataclasses import dataclass, field
 import contextlib
@@ -357,17 +357,36 @@ class CrossTabs :
     def _repr_html_(self) -> str:
         return self.result._repr_html_()
 
+def delegate_methods(cls):
+    def wrapper(data_check_instance: Type[DataCheck], *args, **kwargs):
+        obj = cls(data_check_instance, *args, **kwargs)
+        for method_name in dir(data_check_instance):
+            if callable(getattr(data_check_instance, method_name)) and not method_name.startswith("__"):
+                setattr(cls, method_name, getattr(data_check_instance, method_name))
+        return obj
+    return wrapper
+
+@delegate_methods
 class DataProcessing :
-    def __init__(self, data_check_instance:DataCheck, meta: Optional[Dict[str, Any]] = None, title: Optional[Dict[str, Any]] = None) -> None:
-        self.data_check_instance = data_check_instance
-        self.meta = meta
-        self.title = title
+    def __init__(self, data_check_instance: Type[DataCheck], meta: Optional[Dict[str, Any]] = None, title: Optional[Dict[str, Any]] = None) -> None:
+        self.__dict__['data_check_instance'] = data_check_instance
+        self.__dict__['meta'] = meta
+        self.__dict__['title'] = title
 
     def __getattr__(self, name):
         return getattr(self.data_check_instance, name)
 
+    def __dir__(self) -> List[str]:
+        return dir(self.data_check_instance) + list(self.__dict__.keys())
+
     def __getitem__(self, variables):
         return self.data_check_instance[variables]
+
+    def __setattr__(self, name, value):
+        if name in ('data_check_instance', 'meta', 'title'):
+            self.__dict__[name] = value
+        else:
+            setattr(self.__dict__['data_check_instance'], name, value)
 
     def setting_meta(self, meta, variable) :
         if variable is None :
