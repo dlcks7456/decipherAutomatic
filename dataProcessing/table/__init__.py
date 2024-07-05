@@ -162,7 +162,8 @@ def create_crosstab(df: pd.DataFrame,
                     if include_total:
                         crosstab_result.loc[total_label, idx] = sa_ma_count(columns_col, index_cols)
 
-                crosstab_result.loc[total_label, total_label] = ma_total(columns_col, index_cols)
+                if include_total :
+                    crosstab_result.loc[total_label, total_label] = ma_total(columns_col, index_cols)
 
             if isinstance(index_cols, list) and isinstance(columns_col, str) :
                 # Extract unique values from the single column
@@ -179,8 +180,9 @@ def create_crosstab(df: pd.DataFrame,
                             
                     if include_total:
                         crosstab_result.loc[idx, total_label] = ma_sa_count(idx, columns_col)
-                        
-                crosstab_result.loc[total_label, total_label] = ma_total(index_cols, columns_col)
+                    
+                if include_total :
+                    crosstab_result.loc[total_label, total_label] = ma_total(index_cols, columns_col)
                 
             elif isinstance(index_cols, list) and isinstance(columns_col, list):
                 # Create a DataFrame to hold the crosstab result
@@ -193,11 +195,12 @@ def create_crosstab(df: pd.DataFrame,
                     
                     crosstab_result.loc[idx, total_label] = ma_ma_count(columns_col, idx)
                 
-                crosstab_result.loc[total_label, total_label] = ma_ma_total(index_cols, columns_col)
+                if include_total :
+                    crosstab_result.loc[total_label, total_label] = ma_ma_total(index_cols, columns_col)
             else:
                 raise ValueError("columns_col must be either a string or a list of strings.")
         
-        if total_label in crosstab_result.columns :
+        if include_total :
             crosstab_result[total_label] = crosstab_result[total_label].astype(int)
 
         return crosstab_result
@@ -337,13 +340,69 @@ def create_crosstab(df: pd.DataFrame,
     
     return crosstab_result
 
+class CrossTabs :
+    def __init__(self, crosstab_result:pd.DataFrame) :
+        self.result = crosstab_result
 
-class DataProcessing(DataCheck) :
-    _metadata = ['_deciphermeta']
+    def __getattr__(self, name):
+        # Delegate attribute access to the DataCheck instance
+        return getattr(self.result, name)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __repr__(self) -> str:
+        return self.result.__repr__()
 
+    def __str__(self) -> str:
+        return self.result.__str__()
+
+    def _repr_html_(self) -> str:
+        return self.result._repr_html_()
+
+class DataProcessing :
+    def __init__(self, data_check_instance:DataCheck, meta: Optional[Dict[str, Any]] = None, title: Optional[Dict[str, Any]] = None) -> None:
+        self.data_check_instance = data_check_instance
+        self.meta = meta
+        self.title = title
+
+    def __getattr__(self, name):
+        # Delegate attribute access to the DataCheck instance
+        return getattr(self.data_check_instance, name)
+
+
+    def setting_meta(self, meta, variable) :
+        if variable is None :
+            return None
+    
+        return_meta = None
+        if meta is None :
+            if self.meta is not None :
+                if isinstance(variable, str) :
+                    if variable in self.meta.keys() :
+                        return_meta = self.meta[variable]
+                
+                if isinstance(variable, list) :
+                    return_meta = [{v: self.meta[v]} if v in self.meta.keys() else {v: ''} for v in variable]
+        else :
+            return_meta = meta
+        
+        return return_meta
+    
+    def setting_title(self, title, variable) :
+        if variable is None :
+            return None
+
+        return_title = None
+        if title is None :
+            if self.title is not None :
+                chk_var = variable
+                if isinstance(chk_var, list) :
+                    chk_var = variable[0]
+                
+                if chk_var in self.title.keys() :
+                    return_title = self.title[chk_var]['title']
+        else :
+            return_title = title
+
+        return return_title
 
     def table(self, index: Union[str, List[str]],
                     columns: Optional[Union[str, List[str]]] = None,
@@ -359,10 +418,12 @@ class DataProcessing(DataCheck) :
             df = self.copy()
 
             index_meta = self.setting_meta(index_meta, index)
-            columns_meta = self.setting_meta(columns_meta, index)
+            index_name = self.setting_title(index_name, index)
 
-
-            return create_crosstab(df,
+            columns_meta = self.setting_meta(columns_meta, columns)
+            columns_name = self.setting_title(columns_name, columns)
+            
+            result = create_crosstab(df,
                                     index=index,
                                     columns=columns,
                                     index_meta=index_meta,
@@ -374,9 +435,16 @@ class DataProcessing(DataCheck) :
                                     bottom=bottom,
                                     sort_index=sort_index)
 
-def decipher_datamap(pid: Union[str, int]) :
+            return CrossTabs(result)
+
+def get_decipher_datamap_json(pid: Union[str, int]) :
     api.login(api_key, api_server)
     json_map = api.get(f"surveys/selfserve/548/{pid}/datamap", format="json")
+    return json_map
+
+
+def decipher_meta(pid: Union[str, int]) :
+    json_map = get_decipher_datamap_json(pid)
     variables = json_map["variables"]
 
     metadata = {}
@@ -398,8 +466,25 @@ def decipher_datamap(pid: Union[str, int]) :
 
     return metadata
 
+def decipher_title(pid: Union[str, int]) :
+    json_map = get_decipher_datamap_json(pid)
+    variables = json_map["variables"]
 
-def SetUpDataProcessing(dataframe: pd.DataFrame, platform: Literal['decipher']=None, pid: Optional[Union[str, int]]=None) :
+    title_data = {}
+    for v in variables :
+        label = v['label']
+        qtype = v['type']
+        qtitle = v['qtitle']
+        title_data[label] = {
+            'type' : qtype,
+            'title': qtitle
+        }
+
+    
+    return title_data
+
+
+def SetUpDataProcessing(dataframe: pd.DataFrame, keyid: Optional[str]=None, platform: Literal['decipher']=None, pid: Optional[Union[str, int]]=None) :
     module_path = os.path.dirname(__file__)
     css_path = os.path.join(os.path.dirname(module_path), 'dataCheck')
     css = get_css(os.path.join(css_path, 'styles.css'))
@@ -411,7 +496,8 @@ def SetUpDataProcessing(dataframe: pd.DataFrame, platform: Literal['decipher']=N
         if pid is None :
             raise ValueError("Enter Decipher pid")
         
-        metadata = decipher_datamap(pid)
-        print(metadata)
-
-    return DataProcessing(DataCheck(df, css=css))
+        metadata = decipher_meta(pid)
+        title = decipher_title(pid)
+    
+    dc = DataCheck(df, css=css, keyid=keyid)
+    return DataProcessing(dc, meta=metadata, title=title)

@@ -297,11 +297,10 @@ class ErrorDataFrame:
         return ''
 
 class DataCheck(pd.DataFrame):
-    _metadata = ['_keyid', '_spssmeta', '_css']
+    _metadata = ['_keyid', '_css']
 
     def __init__(self, *args, **kwargs):
         self._keyid = kwargs.pop('keyid', None)
-        self._spssmeta = kwargs.pop('spssmeta', None)
         self._css = kwargs.pop('css', None)
         
         super().__init__(*args, **kwargs)
@@ -313,10 +312,10 @@ class DataCheck(pd.DataFrame):
         pd.set_option('display.max_rows', None)
 
         self._count_fnc: Callable[[pd.Series], int] = lambda x: x.count() - (x==0).sum()
+        
         self.attrs['display_msg'] = 'all'
         self.attrs['default_filter'] = pd.Series([True] * len(self), index=self.index)
         self.attrs['result_html'] = []
-        self.attrs['meta'] = self._spssmeta
         self.attrs['css'] = self._css
 
     @property
@@ -1887,16 +1886,19 @@ def DecipherSetting(pid: str,
 import pyreadstat
 import numpy as np
 from map.variables_{pid} import * 
-from decipherAutomatic.dataProcessing import *
+from decipherAutomatic.dataProcessing.table import *
+
+pid = "{pid}"
 
 # Use SPSS
-# file_name = "data/{pid}.sav"
+# file_name = f"data/{{pid}}.sav"
 # df, meta = pyreadstat.read_sav(file_name)
-# df = SetUpDataCheck(df, keyid="record", spssmeta=meta)
+# df = SetUpDataProcessing(df, keyid="record", platform="decipher", pid=pid)
 
 # Use Excel
-file_name = "data/{pid}.xlsx"
-df = SetUpDataCheck(pd.read_excel(file_name, engine="openpyxl"), keyid="record")'''
+file_name = f"data/{{pid}}.xlsx"
+df = SetUpDataProcessing(pd.read_excel(file_name, engine="openpyxl"), keyid="record", platform="decipher", pid=pid)
+'''
     
     ipynb_cell.append(nbf.v4.new_code_cell(default))
     ipynb_cell.append(nbf.v4.new_code_cell("""# df.display_msg = 'error'"""))
