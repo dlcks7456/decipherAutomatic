@@ -364,9 +364,10 @@ class DataProcessing :
         self.title = title
 
     def __getattr__(self, name):
-        # Delegate attribute access to the DataCheck instance
         return getattr(self.data_check_instance, name)
 
+    def __getitem__(self, variables):
+        return self.data_check_instance[variables]
 
     def setting_meta(self, meta, variable) :
         if variable is None :

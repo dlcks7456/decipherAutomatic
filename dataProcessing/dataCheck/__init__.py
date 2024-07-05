@@ -1133,6 +1133,7 @@ class DataCheck(pd.DataFrame):
 
             dv = []
             diff_qids = []
+            diff_ans  = []
             if diff_value is not None:
                 if not isinstance(diff_value, (list, range, int, str)):
                     display(HTML("""<div class="check-bold check-fail">❌ [ERROR] Type of diff_value must be list, range, int, or str</div>"""))
@@ -1147,15 +1148,17 @@ class DataCheck(pd.DataFrame):
                 
                 warnings.append(f"""Do not check the code : {dv}""")
                 diff_qids = [qid_key.format(code=x) for x in dv]
+                diff_ans  = [ans_key.format(code=x) for x in dv]
 
             def ma_base_check(x) :
                 def flag(b, a) :
+
                     if pd.isna(b) or b == 0 :
                         if not (pd.isna(a) or a == 0) :
                             return True
                     
                     return False
-                return 1 if any(flag(x[base], x[ans]) for base, ans in zip_cols if not base in diff_qids) else np.nan
+                return 1 if any(flag(x[base], x[ans]) for base, ans in zip_cols if (not base in diff_qids) and (not ans in diff_ans)) else np.nan
                 
             chk_df[err_col] = chk_df[filt].apply(ma_base_check, axis=1)
 
