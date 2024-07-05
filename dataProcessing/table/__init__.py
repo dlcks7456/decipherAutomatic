@@ -357,36 +357,36 @@ class CrossTabs :
     def _repr_html_(self) -> str:
         return self.result._repr_html_()
 
-def delegate_methods(cls):
-    def wrapper(data_check_instance: Type[DataCheck], *args, **kwargs):
-        obj = cls(data_check_instance, *args, **kwargs)
-        for method_name in dir(data_check_instance):
-            if callable(getattr(data_check_instance, method_name)) and not method_name.startswith("__"):
-                setattr(cls, method_name, getattr(data_check_instance, method_name))
-        return obj
-    return wrapper
 
-@delegate_methods
 class DataProcessing :
-    def __init__(self, data_check_instance: Type[DataCheck], meta: Optional[Dict[str, Any]] = None, title: Optional[Dict[str, Any]] = None) -> None:
-        self.__dict__['data_check_instance'] = data_check_instance
+    def __init__(self, 
+                 dataframe: Type[DataCheck], 
+                 meta: Optional[Dict[str, Any]] = None, 
+                 title: Optional[Dict[str, Any]] = None, 
+                 default_top: Optional[int] = None, 
+                 default_bottom: Optional[int] = None) -> None:
+        self.__dict__['dataframe'] = dataframe
+        self.__dict__['meta_origin'] = meta
         self.__dict__['meta'] = meta
         self.__dict__['title'] = title
+        self.__dict__['banner'] = []
+        self.__dict__['default_top'] = 2 if default_top is None else default_top
+        self.__dict__['default_bottom'] = 2 if default_bottom is None else default_bottom
 
     def __getattr__(self, name):
-        return getattr(self.data_check_instance, name)
+        return getattr(self.dataframe, name)
 
     def __dir__(self) -> List[str]:
-        return dir(self.data_check_instance) + list(self.__dict__.keys())
+        return dir(self.dataframe) + list(self.__dict__.keys())
 
     def __getitem__(self, variables):
-        return self.data_check_instance[variables]
+        return self.dataframe[variables]
 
     def __setattr__(self, name, value):
-        if name in ('data_check_instance', 'meta', 'title'):
+        if name in ('dataframe', 'meta_origin', 'meta', 'title', 'banner'):
             self.__dict__[name] = value
         else:
-            setattr(self.__dict__['data_check_instance'], name, value)
+            setattr(self.__dict__['dataframe'], name, value)
 
     def setting_meta(self, meta, variable) :
         if variable is None :
@@ -457,6 +457,78 @@ class DataProcessing :
 
             return CrossTabs(result)
 
+    def set_banner(self, banner_list: List[Tuple]) :
+        # [ ('banner column name', 'banner title', banner condition) ]
+        self.banner = [] # clear banner
+        new_columns = {}
+        new_meta = self.meta_origin
+
+        for banner in banner_list :
+            try :
+                col, title, cond = banner
+                if not isinstance(col, str) :
+                    raise ValueError(f'banner column name must be string : {banner}')
+                    
+                if not isinstance(title, str) :
+                    raise ValueError(f'banner title must be string : {banner}')
+
+                if not isinstance(cond, pd.Series) :
+                    raise ValueError(f'banner condition must be pd.Series : {banner}')
+
+                # Create new column based on condition
+                new_columns[col] = cond.astype(int)
+                new_meta[col] = title
+                self.banner.append(col)
+                
+            except Exception as e:
+                raise ValueError('banner list must be list of tuple') from e
+        
+        # Add all new columns to the dataframe at once
+        self.dataframe = pd.concat([self.dataframe, pd.DataFrame(new_columns, index=self.dataframe.index)], axis=1)
+        
+        self.meta = new_meta
+
+    def banner_table(self, index: Union[str, List[str]],
+                    index_meta: Optional[List[Dict[str, str]]] = None,
+                    columns_meta: Optional[List[Dict[str, str]]] = None,
+                    include_total: bool = True,
+                    index_name: Optional[str] = None,
+                    columns_name: Optional[str] = None,
+                    qtype: str = None,
+                    top: Optional[int] = None,
+                    bottom: Optional[int] = None,
+                    sort_index: Optional[str] = None) -> pd.DataFrame :
+
+            df = self.copy()
+
+            index_meta = self.setting_meta(index_meta, index)
+            index_name = self.setting_title(index_name, index)
+            
+            columns = self.banner
+            columns_meta = self.setting_meta(columns_meta, columns)
+            columns_name = self.setting_title(columns_name, columns)
+            
+            if qtype in ['rating'] :
+                # default
+                top = self.default_top if top is None else top
+                bottom = self.default_bottom if bottom is None else bottom
+                sort_index = 'desc'
+
+            result = create_crosstab(df,
+                                    index=index,
+                                    columns=columns,
+                                    index_meta=index_meta,
+                                    columns_meta=columns_meta,
+                                    include_total=include_total,
+                                    index_name=index_name,
+                                    columns_name=columns_name,
+                                    top=top,
+                                    bottom=bottom,
+                                    sort_index=sort_index)
+
+            return CrossTabs(result)
+
+
 def get_decipher_datamap_json(pid: Union[str, int]) :
     api.login(api_key, api_server)
     json_map = api.get(f"surveys/selfserve/548/{pid}/datamap", format="json")
@@ -504,7 +576,12 @@ def decipher_title(pid: Union[str, int]) :
     return title_data
 
 
-def SetUpDataProcessing(dataframe: pd.DataFrame, keyid: Optional[str]=None, platform: Literal['decipher']=None, pid: Optional[Union[str, int]]=None) :
+def SetUpDataProcessing(dataframe: pd.DataFrame, 
+                        keyid: Optional[str]=None, 
+                        platform: Literal['decipher']=None, 
+                        pid: Optional[Union[str, int]]=None,
+                        default_top: Optional[int] = None,
+                        default_bottom: Optional[int] = None) :
     module_path = os.path.dirname(__file__)
     css_path = os.path.join(os.path.dirname(module_path), 'dataCheck')
     css = get_css(os.path.join(css_path, 'styles.css'))
@@ -520,4 +597,4 @@ def SetUpDataProcessing(dataframe: pd.DataFrame, keyid: Optional[str]=None, plat
         title = decipher_title(pid)
     
     dc = DataCheck(df, css=css, keyid=keyid)
-    return DataProcessing(dc, meta=metadata, title=title)
+    return DataProcessing(dc, meta=metadata, title=title, default_top=default_top, default_bottom=default_bottom)
