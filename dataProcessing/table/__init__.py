@@ -15,7 +15,6 @@ import time
 from decipherAutomatic.key import api_key, api_server
 from decipherAutomatic.getFiles import *
 from decipherAutomatic.utils import *
-from decipherAutomatic.dataProcessing.dataCheck import *
 from pandas.io.formats import excel
 import zipfile
 
@@ -221,6 +220,8 @@ def create_crosstab(df: pd.DataFrame,
             crosstab_result = pd.DataFrame(index=index, columns=["Count"])
             for idx in index:
                 crosstab_result.loc[idx, "Count"] = (df[idx] != 0).sum()
+            
+            crosstab_result.loc[total_label] = ((df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum()
         else:
             crosstab_result = df[index].value_counts().to_frame(name="Count")
     else:
@@ -245,12 +246,14 @@ def create_crosstab(df: pd.DataFrame,
                 margins_name=total_label
             )
 
+    crosstab_result.index = crosstab_result.index.map(str)
+    crosstab_result.columns = crosstab_result.columns.map(str)
 
     # Process index metadata
     if index_meta:
         index_order, index_labels = extract_order_and_labels(index_meta)
         crosstab_result = add_missing_indices(crosstab_result, index_order)
-        
+
         total_row = None
         if include_total :
             total_row = crosstab_result.loc[total_label, :]
@@ -357,178 +360,6 @@ class CrossTabs :
     def _repr_html_(self) -> str:
         return self.result._repr_html_()
 
-
-class DataProcessing :
-    def __init__(self, 
-                 dataframe: Type[DataCheck], 
-                 meta: Optional[Dict[str, Any]] = None, 
-                 title: Optional[Dict[str, Any]] = None, 
-                 default_top: Optional[int] = None, 
-                 default_bottom: Optional[int] = None) -> None:
-        self.__dict__['dataframe'] = dataframe
-        self.__dict__['meta_origin'] = meta
-        self.__dict__['meta'] = meta
-        self.__dict__['title'] = title
-        self.__dict__['banner'] = []
-        self.__dict__['default_top'] = 2 if default_top is None else default_top
-        self.__dict__['default_bottom'] = 2 if default_bottom is None else default_bottom
-
-    def __getattr__(self, name):
-        return getattr(self.dataframe, name)
-
-    def __dir__(self) -> List[str]:
-        return dir(self.dataframe) + list(self.__dict__.keys())
-
-    def __getitem__(self, variables):
-        return self.dataframe[variables]
-
-    def __setattr__(self, name, value):
-        if name in ('dataframe', 'meta_origin', 'meta', 'title', 'banner'):
-            self.__dict__[name] = value
-        else:
-            setattr(self.__dict__['dataframe'], name, value)
-
-    def setting_meta(self, meta, variable) :
-        if variable is None :
-            return None
-    
-        return_meta = None
-        if meta is None :
-            if self.meta is not None :
-                if isinstance(variable, str) :
-                    if variable in self.meta.keys() :
-                        return_meta = self.meta[variable]
-                
-                if isinstance(variable, list) :
-                    return_meta = [{v: self.meta[v]} if v in self.meta.keys() else {v: ''} for v in variable]
-        else :
-            return_meta = meta
-        
-        return return_meta
-    
-    def setting_title(self, title, variable) :
-        if variable is None :
-            return None
-
-        return_title = None
-        if title is None :
-            if self.title is not None :
-                chk_var = variable
-                if isinstance(chk_var, list) :
-                    chk_var = variable[0]
-                
-                if chk_var in self.title.keys() :
-                    return_title = self.title[chk_var]['title']
-        else :
-            return_title = title
-
-        return return_title
-
-    def table(self, index: Union[str, List[str]],
-                    columns: Optional[Union[str, List[str]]] = None,
-                    index_meta: Optional[List[Dict[str, str]]] = None,
-                    columns_meta: Optional[List[Dict[str, str]]] = None,
-                    include_total: bool = False,
-                    index_name: Optional[str] = None,
-                    columns_name: Optional[str] = None,
-                    top: Optional[int] = None,
-                    bottom: Optional[int] = None,
-                    sort_index: Optional[str] = None) -> pd.DataFrame :
-
-            df = self.copy()
-
-            index_meta = self.setting_meta(index_meta, index)
-            index_name = self.setting_title(index_name, index)
-
-            columns_meta = self.setting_meta(columns_meta, columns)
-            columns_name = self.setting_title(columns_name, columns)
-            
-            result = create_crosstab(df,
-                                    index=index,
-                                    columns=columns,
-                                    index_meta=index_meta,
-                                    columns_meta=columns_meta,
-                                    include_total=include_total,
-                                    index_name=index_name,
-                                    columns_name=columns_name,
-                                    top=top,
-                                    bottom=bottom,
-                                    sort_index=sort_index)
-
-            return CrossTabs(result)
-
-    def set_banner(self, banner_list: List[Tuple]) :
-        # [ ('banner column name', 'banner title', banner condition) ]
-        self.banner = [] # clear banner
-        new_columns = {}
-        new_meta = self.meta_origin
-
-        for banner in banner_list :
-            try :
-                col, title, cond = banner
-                if not isinstance(col, str) :
-                    raise ValueError(f'banner column name must be string : {banner}')
-                    
-                if not isinstance(title, str) :
-                    raise ValueError(f'banner title must be string : {banner}')
-
-                if not isinstance(cond, pd.Series) :
-                    raise ValueError(f'banner condition must be pd.Series : {banner}')
-
-                # Create new column based on condition
-                new_columns[col] = cond.astype(int)
-                new_meta[col] = title
-                self.banner.append(col)
-                
-            except Exception as e:
-                raise ValueError('banner list must be list of tuple') from e
-        
-        # Add all new columns to the dataframe at once
-        self.dataframe = pd.concat([self.dataframe, pd.DataFrame(new_columns, index=self.dataframe.index)], axis=1)
-        
-        self.meta = new_meta
-
-    def banner_table(self, index: Union[str, List[str]],
-                    index_meta: Optional[List[Dict[str, str]]] = None,
-                    columns_meta: Optional[List[Dict[str, str]]] = None,
-                    include_total: bool = True,
-                    index_name: Optional[str] = None,
-                    columns_name: Optional[str] = None,
-                    qtype: str = None,
-                    top: Optional[int] = None,
-                    bottom: Optional[int] = None,
-                    sort_index: Optional[str] = None) -> pd.DataFrame :
-
-            df = self.copy()
-
-            index_meta = self.setting_meta(index_meta, index)
-            index_name = self.setting_title(index_name, index)
-            
-            columns = self.banner
-            columns_meta = self.setting_meta(columns_meta, columns)
-            columns_name = self.setting_title(columns_name, columns)
-            
-            if qtype in ['rating'] :
-                # default
-                top = self.default_top if top is None else top
-                bottom = self.default_bottom if bottom is None else bottom
-                sort_index = 'desc'
-
-            result = create_crosstab(df,
-                                    index=index,
-                                    columns=columns,
-                                    index_meta=index_meta,
-                                    columns_meta=columns_meta,
-                                    include_total=include_total,
-                                    index_name=index_name,
-                                    columns_name=columns_name,
-                                    top=top,
-                                    bottom=bottom,
-                                    sort_index=sort_index)
-
-            return CrossTabs(result)
-
-
 def get_decipher_datamap_json(pid: Union[str, int]) :
     api.login(api_key, api_server)
     json_map = api.get(f"surveys/selfserve/548/{pid}/datamap", format="json")
@@ -574,27 +405,3 @@ def decipher_title(pid: Union[str, int]) :
 
     
     return title_data
-
-
-def SetUpDataProcessing(dataframe: pd.DataFrame, 
-                        keyid: Optional[str]=None, 
-                        platform: Literal['decipher']=None, 
-                        pid: Optional[Union[str, int]]=None,
-                        default_top: Optional[int] = None,
-                        default_bottom: Optional[int] = None) :
-    module_path = os.path.dirname(__file__)
-    css_path = os.path.join(os.path.dirname(module_path), 'dataCheck')
-    css = get_css(os.path.join(css_path, 'styles.css'))
-    display(HTML(css))
-    df = convert_columns_to_nullable_int(dataframe)
-
-    metadata = None
-    if platform == 'decipher' :
-        if pid is None :
-            raise ValueError("Enter Decipher pid")
-        
-        metadata = decipher_meta(pid)
-        title = decipher_title(pid)
-    
-    dc = DataCheck(df, css=css, keyid=keyid)
-    return DataProcessing(dc, meta=metadata, title=title, default_top=default_top, default_bottom=default_bottom)

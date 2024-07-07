@@ -16,6 +16,7 @@ import time
 from decipherAutomatic.key import api_key, api_server
 from decipherAutomatic.getFiles import *
 from decipherAutomatic.utils import *
+from decipherAutomatic.dataProcessing.table import *
 from pandas.io.formats import excel
 import zipfile
 
@@ -297,11 +298,15 @@ class ErrorDataFrame:
         return ''
 
 class DataCheck(pd.DataFrame):
-    _metadata = ['_keyid', '_css']
+    _metadata = ['_keyid', '_css', '_meta_origin', '_meta', '_title', '_default_top', '_default_bottom']
 
     def __init__(self, *args, **kwargs):
         self._keyid = kwargs.pop('keyid', None)
         self._css = kwargs.pop('css', None)
+        self._meta = kwargs.pop('meta', None)
+        self._title = kwargs.pop('title', None)
+        self._default_top = kwargs.pop('default_top', None)
+        self._default_bottom = kwargs.pop('default_bottom', None)
         
         super().__init__(*args, **kwargs)
         if self._keyid is not None:
@@ -317,6 +322,13 @@ class DataCheck(pd.DataFrame):
         self.attrs['default_filter'] = pd.Series([True] * len(self), index=self.index)
         self.attrs['result_html'] = []
         self.attrs['css'] = self._css
+        self.attrs['meta_origin'] = self._meta
+        self.attrs['meta'] = self._meta
+        self.attrs['title'] = self._title
+        self.attrs['banner'] = []
+        self.attrs['default_top'] = 2 if self._default_top is None else self._default_top
+        self.attrs['default_bottom'] = 2 if self._default_bottom is None else self._default_bottom
+
 
     @property
     def _constructor(self) -> Callable[..., 'DataCheck']:
@@ -1454,6 +1466,187 @@ class DataCheck(pd.DataFrame):
             display(HTML("""<div class="check-bold check-warn">⚠️ The variable does not exist in the dataframe</div>"""))
         return filt
 
+    # DataProcessing
+    def setting_meta(self, meta, variable) :
+        if variable is None :
+            return None
+
+        if meta is False :
+            return None
+
+        return_meta = None
+        if meta is None :
+            meta_attr = self.attrs['meta']
+            if meta_attr is not None :
+                if isinstance(variable, str) :
+                    if variable in meta_attr.keys() :
+                        return_meta = meta_attr[variable]
+                
+                if isinstance(variable, list) :
+                    return_meta = [{v: meta_attr[v]} if v in meta_attr.keys() else {v: ''} for v in variable]
+        else :
+            return_meta = meta
+        
+        return return_meta
+
+    def setting_title(self, title, variable) :
+        if variable is None :
+            return None
+
+        if title is False :
+            return None
+
+        return_title = None
+        if title is None :
+            title_attr = self.attrs['title']
+            if title_attr is not None :
+                chk_var = variable
+                if isinstance(chk_var, list) :
+                    chk_var = variable[0]
+                
+                if chk_var in title_attr.keys() :
+                    return_title = title_attr[chk_var]['title']
+        else :
+            return_title = title
+
+        return return_title
+
+    def table(self, index: Union[str, List[str]],
+                    columns: Optional[Union[str, List[str]]] = None,
+                    cond: Optional[pd.Series] = None,
+                    index_meta: Optional[List[Dict[str, str]]] = None,
+                    columns_meta: Optional[List[Dict[str, str]]] = None,
+                    include_total: bool = False,
+                    index_name: Optional[str] = None,
+                    columns_name: Optional[str] = None,
+                    top: Optional[int] = None,
+                    bottom: Optional[int] = None,
+                    sort_index: Optional[str] = None) -> pd.DataFrame :
+
+            cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
+            df = self[cond].copy()
+
+            index_meta = self.setting_meta(index_meta, index)
+            index_name = self.setting_title(index_name, index)
+            if isinstance(index, str) and isinstance(index_meta, str) :
+                index_meta = None
+                sort_index = "asc" if sort_index is None else sort_index
+
+            columns_meta = self.setting_meta(columns_meta, columns)
+            columns_name = self.setting_title(columns_name, columns)
+            if isinstance(index, str) and isinstance(columns_meta, str) :
+                columns_meta = None
+            
+            result = create_crosstab(df,
+                                    index=index,
+                                    columns=columns,
+                                    index_meta=index_meta,
+                                    columns_meta=columns_meta,
+                                    include_total=include_total,
+                                    index_name=index_name,
+                                    columns_name=columns_name,
+                                    top=top,
+                                    bottom=bottom,
+                                    sort_index=sort_index)
+
+            return CrossTabs(result)
+
+    def set_banner(self, banner_list: List[Tuple]):
+        # [ ('banner column name', 'banner title', banner condition) ]
+        self.attrs['banner'] = []  # clear banner
+        update_banner_list = self.attrs['banner']
+        new_columns = {}
+        new_meta = self.attrs['meta_origin']
+        new_data = {}
+
+        def add_banner_column(col, title, cond):
+            if not isinstance(col, str):
+                raise ValueError(f'banner column name must be string : {col}')
+            
+            if not isinstance(title, str):
+                raise ValueError(f'banner title must be string : {title}')
+
+            if not isinstance(cond, pd.Series):
+                raise ValueError(f'banner condition must be pd.Series : {cond}')
+            
+            new_col = pd.Series(0, index=self.index)
+            new_col[cond] = 1
+            result = self.assign(**{col: new_col})
+            self.__dict__.update(result.__dict__)
+
+            new_meta[col] = title
+            update_banner_list.append(col)
+
+        for banner in banner_list:
+            if isinstance(banner, tuple):
+                col, title, cond = banner
+                add_banner_column(col, title, cond)
+            
+            if isinstance(banner, list):
+                group, each = banner
+                if not isinstance(group, str):
+                    raise ValueError(f'banner group name must be string : {banner}')
+                
+                if not isinstance(each, list):
+                    raise ValueError(f'banner variable must be list : {banner}')
+                
+                for var in each:
+                    col, title, cond = var
+                    add_banner_column(col, title, cond)
+        
+        # Add all new columns to the dataframe at once
+        # self.dataframe = pd.concat([self.dataframe, pd.DataFrame(new_columns, index=self.dataframe.index)], axis=1)
+        self.attrs['meta'] = new_meta
+
+
+    def banner_table(self, 
+                    index: Union[str, List[str]],
+                    cond: Optional[pd.Series] = None,
+                    index_meta: Optional[List[Dict[str, str]]] = None,
+                    columns_meta: Optional[List[Dict[str, str]]] = None,
+                    include_total: bool = True,
+                    index_name: Optional[str] = None,
+                    columns_name: Optional[str] = None,
+                    qtype: str = None,
+                    top: Optional[int] = None,
+                    bottom: Optional[int] = None,
+                    sort_index: Optional[str] = None) -> pd.DataFrame :
+
+            cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
+            df = self[cond].copy()
+
+            index_meta = self.setting_meta(index_meta, index)
+            index_name = self.setting_title(index_name, index)
+            
+            if isinstance(index, str) and isinstance(index_meta, str) :
+                index_meta = None
+                sort_index = "asc" if sort_index is None else sort_index
+
+            columns = self.attrs['banner']
+            columns_meta = self.setting_meta(columns_meta, columns)
+            columns_name = self.setting_title(columns_name, columns)
+
+            if qtype in ['rating'] :
+                # default
+                top = self.attrs['default_top'] if top is None else top
+                bottom = self.attrs['default_bottom'] if bottom is None else bottom
+                sort_index = 'desc'
+
+            result = create_crosstab(df,
+                                    index=index,
+                                    columns=columns,
+                                    index_meta=index_meta,
+                                    columns_meta=columns_meta,
+                                    include_total=include_total,
+                                    index_name=index_name,
+                                    columns_name=columns_name,
+                                    top=top,
+                                    bottom=bottom,
+                                    sort_index=sort_index)
+
+            return CrossTabs(result)
+
+
 
 def get_css(path: os.path) -> str:
     css_file_path = os.path.join(path)
@@ -1487,6 +1680,31 @@ def SetUpDataCheck(dataframe: pd.DataFrame, **kwargs) :
     display(HTML(css))
     df = convert_columns_to_nullable_int(dataframe)
     return DataCheck(df, css=css, **kwargs)
+
+
+def DecipherDataProcessing(dataframe: pd.DataFrame, 
+                           keyid: Optional[str] = "record",
+                           meta_path: Optional[str] = None,
+                           title_path: Optional[str] = None,
+                           default_top: Optional[int] = None,
+                        default_bottom: Optional[int] = None) :
+    module_path = os.path.dirname(__file__)
+    css_path = os.path.join(os.path.dirname(module_path), 'dataCheck')
+    css = get_css(os.path.join(css_path, 'styles.css'))
+    display(HTML(css))
+    df = convert_columns_to_nullable_int(dataframe)
+
+    metadata = None if meta_path is None else json.load(open(meta_path))
+    title = None if title_path is None else json.load(open(title_path))
+    
+    return DataCheck(df, 
+                     css=css, 
+                     keyid=keyid,
+                     meta=metadata, 
+                     title=title, 
+                     default_top=default_top, 
+                     default_bottom=default_bottom)
+    # return DataProcessing(dc, meta=metadata, title=title, default_top=default_top, default_bottom=default_bottom)
 
 
 #### Decipher Ready
@@ -1548,6 +1766,7 @@ def DecipherSetting(pid: str,
             use_variable: bool = False,
             key: str = api_key, 
             server: str = api_server, 
+            meta: bool = True, 
             json_export: bool = True, 
             data_layout: bool = False, 
             base_layout: str = 'DoNotDelete',
@@ -1804,6 +2023,18 @@ def DecipherSetting(pid: str,
         with open(os.path.join(map_path, f'map_{pid}.json'), 'w', encoding='utf-8') as f :
             json.dump(qids, f, ensure_ascii=False, indent=4)
 
+    if meta :
+        ensure_directory_exists('meta')
+        meta_path = os.path.join(parent_path, 'meta')
+        metadata = decipher_meta(pid)
+        title = decipher_title(pid)
+
+        with open(os.path.join(meta_path, f'meta_{pid}.json'), 'w', encoding='utf-8') as f :
+            json.dump(metadata, f, ensure_ascii=False, indent=4)
+        
+        with open(os.path.join(meta_path, f'title_{pid}.json'), 'w', encoding='utf-8') as f :
+            json.dump(title, f, ensure_ascii=False, indent=4)
+
     # print(qids)
     # data layout export
     if data_layout :
@@ -1885,22 +2116,25 @@ def DecipherSetting(pid: str,
 
     # set_file_name = 'pd.read_excel(file_name)' if mode == 'file' else 'pd.read_csv(file_name, low_memory=False)'
 
+    excel_meta = f'''DecipherDataProcessing(df, meta_path="meta/meta_{pid}.json", title_path="meta/title_{pid}.json")''' if meta else '''DecipherDataProcessing(df)'''
+
     default = f'''import pandas as pd
 import pyreadstat
 import numpy as np
 from map.variables_{pid} import * 
-from decipherAutomatic.dataProcessing.table import *
+from decipherAutomatic.dataProcessing.dataCheck import *
 
 pid = "{pid}"
 
 # Use SPSS
 # file_name = f"data/{{pid}}.sav"
 # df, meta = pyreadstat.read_sav(file_name)
-# df = SetUpDataProcessing(df, keyid="record", platform="decipher", pid=pid)
+# df = DecipherDataProcessing(df)
 
 # Use Excel
 file_name = f"data/{{pid}}.xlsx"
-df = SetUpDataProcessing(pd.read_excel(file_name, engine="openpyxl"), keyid="record", platform="decipher", pid=pid)
+df = pd.read_excel(file_name, engine="openpyxl")
+df = {excel_meta}
 '''
     
     ipynb_cell.append(nbf.v4.new_code_cell(default))
