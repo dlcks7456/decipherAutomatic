@@ -286,9 +286,11 @@ def create_crosstab(df: pd.DataFrame,
     # Sort index if sort_index is specified
     original_index_order = crosstab_result.index.to_list()
 
+    medium = None
     if any([n is not None for n in [top, bottom]]) :
         sort_index = 'desc'
-
+        medium = True
+        
     if sort_index is not None:
         ascending = True if sort_index == 'asc' else False
         
@@ -315,6 +317,11 @@ def create_crosstab(df: pd.DataFrame,
         top_name = f'Top {top}'
         top_indices.name = top_name
 
+    if medium is True :
+        medium_indices = crosstab_result.iloc[bottom:-top].sum()
+        medium_name = 'Medium'
+        medium_indices.name = medium_name
+
     if bottom is not None:
         bottom_indices = crosstab_result.iloc[-bottom:].sum()
         bot_name = f'Bottom {bottom}'
@@ -323,6 +330,9 @@ def create_crosstab(df: pd.DataFrame,
     if top is not None :
         crosstab_result = pd.concat([crosstab_result, pd.DataFrame([top_indices])])
     
+    if medium is True :
+        crosstab_result = pd.concat([crosstab_result, pd.DataFrame([medium_indices])])
+
     if bottom is not None :
         crosstab_result = pd.concat([crosstab_result, pd.DataFrame([bottom_indices])])
 
@@ -336,6 +346,9 @@ def create_crosstab(df: pd.DataFrame,
     if top is not None:
         final_order.append(top_name)
     
+    if medium is not None:
+        final_order.append(medium_name)
+
     if bottom is not None :
         final_order.append(bot_name)
 

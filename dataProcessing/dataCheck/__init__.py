@@ -1539,7 +1539,8 @@ class DataCheck(pd.DataFrame):
                     columns_name: Optional[str] = None,
                     top: Optional[int] = None,
                     bottom: Optional[int] = None,
-                    sort_index: Optional[str] = None) -> pd.DataFrame :
+                    sort_index: Optional[str] = None,
+                    qtype: Literal['rating'] = None) -> pd.DataFrame :
 
             cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
             df = self[cond].copy()
@@ -1554,7 +1555,13 @@ class DataCheck(pd.DataFrame):
             columns_name = self.setting_title(columns_name, columns)
             if isinstance(columns, str) and isinstance(columns_meta, str) :
                 columns_meta = None
-            
+
+            if qtype in ['rating'] :
+                # default
+                top = self.attrs['default_top'] if top is None else top
+                bottom = self.attrs['default_bottom'] if bottom is None else bottom
+                sort_index = 'desc'
+
             result = create_crosstab(df,
                                     index=index,
                                     columns=columns,
