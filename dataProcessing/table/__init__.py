@@ -50,6 +50,7 @@ def create_crosstab(df: pd.DataFrame,
     """
     
     total_label = 'Total'
+    count_label = 'Count'
 
     def extract_order_and_labels(metadata):
         """
@@ -140,10 +141,10 @@ def create_crosstab(df: pd.DataFrame,
 
         if columns_col is None:
             # Create a crosstab with a single "Count" column if no columns_col is provided
-            crosstab_result = pd.DataFrame(index=index_cols, columns=["Count"])
+            crosstab_result = pd.DataFrame(index=index_cols, columns=[count_label])
             for idx in index_cols:
                 count = count_binary_values(idx, idx)
-                crosstab_result.loc[idx, "Count"] = count
+                crosstab_result.loc[idx, count_label] = count
         else:
             if isinstance(index_cols, str) and isinstance(columns_col, list) :
                 # Extract unique values from the single column
@@ -190,9 +191,11 @@ def create_crosstab(df: pd.DataFrame,
                     for col in columns_col:
                         count = count_binary_values(idx, col) if idx != col else count_binary_values(idx, idx)
                         crosstab_result.loc[idx, col] = count
-                        crosstab_result.loc[total_label, col] = ma_ma_count(index_cols, col)
+                        if include_total :
+                            crosstab_result.loc[total_label, col] = ma_ma_count(index_cols, col)
                     
-                    crosstab_result.loc[idx, total_label] = ma_ma_count(columns_col, idx)
+                    if include_total :
+                        crosstab_result.loc[idx, total_label] = ma_ma_count(columns_col, idx)
                 
                 if include_total :
                     crosstab_result.loc[total_label, total_label] = ma_ma_total(index_cols, columns_col)
@@ -217,13 +220,16 @@ def create_crosstab(df: pd.DataFrame,
     if columns is None:
         if index_is_binary:
             # Create frequency table for binary columns
-            crosstab_result = pd.DataFrame(index=index, columns=["Count"])
+            crosstab_result = pd.DataFrame(index=index, columns=[count_label])
             for idx in index:
-                crosstab_result.loc[idx, "Count"] = (df[idx] != 0).sum()
+                crosstab_result.loc[idx, count_label] = (df[idx] != 0).sum()
             
-            crosstab_result.loc[total_label] = ((df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum()
+            if include_total :
+                crosstab_result.loc[total_label] = ((df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum()
         else:
-            crosstab_result = df[index].value_counts().to_frame(name="Count")
+            crosstab_result = df[index].value_counts().to_frame(name=count_label)
+            if include_total :
+                crosstab_result.loc[total_label] = crosstab_result[count_label].sum()
     else:
         if isinstance(columns, str):
             columns_is_binary = False
@@ -343,22 +349,18 @@ def create_crosstab(df: pd.DataFrame,
     
     return crosstab_result
 
-class CrossTabs :
-    def __init__(self, crosstab_result:pd.DataFrame) :
-        self.result = crosstab_result
-
-    def __getattr__(self, name):
-        # Delegate attribute access to the DataCheck instance
-        return getattr(self.result, name)
+class CrossTabs(pd.DataFrame):
+    def __init__(self, crosstab_result: pd.DataFrame):
+        super().__init__(crosstab_result)
 
     def __repr__(self) -> str:
-        return self.result.__repr__()
+        return super().__repr__()
 
     def __str__(self) -> str:
-        return self.result.__str__()
+        return super().__str__()
 
     def _repr_html_(self) -> str:
-        return self.result._repr_html_()
+        return super()._repr_html_()
 
 def get_decipher_datamap_json(pid: Union[str, int]) :
     api.login(api_key, api_server)

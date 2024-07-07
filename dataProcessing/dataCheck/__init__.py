@@ -404,15 +404,30 @@ class DataCheck(pd.DataFrame):
             raise ValueError("The value must be a callable.")
         self._count_fnc = fnc
 
-    @staticmethod
-    def result_alt(qid: Union[str, List], alt: Optional[str]=None) -> str :
+    def result_alt(self, qid: Union[str, List], alt: Optional[str]=None) -> str :
         """
         qid와 alt 값을 사용하여 결과 대체 텍스트를 생성하는 정적 메서드
         """
         alt_qid = qid
         if isinstance(qid, list) :
             alt_qid = f'{qid[0]}-{qid[-1]}'
-        result_alt = alt_qid if alt is None else f'{alt_qid}: {alt}'
+        
+        result_alt = alt_qid
+
+        if self.attrs['title'] is not None :
+            match_qid = qid
+            if isinstance(qid, list) :
+                match_qid = qid[0]
+            
+            title_dict = self.attrs['title']
+            if match_qid in title_dict.keys() :
+                title = title_dict[match_qid]['title']
+                qtype = title_dict[match_qid]['type']
+                result_alt = f'{alt_qid}: {title}'
+
+        if alt is not None :
+            result_alt = f'{alt_qid}: {alt}'
+
         return result_alt
 
     def result_html_update(self, **kwargs) :
@@ -739,10 +754,10 @@ class DataCheck(pd.DataFrame):
 
                     chk_df = pd.concat([chk_df, add_df], ignore_index=True)
 
-
-        edf = ErrorDataFrame(qid, 'SA', show_cols, chk_df, err_list, warnings, alt)
+        set_alt = self.result_alt(qid, alt)
+        edf = ErrorDataFrame(qid, 'SA', show_cols, chk_df, err_list, warnings, set_alt)
         self.show_message(edf)
-        self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
+        self.result_html_update(alt=set_alt, result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
 
     def key_var_setting(self, cols: List, key_var: Optional[str]) -> str :
@@ -886,9 +901,10 @@ class DataCheck(pd.DataFrame):
 
             show_cols = [cnt] + show_cols
         
-        edf = ErrorDataFrame(qid, 'MA', show_cols, chk_df, err_list, warnings, alt)
+        set_alt = self.result_alt(qid, alt)
+        edf = ErrorDataFrame(qid, 'MA', show_cols, chk_df, err_list, warnings, set_alt)
         self.show_message(edf)
-        self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
+        self.result_html_update(alt=set_alt, result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
         return edf
 
 
@@ -1505,7 +1521,9 @@ class DataCheck(pd.DataFrame):
                     chk_var = variable[0]
                 
                 if chk_var in title_attr.keys() :
-                    return_title = title_attr[chk_var]['title']
+                    set_title = title_attr[chk_var]['title']
+                    set_title = set_title.replace('(HIDDEN)', '').strip()
+                    return_title = set_title
         else :
             return_title = title
 
@@ -1534,7 +1552,7 @@ class DataCheck(pd.DataFrame):
 
             columns_meta = self.setting_meta(columns_meta, columns)
             columns_name = self.setting_title(columns_name, columns)
-            if isinstance(index, str) and isinstance(columns_meta, str) :
+            if isinstance(columns, str) and isinstance(columns_meta, str) :
                 columns_meta = None
             
             result = create_crosstab(df,
@@ -1811,6 +1829,7 @@ def DecipherSetting(pid: str,
         parent_path =  os.path.join(parent_path, folder_name)
         chk_mkdir(parent_path)
 
+
     if mode == 'file' :
         file_name = f'{pid}.xlsx'
         xl = openpyxl.load_workbook(file_name)
@@ -1841,8 +1860,8 @@ def DecipherSetting(pid: str,
             return
 
         csv_binary = f'binary_{pid}.csv'
-        ensure_directory_exists('data')
         data_path = os.path.join(parent_path, 'data')
+        ensure_directory_exists(data_path)
         create_binary_file(data_path, csv_binary, csv_data)
         create_ascii_file(data_path, csv_binary, f'{pid}.csv')
         
@@ -1855,8 +1874,8 @@ def DecipherSetting(pid: str,
 
         map_xlsx = api.get(f'{path}/datamap', format='xlsx')
         
-        ensure_directory_exists('map')
         map_path = os.path.join(parent_path, 'map')
+        ensure_directory_exists(map_path)
         create_binary_file(map_path, f'mapsheet_{pid}.xlsx', map_xlsx)
 
         xl = openpyxl.load_workbook(os.path.join(map_path, f'mapsheet_{pid}.xlsx'))
@@ -2024,8 +2043,8 @@ def DecipherSetting(pid: str,
             json.dump(qids, f, ensure_ascii=False, indent=4)
 
     if meta :
-        ensure_directory_exists('meta')
         meta_path = os.path.join(parent_path, 'meta')
+        ensure_directory_exists(meta_path)
         metadata = decipher_meta(pid)
         title = decipher_title(pid)
 
@@ -2059,8 +2078,8 @@ def DecipherSetting(pid: str,
         oe_vars = ['text', 'textarea']
         diff_label_names = ['vqtable', 'voqtable', 'dummy', 'DUMMY', 'Dummmy']
         
-        ensure_directory_exists('layout')
         layout_path = os.path.join(parent_path, 'layout')
+        ensure_directory_exists(layout_path)
         ce = open(os.path.join(layout_path, f'CE_{pid}.txt'), 'w')
         oe = open(os.path.join(layout_path, f'OE_{pid}.txt'), 'w')
 
