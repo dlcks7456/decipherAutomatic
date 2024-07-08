@@ -1534,7 +1534,7 @@ class DataCheck(pd.DataFrame):
                     cond: Optional[pd.Series] = None,
                     index_meta: Optional[List[Dict[str, str]]] = None,
                     columns_meta: Optional[List[Dict[str, str]]] = None,
-                    include_total: bool = False,
+                    include_total: bool = True,
                     index_name: Optional[str] = None,
                     columns_name: Optional[str] = None,
                     top: Optional[int] = None,
