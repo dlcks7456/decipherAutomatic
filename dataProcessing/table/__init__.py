@@ -26,8 +26,8 @@ def create_crosstab(df: pd.DataFrame,
                     include_total: bool = False,
                     index_name: Optional[str] = None,
                     columns_name: Optional[str] = None,
-                    top: Optional[int] = None,
-                    bottom: Optional[int] = None,
+                    top: Optional[Union[int, List[int]]] = None,
+                    bottom: Optional[Union[int, List[int]]] = None,
                     sort_index: Optional[str] = None) -> pd.DataFrame:
     """
     Creates a crosstab from the provided DataFrame with optional metadata for reordering and relabeling indices and columns, and with options to include top/bottom summaries and index sorting.
@@ -287,7 +287,7 @@ def create_crosstab(df: pd.DataFrame,
     original_index_order = crosstab_result.index.to_list()
 
     medium = None
-    if any([n is not None for n in [top, bottom]]) :
+    if all([n is not None for n in [top, bottom]]) :
         sort_index = 'desc'
         medium = True
         
@@ -309,32 +309,79 @@ def create_crosstab(df: pd.DataFrame,
     
 
     # Add top and bottom summaries if needed
+    top_cols = []
     if top is not None:
-        top_indices = crosstab_result.iloc[:top].sum()
-        if include_total :
-            top_indices = crosstab_result.iloc[1:top+1].sum()
+        top_list = top
+        if isinstance(top, int) :
+            top_list = [top]
+        top_list = list(set(top_list))
+        top_list.sort(reverse=True)
         
-        top_name = f'Top {top}'
-        top_indices.name = top_name
+        top_result = []
+        for t in top_list :
+            top_indices = crosstab_result.iloc[:t].sum()
+            if include_total :
+                top_indices = crosstab_result.iloc[1:t+1].sum()
+            
+            top_name = f'Top {t}'
+            top_cols.append(top_name)
+            top_indices.name = top_name
+            top_result.append(pd.DataFrame([top_indices]))
+        
+        top_indices = pd.concat(top_result)
 
+    med_cols = []
     if medium is True :
-        medium_indices = crosstab_result.iloc[bottom:-top].sum()
-        medium_name = 'Medium'
-        medium_indices.name = medium_name
+        top_list = top
+        if isinstance(top, int) :
+            top_list = [top]
 
+        bot_list = bottom
+        if isinstance(bottom, int) :
+            bot_list = [bottom]
+
+        vtop = min(top_list)
+        vbot = min(bot_list)
+        
+        if include_total :
+            vbot +=1
+        
+        medium_index = crosstab_result.iloc[vbot:-vtop].index.to_list()
+        if medium_index :
+            medium_indices = crosstab_result.iloc[vbot:-vtop].sum()
+            medium_name = 'Medium'
+            med_cols.append(medium_name)
+            medium_indices.name = medium_name
+
+            medium_indices = pd.DataFrame([medium_indices])
+
+    bot_cols = []
     if bottom is not None:
-        bottom_indices = crosstab_result.iloc[-bottom:].sum()
-        bot_name = f'Bottom {bottom}'
-        bottom_indices.name = bot_name
+        bot_list = bottom
+        if isinstance(bottom, int) :
+            bot_list = [bottom]
 
-    if top is not None :
-        crosstab_result = pd.concat([crosstab_result, pd.DataFrame([top_indices])])
+        bot_list = list(set(bot_list))
+        bot_list.sort()
+
+        bot_result = []
+        for b in bot_list :
+            bottom_indices = crosstab_result.iloc[-b:].sum()
+            bot_name = f'Bottom {b}'
+            bot_cols.append(bot_name)
+            bottom_indices.name = bot_name
+            bot_result.append(pd.DataFrame([bottom_indices]))
+        
+        bottom_indices = pd.concat(bot_result)
+
+    if top_cols :
+        crosstab_result = pd.concat([crosstab_result, top_indices])
     
-    if medium is True :
-        crosstab_result = pd.concat([crosstab_result, pd.DataFrame([medium_indices])])
+    if med_cols :
+        crosstab_result = pd.concat([crosstab_result, medium_indices])
 
-    if bottom is not None :
-        crosstab_result = pd.concat([crosstab_result, pd.DataFrame([bottom_indices])])
+    if bot_cols :
+        crosstab_result = pd.concat([crosstab_result, bottom_indices])
 
 
     # Reorder to place Total, Top, and Bottom in the correct positions
@@ -343,14 +390,10 @@ def create_crosstab(df: pd.DataFrame,
     
     final_order += [o for o in original_index_order if not o in final_order]
 
-    if top is not None:
-        final_order.append(top_name)
-    
-    if medium is not None:
-        final_order.append(medium_name)
-
-    if bottom is not None :
-        final_order.append(bot_name)
+    for cols in [top_cols, med_cols, bot_cols] :
+        if cols :
+            for c in cols :
+                final_order.append(c)
 
     crosstab_result = crosstab_result.loc[final_order]
     
@@ -407,16 +450,24 @@ def decipher_meta(pid: Union[str, int]) :
 def decipher_title(pid: Union[str, int]) :
     json_map = get_decipher_datamap_json(pid)
     variables = json_map["variables"]
+    questions = json_map["questions"]
 
     title_data = {}
     for v in variables :
         label = v['label']
         qtype = v['type']
         qtitle = v['qtitle']
+        filt_question = [x for x in questions if x['qlabel']==label]
+        if filt_question :
+            ques = filt_question[0]
+            if 'dq' in ques.keys() :
+                if ques['dq'] == 'atmtable' :
+                    qtype = 'rating'
+        
         title_data[label] = {
             'type' : qtype,
             'title': qtitle
         }
 
-    
+
     return title_data

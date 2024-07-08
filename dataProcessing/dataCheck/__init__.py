@@ -1556,6 +1556,13 @@ class DataCheck(pd.DataFrame):
             if isinstance(columns, str) and isinstance(columns_meta, str) :
                 columns_meta = None
 
+            titles = self.attrs['title']
+            if titles is not None and isinstance(index, str) :
+                if index in titles.keys() :
+                    question_type = titles[index]['type']
+                    if question_type == 'rating' :
+                        qtype = 'rating'
+
             if qtype in ['rating'] :
                 # default
                 top = self.attrs['default_top'] if top is None else top
