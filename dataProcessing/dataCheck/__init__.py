@@ -322,9 +322,9 @@ class DataCheck(pd.DataFrame):
         self.attrs['default_filter'] = pd.Series([True] * len(self), index=self.index)
         self.attrs['result_html'] = []
         self.attrs['css'] = self._css
-        self.attrs['meta_origin'] = self._meta
-        self.attrs['meta'] = self._meta
-        self.attrs['title'] = self._title
+        self.attrs['meta_origin'] = self._meta if self._meta is not None else {}
+        self.attrs['meta'] = self._meta if self._meta is not None else {}
+        self.attrs['title'] = self._title if self._title is not None else {}
         self.attrs['banner'] = []
         self.attrs['default_top'] = 2 if self._default_top is None else self._default_top
         self.attrs['default_bottom'] = 2 if self._default_bottom is None else self._default_bottom
@@ -422,8 +422,17 @@ class DataCheck(pd.DataFrame):
             title_dict = self.attrs['title']
             if match_qid in title_dict.keys() :
                 title = title_dict[match_qid]['title']
-                qtype = title_dict[match_qid]['type']
-                result_alt = f'{alt_qid}: {title}'
+                # qtype = title_dict[match_qid]['type']
+
+                row_title = title_dict[match_qid]['row_title']
+                col_title = title_dict[match_qid]['col_title']
+
+                if row_title is not None :
+                    result_alt = f'{alt_qid}: {title}_{row_title}'
+                elif col_title is not None :
+                    result_alt = f'{alt_qid}: {title}_{col_title}'
+                else :
+                    result_alt = f'{alt_qid}: {title}'
 
         if alt is not None :
             result_alt = f'{alt_qid}: {alt}'
@@ -1523,7 +1532,9 @@ class DataCheck(pd.DataFrame):
                 if chk_var in title_attr.keys() :
                     set_title = title_attr[chk_var]['title']
                     set_title = set_title.replace('(HIDDEN)', '').strip()
+                    
                     return_title = set_title
+
         else :
             return_title = title
 
@@ -1537,9 +1548,13 @@ class DataCheck(pd.DataFrame):
                     include_total: bool = True,
                     index_name: Optional[str] = None,
                     columns_name: Optional[str] = None,
+                    fill: bool = True,
                     top: Optional[int] = None,
+                    medium: Optional[Union[int, List[int], bool]] = True,
                     bottom: Optional[int] = None,
                     sort_index: Optional[str] = None,
+                    aggfunc: Optional[list] = None,
+                    float_round: int = 2,
                     qtype: Literal['rating'] = None) -> pd.DataFrame :
 
             cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
@@ -1568,6 +1583,8 @@ class DataCheck(pd.DataFrame):
                 top = self.attrs['default_top'] if top is None else top
                 bottom = self.attrs['default_bottom'] if bottom is None else bottom
                 sort_index = 'desc'
+                if aggfunc is None :
+                    aggfunc = ['mean']
 
             result = create_crosstab(df,
                                     index=index,
@@ -1577,8 +1594,12 @@ class DataCheck(pd.DataFrame):
                                     include_total=include_total,
                                     index_name=index_name,
                                     columns_name=columns_name,
+                                    fill=fill,
                                     top=top,
+                                    medium=medium,
                                     bottom=bottom,
+                                    aggfunc=aggfunc,
+                                    float_round=float_round,
                                     sort_index=sort_index)
 
             return CrossTabs(result)
@@ -1605,7 +1626,7 @@ class DataCheck(pd.DataFrame):
             new_col[cond] = 1
             result = self.assign(**{col: new_col})
             self.__dict__.update(result.__dict__)
-
+            
             new_meta[col] = title
             update_banner_list.append(col)
 
@@ -1639,10 +1660,14 @@ class DataCheck(pd.DataFrame):
                     include_total: bool = True,
                     index_name: Optional[str] = None,
                     columns_name: Optional[str] = None,
-                    qtype: str = None,
+                    fill: bool = True,
                     top: Optional[int] = None,
+                    medium: Optional[Union[int, List[int], bool]] = True,
                     bottom: Optional[int] = None,
-                    sort_index: Optional[str] = None) -> pd.DataFrame :
+                    sort_index: Optional[str] = None,
+                    aggfunc: Optional[list] = None,
+                    float_round: int = 2,
+                    qtype: str = None,) -> pd.DataFrame :
 
             cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
             df = self[cond].copy()
@@ -1663,6 +1688,8 @@ class DataCheck(pd.DataFrame):
                 top = self.attrs['default_top'] if top is None else top
                 bottom = self.attrs['default_bottom'] if bottom is None else bottom
                 sort_index = 'desc'
+                if aggfunc is None :
+                    aggfunc = ['mean']
 
             result = create_crosstab(df,
                                     index=index,
@@ -1672,8 +1699,12 @@ class DataCheck(pd.DataFrame):
                                     include_total=include_total,
                                     index_name=index_name,
                                     columns_name=columns_name,
+                                    fill=fill,
                                     top=top,
+                                    medium=medium,
                                     bottom=bottom,
+                                    aggfunc=aggfunc,
+                                    float_round=float_round,
                                     sort_index=sort_index)
 
             return CrossTabs(result)

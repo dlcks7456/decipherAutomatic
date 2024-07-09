@@ -18,16 +18,90 @@ from decipherAutomatic.utils import *
 from pandas.io.formats import excel
 import zipfile
 
+def custom_calc(df: pd.DataFrame, 
+                index: str, 
+                columns: Union[str, List[str]],
+                total_label: str = 'Total',
+                include_total: bool = True,
+                aggfunc: Union[str, List[str]] = ['mean'], 
+                float_round: int = 2) -> pd.DataFrame:
+    """
+    Calculates descriptive statistics for the specified index column based on the values of the columns parameter.
+
+    Parameters:
+    df (pd.DataFrame): The input DataFrame.
+    index (str): The column name to group by and calculate statistics for.
+    columns (Union[str, List[str]]): The column name(s) to use for grouping.
+    aggfunc (Union[str, List[str]]): The aggregation function(s) to apply. Default is 'mean'.
+    float_round (int): Number of decimal places to round the results to. Default is 2.
+
+    Returns:
+    pd.DataFrame: A DataFrame containing the calculated statistics.
+    """
+    
+    # Validate index parameter
+    if not isinstance(index, str):
+        raise ValueError("Index parameter must be a string representing a column name.")
+    
+    # Ensure aggfunc is a list
+    if isinstance(aggfunc, str):
+        aggfunc = [aggfunc]
+
+    # Initialize an empty DataFrame for the results
+    ndf = pd.DataFrame()
+    
+    # Check if columns is a string or a list
+    def set_value(value) :
+        if value is None :
+            return np.nan
+        else :
+            return str(value)
+
+    if isinstance(columns, str):
+        # Single column case
+        values = df[columns].value_counts().index.to_list()
+        if include_total :
+            desc = df[df[columns].notna()][index].describe().round(float_round).to_dict()
+            for af in aggfunc:
+                ndf.loc[af, total_label] = set_value(desc[af])
+
+        for v in values:
+            desc = df[df[columns] == v][index].describe().round(float_round).to_dict()
+            for af in aggfunc:
+                ndf.loc[af, str(v)] = set_value(desc[af])
+        
+    elif isinstance(columns, list):
+        if include_total :
+            desc = df[(df[columns]!=0).any(axis=1) & (~df[columns].isna()).any(axis=1)][index].describe().round(float_round).to_dict()
+            for af in aggfunc:
+                ndf.loc[af, total_label] = set_value(desc[af])
+
+        # Binary data case
+        for col in columns:
+            desc = df[(~df[col].isna()) & (df[col] != 0)][index].describe().round(float_round).to_dict()
+            for af in aggfunc:
+                ndf.loc[af, col] = set_value(desc[af])
+
+    else:
+        raise ValueError("Columns parameter must be either a string or a list of column names.")
+
+    return ndf
+
+
 def create_crosstab(df: pd.DataFrame,
                     index: Union[str, List[str]],
                     columns: Optional[Union[str, List[str]]] = None,
                     index_meta: Optional[List[Dict[str, str]]] = None,
                     columns_meta: Optional[List[Dict[str, str]]] = None,
                     include_total: bool = False,
-                    index_name: Optional[str] = None,
-                    columns_name: Optional[str] = None,
+                    index_name: Optional[Union[str, bool]] = None,
+                    columns_name: Optional[Union[str, bool]] = None,
+                    fill: bool = True,
                     top: Optional[Union[int, List[int]]] = None,
+                    medium: Optional[Union[int, List[int], bool]] = True,
                     bottom: Optional[Union[int, List[int]]] = None,
+                    aggfunc: Optional[list] = None,
+                    float_round: int = 2,
                     sort_index: Optional[str] = None) -> pd.DataFrame:
     """
     Creates a crosstab from the provided DataFrame with optional metadata for reordering and relabeling indices and columns, and with options to include top/bottom summaries and index sorting.
@@ -78,8 +152,9 @@ def create_crosstab(df: pd.DataFrame,
         Returns:
             pd.DataFrame: The DataFrame with missing indices added.
         """
+        
         for idx in order:
-            if idx not in df.index:
+            if idx not in df.index :
                 df.loc[idx] = 0
         return df
 
@@ -99,10 +174,16 @@ def create_crosstab(df: pd.DataFrame,
         """
         if axis == 0:
             df = df.loc[order]
-            df.index = pd.Index(labels, name=name)
+            if name is not None and name is not False :
+                df.index = pd.Index(labels, name=name)
+            else :
+                df.index = pd.Index(labels)
         else:
             df = df[order]
-            df.columns = pd.Index(labels, name=name)
+            if name is not None and name is not False :
+                df.columns = pd.Index(labels, name=name)
+            else :
+                df.columns = pd.Index(labels)
         return df
 
     def create_binary_crosstab(df, index_cols, columns_col=None, include_total=False):
@@ -255,6 +336,10 @@ def create_crosstab(df: pd.DataFrame,
     crosstab_result.index = crosstab_result.index.map(str)
     crosstab_result.columns = crosstab_result.columns.map(str)
 
+    calc = None
+    if aggfunc is not None :
+        calc = custom_calc(df, index=index, columns=columns, aggfunc=aggfunc, float_round=float_round)
+
     # Process index metadata
     if index_meta:
         index_order, index_labels = extract_order_and_labels(index_meta)
@@ -283,13 +368,28 @@ def create_crosstab(df: pd.DataFrame,
         if total_col is not None :
             crosstab_result.loc[:, total_label] = total_col
 
+        # Calc Resulrt DataFrame
+        if calc is not None :
+            calc = add_missing_indices(calc.T, columns_order).T
+            
+            calc_col = None
+            if include_total :
+                calc_col = calc.loc[:, total_label]
+            
+            calc = reorder_and_relabel(calc, columns_order, columns_labels, axis=1, name='desciription')
+            
+            if calc_col is not None :
+                calc.loc[:, total_label] = calc_col
+            
+    
     # Sort index if sort_index is specified
     original_index_order = crosstab_result.index.to_list()
 
-    medium = None
+
+    medium_auto_flag = False
     if all([n is not None for n in [top, bottom]]) :
         sort_index = 'desc'
-        medium = True
+        medium_auto_flag = True
         
     if sort_index is not None:
         ascending = True if sort_index == 'asc' else False
@@ -331,29 +431,46 @@ def create_crosstab(df: pd.DataFrame,
         top_indices = pd.concat(top_result)
 
     med_cols = []
-    if medium is True :
-        top_list = top
-        if isinstance(top, int) :
-            top_list = [top]
+    
+    if (medium_auto_flag) and medium is not None :
+        if isinstance(medium, bool) and medium :
+            top_list = top
+            if isinstance(top, int) :
+                top_list = [top]
 
-        bot_list = bottom
-        if isinstance(bottom, int) :
-            bot_list = [bottom]
+            bot_list = bottom
+            if isinstance(bottom, int) :
+                bot_list = [bottom]
 
-        vtop = min(top_list)
-        vbot = min(bot_list)
+            vtop = min(top_list)
+            vbot = min(bot_list)
+            
+            if include_total :
+                vbot += 1
         
-        if include_total :
-            vbot +=1
-        
-        medium_index = crosstab_result.iloc[vbot:-vtop].index.to_list()
-        if medium_index :
-            medium_indices = crosstab_result.iloc[vbot:-vtop].sum()
-            medium_name = 'Medium'
-            med_cols.append(medium_name)
-            medium_indices.name = medium_name
+            medium_index = crosstab_result.iloc[vbot:-vtop].index.to_list()
+            if medium_index :
+                medium_indices = crosstab_result.iloc[vbot:-vtop].sum()
+                medium_name = 'Medium'
+                med_cols.append(medium_name)
+                medium_indices.name = medium_name
 
-            medium_indices = pd.DataFrame([medium_indices])
+                medium_indices = pd.DataFrame([medium_indices])
+        
+        elif isinstance(medium, (int, list)) :
+            medium_list = medium
+            if isinstance(medium, int) :
+                medium_list = [medium]
+            
+            if medium_list :
+                medium_indices = crosstab_result.iloc[medium_list].sum()
+                medium_list = [str(x) for x in medium_list]
+                medium_txt = ', '.join(medium_list)
+                medium_name = f'Medium ({medium_txt})'
+                med_cols.append(medium_name)
+                medium_indices.name = medium_name
+
+                medium_indices = pd.DataFrame([medium_indices])
 
     bot_cols = []
     if bottom is not None:
@@ -373,15 +490,20 @@ def create_crosstab(df: pd.DataFrame,
             bot_result.append(pd.DataFrame([bottom_indices]))
         
         bottom_indices = pd.concat(bot_result)
-
+    
+    dfs_to_concat = []
     if top_cols :
-        crosstab_result = pd.concat([crosstab_result, top_indices])
+        dfs_to_concat.append(top_indices)
     
     if med_cols :
-        crosstab_result = pd.concat([crosstab_result, medium_indices])
-
+        dfs_to_concat.append(medium_indices)
+    
     if bot_cols :
-        crosstab_result = pd.concat([crosstab_result, bottom_indices])
+        dfs_to_concat.append(bottom_indices)
+
+    # dfs_to_concat 리스트에 데이터프레임이 있을 경우에만 concat을 수행합니다
+    if dfs_to_concat:
+        crosstab_result = pd.concat([crosstab_result] + dfs_to_concat)
 
 
     # Reorder to place Total, Top, and Bottom in the correct positions
@@ -402,7 +524,23 @@ def create_crosstab(df: pd.DataFrame,
         cols = [cols[-1]] + cols[:-1]
         
         crosstab_result = crosstab_result[cols]
-    
+
+
+    if calc is not None :
+        crosstab_result = pd.concat([crosstab_result, calc])
+
+    crosstab_result = crosstab_result.fillna(0)
+    if not fill :
+        crosstab_result = crosstab_result.loc[(crosstab_result != 0).any(axis=1), (crosstab_result != 0).any(axis=0)]
+
+    def convert_dtype(value):
+        if isinstance(value, float):
+            return float(value)
+        elif isinstance(value, int):
+            return int(value)
+        else:
+            return value
+
     return crosstab_result
 
 class CrossTabs(pd.DataFrame):
@@ -447,6 +585,22 @@ def decipher_meta(pid: Union[str, int]) :
 
     return metadata
 
+
+def clean_text(text):
+    if text is None :
+        return None 
+
+    pattern = r'\(.*?\)'  # 괄호를 포함한 텍스트를 찾기 위한 정규식 패턴
+    matches = re.findall(pattern, text)
+    if matches :
+        clean_text = text.replace(matches[-1], '').strip()
+        if clean_text in text :
+            return clean_text
+        else :
+            return text # 괄호가 중간에 있는 것이 아님
+    
+    return text.strip()
+
 def decipher_title(pid: Union[str, int]) :
     json_map = get_decipher_datamap_json(pid)
     variables = json_map["variables"]
@@ -457,6 +611,9 @@ def decipher_title(pid: Union[str, int]) :
         label = v['label']
         qtype = v['type']
         qtitle = v['qtitle']
+        row_title = clean_text(v['rowTitle'])
+        col_title = clean_text(v['colTitle'])
+        
         filt_question = [x for x in questions if x['qlabel']==label]
         if filt_question :
             ques = filt_question[0]
@@ -466,7 +623,9 @@ def decipher_title(pid: Union[str, int]) :
         
         title_data[label] = {
             'type' : qtype,
-            'title': qtitle
+            'title': qtitle,
+            'row_title': row_title,
+            'col_title': col_title
         }
 
 
