@@ -556,6 +556,21 @@ class CrossTabs(pd.DataFrame):
     def _repr_html_(self) -> str:
         return super()._repr_html_()
 
+def clean_text(text):
+    if text is None :
+        return None 
+
+    pattern = r'\(.*?\)'  # 괄호를 포함한 텍스트를 찾기 위한 정규식 패턴
+    matches = re.findall(pattern, text)
+    if matches :
+        clean_text = text.replace(matches[-1], '').strip()
+        if clean_text in text :
+            return clean_text
+        else :
+            return text # 괄호가 중간에 있는 것이 아님
+    
+    return text.strip()
+
 def get_decipher_datamap_json(pid: Union[str, int]) :
     api.login(api_key, api_server)
     json_map = api.get(f"surveys/selfserve/548/{pid}/datamap", format="json")
@@ -586,25 +601,12 @@ def decipher_meta(pid: Union[str, int]) :
     return metadata
 
 
-def clean_text(text):
-    if text is None :
-        return None 
-
-    pattern = r'\(.*?\)'  # 괄호를 포함한 텍스트를 찾기 위한 정규식 패턴
-    matches = re.findall(pattern, text)
-    if matches :
-        clean_text = text.replace(matches[-1], '').strip()
-        if clean_text in text :
-            return clean_text
-        else :
-            return text # 괄호가 중간에 있는 것이 아님
-    
-    return text.strip()
-
 def decipher_title(pid: Union[str, int]) :
     json_map = get_decipher_datamap_json(pid)
     variables = json_map["variables"]
     questions = json_map["questions"]
+    
+    rank_flag = ['1순위', '2순위', '1st', '2nd']
 
     title_data = {}
     for v in variables :
@@ -620,6 +622,9 @@ def decipher_title(pid: Union[str, int]) :
             if 'dq' in ques.keys() :
                 if ques['dq'] == 'atmtable' :
                     qtype = 'rating'
+            
+            if col_title in rank_flag :
+                qtype = 'rank'
         
         title_data[label] = {
             'type' : qtype,
@@ -630,3 +635,33 @@ def decipher_title(pid: Union[str, int]) :
 
 
     return title_data
+
+
+def decipher_map(pid: Union[str, int]) :
+    json_map = get_decipher_datamap_json(pid)
+    questions = json_map["questions"]
+
+    rank_flag = ['1순위', '2순위', '1st', '2nd']
+
+    return_questions = []
+    for q in questions :
+        qlabel = q['qlabel']
+        qtype = q['type']
+        variables = q['variables']
+        label_list = [v['label'] for v in variables]
+        
+        if 'values' in q.keys():
+            values = q['values']
+            value_list = [x['value'] for x in values]
+        
+        if 'dq' in q.keys() :
+            if q['dq'] == 'atmtable' :
+                qtype = 'rating'
+            
+        col_list = [v['colTitle'] for v in variables]
+        if any(col in rank_flag for col in col_list) :
+            qtype = 'rank'
+            
+        return_questions.append({qlabel: label_list, 'value': value_list, 'type': qtype})
+    
+    return return_questions
