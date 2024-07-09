@@ -1757,8 +1757,21 @@ def DecipherDataProcessing(dataframe: pd.DataFrame,
     display(HTML(css))
     df = convert_columns_to_nullable_int(dataframe)
 
-    metadata = None if meta_path is None else json.load(open(meta_path))
-    title = None if title_path is None else json.load(open(title_path))
+    metadata = None
+    if meta_path is not None:
+        try:
+            with open(meta_path, 'r', encoding='utf-8') as meta_file:
+                metadata = json.load(meta_file)
+        except FileNotFoundError:
+            print(f"File not found: {meta_path}")
+
+    title = None
+    if title_path is not None:
+        try:
+            with open(title_path, 'r', encoding='utf-8') as title_file:
+                title = json.load(title_file)
+        except FileNotFoundError:
+            print(f"File not found: {title_path}")
     
     return DataCheck(df, 
                      css=css, 
