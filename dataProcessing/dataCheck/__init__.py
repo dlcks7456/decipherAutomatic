@@ -1669,45 +1669,22 @@ class DataCheck(pd.DataFrame):
                     float_round: int = 2,
                     qtype: str = None,) -> pd.DataFrame :
 
-            cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
-            df = self[cond].copy()
-
-            index_meta = self.setting_meta(index_meta, index)
-            index_name = self.setting_title(index_name, index)
-            
-            if isinstance(index, str) and isinstance(index_meta, str) :
-                index_meta = None
-                sort_index = "asc" if sort_index is None else sort_index
-
-            columns = self.attrs['banner']
-            columns_meta = self.setting_meta(columns_meta, columns)
-            columns_name = self.setting_title(columns_name, columns)
-
-            if qtype in ['rating'] :
-                # default
-                top = self.attrs['default_top'] if top is None else top
-                bottom = self.attrs['default_bottom'] if bottom is None else bottom
-                sort_index = 'desc'
-                if aggfunc is None :
-                    aggfunc = ['mean']
-
-            result = create_crosstab(df,
-                                    index=index,
-                                    columns=columns,
-                                    index_meta=index_meta,
-                                    columns_meta=columns_meta,
-                                    include_total=include_total,
-                                    index_name=index_name,
-                                    columns_name=columns_name,
-                                    fill=fill,
-                                    top=top,
-                                    medium=medium,
-                                    bottom=bottom,
-                                    aggfunc=aggfunc,
-                                    float_round=float_round,
-                                    sort_index=sort_index)
-
-            return CrossTabs(result)
+            return self.table(index=index,
+                              cond=cond,
+                              columns=self.attrs['banner'],
+                              index_meta=index_meta,
+                              columns_meta=columns_meta,
+                              include_total=include_total,
+                              index_name=index_name,
+                              columns_name=columns_name,
+                              fill=fill,
+                              top=top,
+                              medium=medium,
+                              bottom=bottom,
+                              aggfunc=aggfunc,
+                              float_round=float_round,
+                              sort_index=sort_index,
+                              qtype=qtype)
 
 
 
