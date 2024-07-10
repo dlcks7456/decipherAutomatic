@@ -1744,6 +1744,7 @@ def SetUpDataCheck(dataframe: pd.DataFrame, **kwargs) :
 
 def DecipherDataProcessing(dataframe: pd.DataFrame, 
                            keyid: Optional[str] = "record",
+                           map_json: Optional[str] = None,
                            meta_path: Optional[str] = None,
                            title_path: Optional[str] = None,
                            default_top: Optional[int] = None,
@@ -1755,19 +1756,59 @@ def DecipherDataProcessing(dataframe: pd.DataFrame,
     df = convert_columns_to_nullable_int(dataframe)
 
     metadata = None
-    if meta_path is not None:
-        try:
-            with open(meta_path, 'r', encoding='utf-8') as meta_file:
-                metadata = json.load(meta_file)
-        except FileNotFoundError:
-            print(f"File not found: {meta_path}")
-
     title = None
-    if title_path is not None:
-        try:
-            with open(title_path, 'r', encoding='utf-8') as title_file:
-                title = json.load(title_file)
-        except FileNotFoundError:
+
+    if map_json is None :
+        if meta_path is not None:
+            try:
+                with open(meta_path, 'r', encoding='utf-8') as meta_file:
+                    metadata = json.load(meta_file)
+            except FileNotFoundError:
+                print(f"File not found: {meta_path}")
+
+        if title_path is not None:
+            try:
+                with open(title_path, 'r', encoding='utf-8') as title_file:
+                    title = json.load(title_file)
+            except FileNotFoundError:
+                print(f"File not found: {title_path}")
+    else :
+        try :
+            _map = None
+            with open(map_json, 'r', encoding='utf-8') as map_file:
+                    _map = json.load(map_file)
+            metadata = {}
+            title = {}
+
+            for m in _map :
+                variables = m['variables']
+                qtype = m['type']
+                meta = m['meta']
+                qtitle = m['title']
+                for v in variables :
+                    if qtype in ['single', 'rating', 'rank'] :
+                        metadata[v] = meta
+                    else :
+                        metadata[v] = [list(i.values())[0]['rowTitle'] or list(i.values())[0]['colTitle'] for i in meta if list(i.keys())[0] == v][0]
+                    
+                    meta_keys = [list(i.keys())[0] for i in meta]
+
+                    if v in meta_keys :
+                        title[v] = {
+                            "type": qtype,
+                            "title": qtitle,
+                            "row_title": [list(i.values())[0]['rowTitle'] for i in meta if list(i.keys())[0] == v][0],
+                            "col_title": [list(i.values())[0]['colTitle'] for i in meta if list(i.keys())[0] == v][0],
+                        }
+                    else :
+                        title[v] = {
+                            "type": qtype,
+                            "title": qtitle,
+                            "row_title": None,
+                            "col_title": None,
+                        }
+
+        except FileNotFoundError :
             print(f"File not found: {title_path}")
     
     return DataCheck(df, 
@@ -1875,6 +1916,53 @@ def DecipherSetting(pid: str,
             folder_name = dir_name
         parent_path =  os.path.join(parent_path, folder_name)
         chk_mkdir(parent_path)
+
+
+    # META DATA
+    map_py = decipher_map(pid) # import variable
+    if meta :
+        meta_path = os.path.join(parent_path, 'meta')
+        ensure_directory_exists(meta_path)
+        metadata = decipher_meta(pid) # attr meta
+        title = decipher_title(pid) # title meta
+
+        with open(os.path.join(meta_path, f'meta_{pid}.json'), 'w', encoding='utf-8') as f :
+            json.dump(metadata, f, ensure_ascii=False, indent=4)
+        
+        with open(os.path.join(meta_path, f'title_{pid}.json'), 'w', encoding='utf-8') as f :
+            json.dump(title, f, ensure_ascii=False, indent=4)
+
+        with open(os.path.join(meta_path, f'map_{pid}.json'), 'w', encoding='utf-8') as f :
+            json.dump(map_py, f, ensure_ascii=False, indent=4)
+
+        with open(os.path.join(meta_path, f'variables_{pid}.py'), 'w', encoding='utf-8') as f :
+            for mp in map_py :
+                qlabel = mp['qlabel']
+                variables = mp['variables']
+                qtype = mp['type']
+                var_text = f"""# {qlabel} : {qtype}\n"""
+
+                if len(variables) >= 2 :
+                    for v in variables :
+                        var_text += f"""{v} = '{v}'\n"""
+                
+                if len(variables) == 1 :
+                    main_qlabel = variables[0]
+                    qlabel = main_qlabel
+                    variables = f"""'{main_qlabel}'"""
+                
+                values = mp['values'] if 'values' in mp.keys() else None
+                attrs = mp['attrs'] if 'attrs' in mp.keys() else None
+
+                var_text += f"""{qlabel} = {variables}\n"""
+                if values :
+                    var_text += f"""{qlabel}_value = {values}\n"""
+
+                if attrs :
+                    var_text += f"""{qlabel}_attrs = {attrs}\n"""
+                var_text += "\n"
+                f.write(var_text)
+    #----
 
     # DATA DOWNLOAD
     if cond != None :
@@ -2212,12 +2300,12 @@ df = {excel_meta}
             ### text end ###
 
             # other open check #
-            # elif qtype == 'OTHER_OE' :
-            #     for qel in qels :
-            #         safreq = f"df.safreq('{qel}')"
-            #         if use_variable : safreq = f"df.safreq({qel})"
+            elif qtype == 'OTHER_OE' :
+                for qel in qels :
+                    safreq = f"df.safreq('{qel}')"
+                    if use_variable : safreq = f"df.safreq({qel})"
 
-            #         cell_texts.append(safreq)
+                    cell_texts.append(safreq)
             ### other open end ###
 
 
@@ -2240,46 +2328,6 @@ df = {excel_meta}
 
     #----
 
-    # META DATA
-    if meta :
-        meta_path = os.path.join(parent_path, 'meta')
-        ensure_directory_exists(meta_path)
-        metadata = decipher_meta(pid) # attr meta
-        title = decipher_title(pid) # title meta
-        map_py = decipher_map(pid) # import variable
-
-        with open(os.path.join(meta_path, f'meta_{pid}.json'), 'w', encoding='utf-8') as f :
-            json.dump(metadata, f, ensure_ascii=False, indent=4)
-        
-        with open(os.path.join(meta_path, f'title_{pid}.json'), 'w', encoding='utf-8') as f :
-            json.dump(title, f, ensure_ascii=False, indent=4)
-
-        with open(os.path.join(meta_path, f'variables_{pid}.py'), 'w', encoding='utf-8') as f :
-            for mp in map_py :
-                qlabel = mp['qlabel']
-                variables = mp['variables']
-                if len(variables) == 1 :
-                    main_qlabel = variables[0]
-                    qlabel = main_qlabel
-                    variables = f"""'{main_qlabel}'"""
-                
-                values = mp['values'] if 'values' in mp.keys() else None
-                attrs = mp['attrs'] if 'attrs' in mp.keys() else None
-                qtype = mp['type']
-
-                var_text = f"""
-# {qlabel} : {qtype}
-{qlabel} = {variables}
-"""
-                if values :
-                    var_text += f"""{qlabel}_value = {values}
-"""
-                if attrs :
-                    var_text += f"""{qlabel}_attrs = {attrs}
-"""
-                f.write(var_text)
-    #----
-
     # LAYOUT
     if data_layout :
         layouts = decipher_create_layout(pid, base_layout=base_layout, qids=qids)
@@ -2294,7 +2342,6 @@ df = {excel_meta}
         with open(os.path.join(layout_path, f'Open_Ended_{pid}.txt'), 'w', encoding='utf-8') as f :
             f.write(oe_layout)
     #----
-
 
     #---    
     print("✅ Setting Complete")

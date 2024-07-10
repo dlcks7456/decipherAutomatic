@@ -620,19 +620,30 @@ def decipher_map(pid: Union[str, int]) :
     for q in questions :
         qlabel = q['qlabel']
         qtype = q['type']
+        title = q['qtitle']
         variables = q['variables']
         label_list = [v['label'] for v in variables]
         value_list = []
-
+        meta_list = []
         oe_variables = []
         if not qtype in ['text'] :
-            oe_variables = [{'qlabel': v['label'], 'vgroup': qlabel, 'type': 'other_open', 'row': v['row'], 'col': v['col'], 'variables': [v['label']]} for v in variables if v['type']=='text']
+            oe_variables = [{'qlabel': v['label'], \
+                            'vgroup': qlabel, \
+                            'type': 'other_open', \
+                            'row': v['row'], \
+                            'col': v['col'], \
+                            'variables': [v['label']],\
+                            'title': title,\
+                            'meta': [{v['label']: {'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle'])}}],\
+                            } for v in variables if v['type']=='text']
             label_list = [v['label'] for v in variables if v['type'] in ['single', 'multiple', 'number']]
 
         if 'values' in q.keys():
             values = q['values']
             value_list = [x['value'] for x in values]
-            attr_list = [{x['label']: {'value': x['value'], 'title': x['title']}} for x in values]
+            meta_list = [{x['value']: x['title']} for x in values]
+        else :
+            meta_list = [{x['label']: {'value': x['value'] if 'value' in x.keys() else None, 'rowTitle': clean_text(x['rowTitle']), 'colTitle': clean_text(x['colTitle'])}} for x in variables]
         
         if 'dq' in q.keys() :
             if q['dq'] == 'atmtable' :
@@ -642,7 +653,12 @@ def decipher_map(pid: Union[str, int]) :
         if any(col in rank_flag for col in col_list) :
             qtype = 'rank'
             
-        return_questions.append({'qlabel': qlabel, 'variables': label_list, 'values': value_list, 'type': qtype, 'attrs': attr_list})
+        return_questions.append({'qlabel': qlabel, \
+                                'variables': label_list, \
+                                'values': value_list, \
+                                'type': qtype, \
+                                'meta': meta_list, \
+                                'title': title})
         if oe_variables :
             for oe in oe_variables :
                 return_questions.append(oe)
