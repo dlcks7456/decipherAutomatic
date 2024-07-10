@@ -20,7 +20,8 @@ import zipfile
 
 def custom_calc(df: pd.DataFrame, 
                 index: str, 
-                columns: Union[str, List[str]],
+                columns: Optional[Union[str, List[str]]]=None,
+                all_label: str = 'All',
                 total_label: str = 'Total',
                 aggfunc: Union[str, List[str]] = ['mean'], 
                 float_round: int = 2) -> pd.DataFrame:
@@ -56,25 +57,37 @@ def custom_calc(df: pd.DataFrame,
         else :
             return str(value)
 
-    if isinstance(columns, str):
-        # Single column case
-        values = df[columns].value_counts().index.to_list()
+    if columns is not None :
+        if isinstance(columns, str):
+            # Single column case
+            values = df[columns].value_counts().index.to_list()
 
-        for v in values:
-            desc = df[df[columns] == v][index].describe().round(float_round).to_dict()
+            for v in values:
+                desc = df[df[columns] == v][index].describe().round(float_round).to_dict()
+                for af in aggfunc:
+                    ndf.loc[af, str(v)] = set_value(desc[af])
+            
+            # Total
+            desc = df[~df[columns].isna()][index].describe().round(float_round).to_dict()
             for af in aggfunc:
-                ndf.loc[af, str(v)] = set_value(desc[af])
-        
-    elif isinstance(columns, list):
-        # Binary data case
-        for col in columns:
-            desc = df[(~df[col].isna()) & (df[col] != 0)][index].describe().round(float_round).to_dict()
+                ndf.loc[af, total_label] = set_value(desc[af])
+            
+        elif isinstance(columns, list):
+            # Binary data case
+            for col in columns:
+                desc = df[(~df[col].isna()) & (df[col] != 0)][index].describe().round(float_round).to_dict()
+                for af in aggfunc:
+                    ndf.loc[af, col] = set_value(desc[af])
+            
+            # Total
+            desc = df[((~df[columns].isna()).any(axis=1)) & ((df[columns] != 0).any(axis=1))][index].describe().round(float_round).to_dict()
             for af in aggfunc:
-                ndf.loc[af, col] = set_value(desc[af])
-
-    else:
-        raise ValueError("Columns parameter must be either a string or a list of column names.")
-
+                ndf.loc[af, total_label] = set_value(desc[af])
+    else :
+        desc = df[index].describe().round(float_round).to_dict()
+        for af in aggfunc:
+            ndf.loc[af, total_label] = set_value(desc[af])
+            
     return ndf
 
 
@@ -86,12 +99,14 @@ def create_crosstab(df: pd.DataFrame,
                     index_name: Optional[Union[str, bool]] = None,
                     columns_name: Optional[Union[str, bool]] = None,
                     fill: bool = True,
+                    qtype: Optional[str] = None,
+                    score: Optional[int] = None,
                     top: Optional[Union[int, List[int]]] = None,
                     medium: Optional[Union[int, List[int], bool]] = True,
                     bottom: Optional[Union[int, List[int]]] = None,
                     aggfunc: Optional[list] = None,
                     float_round: int = 2,
-                    sort_index: Optional[str] = None) -> pd.DataFrame:
+                    reverse_rating: Optional[bool]=False) -> pd.DataFrame:
     """
     Creates a crosstab from the provided DataFrame with optional metadata for reordering and relabeling indices and columns, and with options to include top/bottom summaries and index sorting.
     
@@ -105,7 +120,6 @@ def create_crosstab(df: pd.DataFrame,
         columns_name (str, optional): The name to assign to the crosstab columns.
         top (int, optional): Number of top rows to summarize.
         bottom (int, optional): Number of bottom rows to summarize.
-        sort_index (str, optional): How to sort the index. 'asc' for ascending, 'desc' for descending, None for no sorting.
     
     Returns:
         pd.DataFrame: The resulting crosstab with optional reordering, relabeling, top/bottom summaries, and total sum row.
@@ -115,19 +129,32 @@ def create_crosstab(df: pd.DataFrame,
     all_label   = 'All'
     count_label = 'Count'
 
-    def extract_order_and_labels(metadata):
+    def extract_order_and_labels(metadata: Union[list, dict], front_variable: Optional[list] = None, back_variable: Optional[list] = None):
         """
         Extracts the order and labels from the provided metadata.
         
         Parameters:
             metadata (list of dict): The metadata to extract order and labels from.
+            front_variable, back_variable : All / Total
         
         Returns:
             order (list): The extracted order of keys.
             labels (list): The extracted labels for the keys.
         """
         order = [list(d.keys())[0] for d in metadata]
+        if front_variable is not None :
+            order = front_variable + order
+        
+        if back_variable is not None :
+            order = order + back_variable
+        
         labels = [list(d.values())[0] for d in metadata]
+        if front_variable is not None :
+            labels = front_variable + labels
+        
+        if back_variable is not None :
+            labels = labels + back_variable
+        
         return order, labels
     
     def add_missing_indices(df, order):
@@ -246,12 +273,12 @@ def create_crosstab(df: pd.DataFrame,
     if columns is None:
         if index_is_binary:
             # Create frequency table for binary columns
-            crosstab_result = pd.DataFrame(index=index, columns=[count_label])
+            crosstab_result = pd.DataFrame(index=index, columns=[total_label])
             for idx in index:
-                crosstab_result.loc[idx, count_label] = (df[idx] != 0).sum()
+                crosstab_result.loc[idx, total_label] = ((df[idx]!=0) & (~df[idx].isna())).sum()
 
         else:
-            crosstab_result = df[index].value_counts().to_frame(name=count_label)
+            crosstab_result = df[index].value_counts().to_frame(name=total_label)
     else:
         if isinstance(columns, str):
             columns_is_binary = False
@@ -272,102 +299,107 @@ def create_crosstab(df: pd.DataFrame,
                 columns=df[columns],
             )
 
+    base_index = crosstab_result.index
+    base_columns = crosstab_result.columns
+
+    # Original Order
+    back_index = [] # crosstab result back variables 
+
+    # Add top and bottom summaries if needed
+    if (qtype == 'rating') and (not index_meta) and (score is None) :
+        raise ValueError("If qtype is 'rating', score or index_meta must be provided.")
+
+    # Rating Type 
+    if qtype == 'rating' :
+        if score is None :
+            score = max([int(list(x.keys())[0]) for x in index_meta])
+        
+        scores = [i for i in range(1, score+1)]
+        for idx in scores :
+            if idx not in base_index :
+                crosstab_result.loc[idx] = 0
+
+        crosstab_result = crosstab_result.sort_index(ascending=reverse_rating)
+
     # Total Setting
-    total_result = pd.DataFrame(index=crosstab_result.index, columns=crosstab_result.columns)
-    total_index = total_result.index
-    total_columns = total_result.columns
     if isinstance(index, str) :
+        if columns is None :
+            crosstab_result.loc[all_label, total_label] = (~df[index].isna()).sum()
+
         if isinstance(columns, str) :
-            total_result.loc[all_label, :] = pd.Series({col: (df[columns]==col).sum() for col in total_columns})
-            total_result.loc[:, total_label] = pd.Series({idx: (df[index]==idx).sum() for idx in total_index})
-            total_result.loc[all_label, total_label] = ((~df[index].isna()) & (~df[columns].isna())).sum()
+            crosstab_result.loc[all_label, :] = pd.Series({col: (df[columns]==col).sum() for col in base_columns})
+            crosstab_result.loc[:, total_label] = pd.Series({idx: (df[index]==idx).sum() for idx in base_index})
+            crosstab_result.loc[all_label, total_label] = ((~df[index].isna()) & (~df[columns].isna())).sum()
             
         if isinstance(columns, list) :
-            total_result.loc[all_label, :] = pd.Series({col: ((~df[col].isna()) & (df[col]!=0)).sum() for col in total_columns})
-            total_result.loc[:, total_label] = pd.Series({idx: (df[index]==idx).sum() for idx in total_index})
-            total_result.loc[all_label, total_label] = ((~df[index].isna()) & (df[columns]!=0).any(axis=1) & (~df[columns].isna()).any(axis=1)).sum()
+            crosstab_result.loc[all_label, :] = pd.Series({col: ((~df[col].isna()) & (df[col]!=0)).sum() for col in base_columns})
+            crosstab_result.loc[:, total_label] = pd.Series({idx: (df[index]==idx).sum() for idx in base_index})
+            crosstab_result.loc[all_label, total_label] = ((~df[index].isna()) & (df[columns]!=0).any(axis=1) & (~df[columns].isna()).any(axis=1)).sum()
         
     if isinstance(index, list) :
+        if columns is None :
+            crosstab_result.loc[all_label, total_label] = ((df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum()
+        
         if isinstance(columns, str) :
-            total_result.loc[:, total_label] = pd.Series({idx: ((~df[idx].isna()) & (df[idx]!=0)).sum() for idx in total_index})
-            total_result.loc[all_label, :] = pd.Series({col: (df[columns]==col).sum() for col in total_columns})
-            total_result.loc[all_label, total_label] = ((~df[columns].isna()) & (df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum()
+            crosstab_result.loc[:, total_label] = pd.Series({idx: ((~df[idx].isna()) & (df[idx]!=0)).sum() for idx in base_index})
+            crosstab_result.loc[all_label, :] = pd.Series({col: (df[columns]==col).sum() for col in base_columns})
+            crosstab_result.loc[all_label, total_label] = ((~df[columns].isna()) & (df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum()
     
         if isinstance(columns, list) :
-            total_result.loc[:, total_label] = pd.Series({idx: ((~df[idx].isna()) & (df[idx]!=0)).sum() for idx in total_index})
-            total_result.loc[all_label, :] = pd.Series({col: ((~df[col].isna()) & (df[col]!=0)).sum() for col in total_columns})
-            total_result.loc[all_label, total_label] = ((df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1) & (df[columns]!=0).any(axis=1) & (~df[columns].isna()).any(axis=1)).sum()
+            crosstab_result.loc[:, total_label] = pd.Series({idx: ((~df[idx].isna()) & (df[idx]!=0)).sum() for idx in base_index})
+            crosstab_result.loc[all_label, :] = pd.Series({col: ((~df[col].isna()) & (df[col]!=0)).sum() for col in base_columns})
+            crosstab_result.loc[all_label, total_label] = ((df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1) & (df[columns]!=0).any(axis=1) & (~df[columns].isna()).any(axis=1)).sum()
 
-
-    crosstab_result.index = crosstab_result.index.map(str)
-    total_result.index = total_result.index.map(str)
-    
-    crosstab_result.columns = crosstab_result.columns.map(str)
-    total_result.columns = total_result.columns.map(str)
-
-    calc = None
-    if aggfunc is not None :
-        calc = custom_calc(df, index=index, columns=columns, aggfunc=aggfunc, float_round=float_round)
-
-    # Process index metadata
-    if index_meta:
-        index_order, index_labels = extract_order_and_labels(index_meta)
-        crosstab_result = add_missing_indices(crosstab_result, index_order)
-        crosstab_result = reorder_and_relabel(crosstab_result, index_order, index_labels, axis=0, name=index_name)
-
-    # Process columns metadata
-    if columns_meta:
-        columns_order, columns_labels = extract_order_and_labels(columns_meta)
-        crosstab_result = add_missing_indices(crosstab_result.T, columns_order).T
-        crosstab_result = reorder_and_relabel(crosstab_result, columns_order, columns_labels, axis=1, name=columns_name)
-
-    
-    # Sort index if sort_index is specified
-    original_index_order = crosstab_result.index.to_list()
 
     medium_auto_flag = False
     if all([n is not None for n in [top, bottom]]) :
-        sort_index = 'desc'
         medium_auto_flag = True
-        
-    if sort_index is not None:
-        ascending = True if sort_index == 'asc' else False
-        crosstab_result = crosstab_result.sort_index(ascending=ascending)
 
-        original_index_order = crosstab_result.index.to_list()
-    
-
-    # Add top and bottom summaries if needed
     top_cols = []
     if top is not None:
-        top_list = top
+        chk_top_list = top
         if isinstance(top, int) :
-            top_list = [top]
-        top_list = list(set(top_list))
-        top_list.sort(reverse=True)
+            chk_top_list = [top]
         
+        top_list = [] # Duplicate remove
+        for t in chk_top_list :
+            if not t in top_list :
+                top_list.append(t)
+
         top_result = []
         for t in top_list :
             top_indices = crosstab_result.iloc[:t].sum()
             
             top_name = f'Top {t}'
             top_cols.append(top_name)
+            back_index.append(top_name)
             top_indices.name = top_name
             top_result.append(pd.DataFrame([top_indices]))
         
         top_indices = pd.concat(top_result)
 
     med_cols = []
-    
     if (medium_auto_flag) and medium is not None :
         if isinstance(medium, bool) and medium :
-            top_list = top
+            # TOP
+            chk_top_list = top
             if isinstance(top, int) :
-                top_list = [top]
+                chk_top_list = [top]
+            
+            top_list = [] # Duplicate remove
+            for t in chk_top_list :
+                if not t in top_list :
+                    top_list.append(t)
 
-            bot_list = bottom
+            # BOTTOM
+            chk_bot_list = bottom
             if isinstance(bottom, int) :
-                bot_list = [bottom]
+                chk_bot_list = [bottom]
+            
+            bot_list = [] # Duplicate remove
+            for b in chk_bot_list :
+                if not b in bot_list :
+                    bot_list.append(b)
 
             vtop = min(top_list)
             vbot = min(bot_list)
@@ -377,6 +409,7 @@ def create_crosstab(df: pd.DataFrame,
                 medium_indices = crosstab_result.iloc[vbot:-vtop].sum()
                 medium_name = 'Medium'
                 med_cols.append(medium_name)
+                back_index.append(medium_name)
                 medium_indices.name = medium_name
 
                 medium_indices = pd.DataFrame([medium_indices])
@@ -392,15 +425,21 @@ def create_crosstab(df: pd.DataFrame,
                 medium_txt = ', '.join(medium_list)
                 medium_name = f'Medium ({medium_txt})'
                 med_cols.append(medium_name)
+                back_index.append(medium_name)
                 medium_indices.name = medium_name
 
                 medium_indices = pd.DataFrame([medium_indices])
 
     bot_cols = []
     if bottom is not None:
-        bot_list = bottom
+        chk_bot_list = bottom
         if isinstance(bottom, int) :
-            bot_list = [bottom]
+            chk_bot_list = [bottom]
+        
+        bot_list = [] # Duplicate remove
+        for b in chk_bot_list :
+            if not b in bot_list :
+                bot_list.append(b)
 
         bot_list = list(set(bot_list))
         bot_list.sort()
@@ -410,11 +449,16 @@ def create_crosstab(df: pd.DataFrame,
             bottom_indices = crosstab_result.iloc[-b:].sum()
             bot_name = f'Bottom {b}'
             bot_cols.append(bot_name)
+            back_index.append(bot_name)
             bottom_indices.name = bot_name
             bot_result.append(pd.DataFrame([bottom_indices]))
         
         bottom_indices = pd.concat(bot_result)
     
+    crosstab_result.index = crosstab_result.index.map(str)
+    crosstab_result.columns = crosstab_result.columns.map(str)
+
+    # Netting
     dfs_to_concat = []
     if top_cols :
         dfs_to_concat.append(top_indices)
@@ -425,38 +469,48 @@ def create_crosstab(df: pd.DataFrame,
     if bot_cols :
         dfs_to_concat.append(bottom_indices)
 
-    # dfs_to_concat 리스트에 데이터프레임이 있을 경우에만 concat을 수행합니다
     if dfs_to_concat:
-        crosstab_result = pd.concat([crosstab_result] + dfs_to_concat)
+        net_result = pd.concat(dfs_to_concat)
+        net_result.index = net_result.index.map(str)
+        net_result.columns = net_result.columns.map(str)
+
+        crosstab_result = pd.concat([crosstab_result, net_result])
+
+    crosstab_result = crosstab_result.fillna(0)
+    crosstab_result = crosstab_result.astype(int)
+
+    # Calc
+    calc = None
+    if aggfunc is not None :
+        back_index += aggfunc
+        calc = custom_calc(df, 
+                           index=index, 
+                           columns=columns, 
+                           aggfunc=aggfunc, 
+                           float_round=float_round,
+                           total_label=total_label)
+        calc.index = calc.index.map(str)
+        calc.columns = calc.columns.map(str)
 
     if calc is not None :
         crosstab_result = pd.concat([crosstab_result, calc])
+    
 
-    crosstab_result.loc[all_label, :] = total_result.loc[all_label, :]
-    crosstab_result.loc[:, total_label] = total_result.loc[:, total_label]
+    # Process index metadata
+    if index_meta :
+        index_order, index_labels = extract_order_and_labels(index_meta, [all_label], back_index)
+        crosstab_result = add_missing_indices(crosstab_result, index_order)
+        crosstab_result = reorder_and_relabel(crosstab_result, index_order, index_labels, axis=0, name=index_name)
 
-    # All row move
-    all_row = crosstab_result.loc[all_label]
-    crosstab_result = crosstab_result.drop(index=all_label)
-    crosstab_result.loc[all_label] = all_row
-    crosstab_result = crosstab_result.reindex([all_label] + [idx for idx in crosstab_result.index if idx != all_label])
+    # Process columns metadata
+    if columns_meta:
+        columns_order, columns_labels = extract_order_and_labels(columns_meta, [total_label])
+        crosstab_result = add_missing_indices(crosstab_result.T, columns_order).T
+        crosstab_result = reorder_and_relabel(crosstab_result, columns_order, columns_labels, axis=1, name=columns_name)
+    
+    original_index_order = crosstab_result.index.to_list()
 
-    # Total column move
-    total_col = crosstab_result[total_label]
-    crosstab_result = crosstab_result.drop(columns=total_label)
-    crosstab_result.insert(0, total_label, total_col)
 
-    final_order = [all_label]
-    final_order += [o for o in original_index_order if not o in final_order]
-
-    for cols in [top_cols, med_cols, bot_cols] :
-        if cols :
-            for c in cols :
-                final_order.append(c)
-
-    crosstab_result = crosstab_result.loc[final_order]
-
-    crosstab_result = crosstab_result.fillna(0)
     if not fill :
         crosstab_result = crosstab_result.loc[(crosstab_result != 0).any(axis=1), (crosstab_result != 0).any(axis=0)]
 
@@ -490,14 +544,18 @@ def clean_text(text):
     
     return text.strip()
 
-def get_decipher_datamap_json(pid: Union[str, int]) :
+def get_decipher_datamap(pid: Union[str, int], map_format: Literal['json', 'json_stacked', 'html', 'text', 'tab', 'xlsx', 'fw', 'fw', 'fw', 'cb', 'cb', 'cb', 'uncle', 'sss', 'sas', 'quantum', 'spss_fw', 'spss_tab', 'netmr', 'netmr']='json') :
     api.login(api_key, api_server)
-    json_map = api.get(f"surveys/selfserve/548/{pid}/datamap", format="json")
-    return json_map
+    url = f"surveys/selfserve/548/{pid}/datamap"
 
+    decipher_map = api.get(url, format=map_format)
+    return decipher_map
+
+
+rank_flag = ['1순위', '2순위', '1st', '2nd']
 
 def decipher_meta(pid: Union[str, int]) :
-    json_map = get_decipher_datamap_json(pid)
+    json_map = get_decipher_datamap(pid)
     variables = json_map["variables"]
 
     metadata = {}
@@ -521,11 +579,9 @@ def decipher_meta(pid: Union[str, int]) :
 
 
 def decipher_title(pid: Union[str, int]) :
-    json_map = get_decipher_datamap_json(pid)
+    json_map = get_decipher_datamap(pid)
     variables = json_map["variables"]
     questions = json_map["questions"]
-    
-    rank_flag = ['1순위', '2순위', '1st', '2nd']
 
     title_data = {}
     for v in variables :
@@ -557,10 +613,8 @@ def decipher_title(pid: Union[str, int]) :
 
 
 def decipher_map(pid: Union[str, int]) :
-    json_map = get_decipher_datamap_json(pid)
+    json_map = get_decipher_datamap(pid)
     questions = json_map["questions"]
-
-    rank_flag = ['1순위', '2순위', '1st', '2nd']
 
     return_questions = []
     for q in questions :
@@ -568,10 +622,17 @@ def decipher_map(pid: Union[str, int]) :
         qtype = q['type']
         variables = q['variables']
         label_list = [v['label'] for v in variables]
-        
+        value_list = []
+
+        oe_variables = []
+        if not qtype in ['text'] :
+            oe_variables = [{'qlabel': v['label'], 'vgroup': qlabel, 'type': 'other_open', 'row': v['row'], 'col': v['col'], 'variables': [v['label']]} for v in variables if v['type']=='text']
+            label_list = [v['label'] for v in variables if v['type'] in ['single', 'multiple', 'number']]
+
         if 'values' in q.keys():
             values = q['values']
             value_list = [x['value'] for x in values]
+            attr_list = [{x['label']: {'value': x['value'], 'title': x['title']}} for x in values]
         
         if 'dq' in q.keys() :
             if q['dq'] == 'atmtable' :
@@ -581,6 +642,88 @@ def decipher_map(pid: Union[str, int]) :
         if any(col in rank_flag for col in col_list) :
             qtype = 'rank'
             
-        return_questions.append({qlabel: label_list, 'value': value_list, 'type': qtype})
-    
+        return_questions.append({'qlabel': qlabel, 'variables': label_list, 'values': value_list, 'type': qtype, 'attrs': attr_list})
+        if oe_variables :
+            for oe in oe_variables :
+                return_questions.append(oe)
+            
     return return_questions
+
+
+def decipher_create_layout(pid: Union[str, int], base_layout: str = 'DoNotDelete', qids: Optional[dict]=None) :
+        api.login(api_key, api_server)
+        survey = f'selfserve/548/{pid}'
+        url = f'surveys/{survey}/layouts'
+        layout = api.get(url)
+
+        maps = [m for m in layout if m['description'] == base_layout]
+        if not maps :
+            print(f'❌ Error : The base layout({base_layout}) is null')
+            return 
+        base_map = maps[0]
+
+        variables = base_map['variables']
+        # print(variables)
+        exactly_diff_vars = key_vars + sys_vars
+        ce_vars = ['radio', 'checkbox', 'number', 'float', 'select']
+        oe_vars = ['text', 'textarea']
+        diff_label_names = ['vqtable', 'voqtable', 'dummy', 'DUMMY', 'Dummmy']
+        
+        ce = ""
+        oe = ""
+
+        for label, width in [ ('record', 7), ('uuid', 16), ('UID', 16)]:
+            write_text = f'{label},{label},{width}\n'
+            ce += write_text
+            oe += write_text
+
+        resp_chk = [v for v in variables if v['label'] == 'RespStatus']
+        if resp_chk :
+            ce += f'RespStatus,RespStatus,8\n'
+
+        for var in variables :
+            label = var['label']
+            qlabel = var['qlabel']
+            qtype = var['qtype']
+            fwidth = var['fwidth']
+            altlabel = var['altlabel']
+            shown = var['shown']
+            if not shown :
+                continue
+
+            write_text = f'{label},{altlabel},{fwidth}\n'
+            if (not label in exactly_diff_vars and not qlabel in exactly_diff_vars) :
+                if [dl for dl in diff_label_names if (dl in label) or (dl in qlabel)] :
+                    continue
+                if qtype in ce_vars :
+                    if qtype in ['number', 'float'] :
+                        if qids is not None :
+                            verify_check = [attr['value'].split('-')[1] for ql, attr in list(qids.items()) if (ql == qlabel) or (ql == label)]
+                            if verify_check :
+                                max_width = len(verify_check[0])
+                                    # print(label, verify_check, max_width)
+                                if qtype == 'float' :
+                                    max_width += 4
+                                write_text = f'{label},{altlabel},{max_width}\n'
+                        else :
+                            write_text = f'{label},{altlabel},19\n'
+                    ce += write_text
+                if qtype in oe_vars :
+                    oe += write_text
+
+        oe += f'decLang,decLang,60\n'
+
+        return {
+            'CE': ce,
+            'OE': oe
+        }
+
+
+def get_decipher_data(pid: Union[str, int], data_format: Literal['tab', 'fwu', 'fw', 'flat', 'flat_all', 'pipe', 'csv', 'cb', 'json', 'spss', 'spss16', 'spss15', 'spss16_oe', 'spss_data'] = 'xlsx', cond: str = 'qualified', layout: Optional[Union[str, int]] = None) :
+    api.login(api_key, api_server)
+    survey = f'selfserve/548/{pid}'
+    url = f'surveys/{survey}/data'
+    decipher_data = api.get(url, format=data_format, cond=cond, layout=layout)
+
+    return decipher_data
+    

@@ -1547,14 +1547,17 @@ class DataCheck(pd.DataFrame):
                     columns_meta: Optional[List[Dict[str, str]]] = None,
                     index_name: Optional[str] = None,
                     columns_name: Optional[str] = None,
+                    index_sort: Optional[Literal['asc', 'desc']]=None,
+                    columns_sort: Optional[Literal['asc', 'desc']]=None,
                     fill: bool = True,
+                    qtype: Literal['single', 'rating', 'rank', 'multiple', 'number', 'text'] = None,
+                    score: Optional[int] = None,
                     top: Optional[int] = None,
                     medium: Optional[Union[int, List[int], bool]] = True,
                     bottom: Optional[int] = None,
-                    sort_index: Optional[str] = None,
+                    reverse_rating: Optional[bool]=False,
                     aggfunc: Optional[list] = None,
-                    float_round: int = 2,
-                    qtype: Literal['rating'] = None) -> pd.DataFrame :
+                    float_round: int = 2) -> pd.DataFrame :
 
             cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
             df = self[cond].copy()
@@ -1563,12 +1566,25 @@ class DataCheck(pd.DataFrame):
             index_name = self.setting_title(index_name, index)
             if isinstance(index, str) and isinstance(index_meta, str) :
                 index_meta = None
-                sort_index = "asc" if sort_index is None else sort_index
+
+            if index_meta is not None and index_sort is not None :
+                if index_sort == 'asc' :
+                    index_meta = sorted(index_meta, key=lambda d: list(d.keys())[0])
+                
+                if index_sort == 'desc' :
+                    index_meta = sorted(index_meta, key=lambda d: list(d.keys())[0], reverse=True)
 
             columns_meta = self.setting_meta(columns_meta, columns)
             columns_name = self.setting_title(columns_name, columns)
             if isinstance(columns, str) and isinstance(columns_meta, str) :
                 columns_meta = None
+
+            if columns_meta is not None and columns_sort is not None :
+                if columns_sort == 'asc' :
+                    columns_meta = sorted(columns_meta, key=lambda d: list(d.keys())[0])
+                
+                if columns_sort == 'desc' :
+                    columns_meta = sorted(columns_meta, key=lambda d: list(d.keys())[0], reverse=True)
 
             titles = self.attrs['title']
             if titles is not None and isinstance(index, str) :
@@ -1592,13 +1608,15 @@ class DataCheck(pd.DataFrame):
                                     columns_meta=columns_meta,
                                     index_name=index_name,
                                     columns_name=columns_name,
+                                    qtype=qtype ,
+                                    score=score ,
                                     fill=fill,
                                     top=top,
                                     medium=medium,
                                     bottom=bottom,
                                     aggfunc=aggfunc,
                                     float_round=float_round,
-                                    sort_index=sort_index)
+                                    reverse_rating=reverse_rating)
 
             return CrossTabs(result)
 
@@ -1657,14 +1675,17 @@ class DataCheck(pd.DataFrame):
                     columns_meta: Optional[List[Dict[str, str]]] = None,
                     index_name: Optional[str] = None,
                     columns_name: Optional[str] = None,
+                    index_sort: Optional[Literal['asc', 'desc']]=None,
+                    columns_sort: Optional[Literal['asc', 'desc']]=None,
                     fill: bool = True,
+                    qtype: Literal['single', 'rating', 'rank', 'multiple', 'number', 'text'] = None,
+                    score: Optional[int] = None,
                     top: Optional[int] = None,
                     medium: Optional[Union[int, List[int], bool]] = True,
                     bottom: Optional[int] = None,
-                    sort_index: Optional[str] = None,
+                    reverse_rating: Optional[bool]=False,
                     aggfunc: Optional[list] = None,
-                    float_round: int = 2,
-                    qtype: str = None,) -> pd.DataFrame :
+                    float_round: int = 2,) -> pd.DataFrame :
 
             return self.table(index=index,
                               cond=cond,
@@ -1673,14 +1694,17 @@ class DataCheck(pd.DataFrame):
                               columns_meta=columns_meta,
                               index_name=index_name,
                               columns_name=columns_name,
+                              index_sort=index_sort,
+                              columns_sort=columns_sort,
+                              qtype=qtype,
+                              score=score,
                               fill=fill,
                               top=top,
                               medium=medium,
                               bottom=bottom,
                               aggfunc=aggfunc,
                               float_round=float_round,
-                              sort_index=sort_index,
-                              qtype=qtype)
+                              reverse_rating=reverse_rating,)
 
 
 
@@ -1810,16 +1834,13 @@ def colon_split(txt: str, num: int) -> Optional[str]:
     return None
 
 def DecipherSetting(pid: str, 
-            mode: str = 'auto', 
             cond: Optional[str] = None,
             use_variable: bool = False,
             key: str = api_key, 
             server: str = api_server, 
             meta: bool = True, 
-            json_export: bool = True, 
             data_layout: bool = False, 
             base_layout: str = 'DoNotDelete',
-            datamap_name: str = 'Datamap',
             mkdir: bool = False,
             dir_name: Optional[str] = None) -> None:
 
@@ -1828,7 +1849,6 @@ def DecipherSetting(pid: str,
     
     Args:
         `pid` (str): 프로젝트 ID.
-        `mode` (str, optional): 모드 ('auto' 또는 'file'). 기본값은 'auto'.
         `cond` (str, optional): 데이터 필터링 조건. 기본값은 None.
         `use_variable` (bool, optional): 변수 파일 사용 여부. 기본값은 False.
         `key` (str, optional): API 키. 기본값은 api_key.
@@ -1848,10 +1868,6 @@ def DecipherSetting(pid: str,
         print('❌ Please enter pid')
         return
 
-    if not mode in ['auto', 'file'] :
-        print('❌ Please check the mode argument (auto or file)')
-        return
-
     parent_path = os.getcwd()
     if mkdir :
         folder_name = pid
@@ -1860,60 +1876,39 @@ def DecipherSetting(pid: str,
         parent_path =  os.path.join(parent_path, folder_name)
         chk_mkdir(parent_path)
 
-
-    if mode == 'file' :
-        file_name = f'{pid}.xlsx'
-        xl = openpyxl.load_workbook(file_name)
-        map_sheet = datamap_name
-        data_map = xl[map_sheet]
-        print('📢 Read excel file (xlsx)')
-
-    if mode == 'auto' :
-        file_name = f'{pid}.csv'
-        if cond != None :
-            if cond.isdigit() :
-                print('❌ [ERROR] : The cond argument can only be a string')
-                return
-        delivery_cond = 'qualified' if cond == None else f'qualified and {cond}'
-        try :
-            api.login(key, server)
-        except :
-            print('❌ Error : Decipher api login failed')
+    # DATA DOWNLOAD
+    if cond != None :
+        if cond.isdigit() :
+            print('❌ [ERROR] : The cond argument can only be a string')
             return
+    delivery_cond = 'qualified' if cond == None else f'qualified and {cond}'
+    try :
+        api.login(key, server)
+    except :
+        print('❌ Error : Decipher api login failed')
+        return
 
-        path = f'surveys/selfserve/548/{pid}'
-        # get csv data
-        try :
-            csv_data = api.get(f'{path}/data', format='csv', cond=delivery_cond)
-            sav_data = api.get(f'{path}/data', format='spss16', cond=delivery_cond)
-        except :
-            print('❌ Error : Please check the cond argument')
-            return
+    csv_data = get_decipher_data(pid, data_format='csv', cond=delivery_cond)
+    sav_data = get_decipher_data(pid, data_format='spss16', cond=delivery_cond)
 
-        csv_binary = f'binary_{pid}.csv'
-        data_path = os.path.join(parent_path, 'data')
-        ensure_directory_exists(data_path)
-        create_binary_file(data_path, csv_binary, csv_data)
-        create_ascii_file(data_path, csv_binary, f'{pid}.csv')
-        
-        sav_zip = f'{pid}_sav.zip'
-        create_binary_file(data_path, sav_zip, sav_data)
-        unzip_and_delete(os.path.join(data_path, sav_zip), data_path)
-        time.sleep(3)
+    csv_binary = f'binary_{pid}.csv'
+    data_path = os.path.join(parent_path, 'data')
+    ensure_directory_exists(data_path)
+    create_binary_file(data_path, csv_binary, csv_data)
+    create_ascii_file(data_path, csv_binary, f'{pid}.csv')
+    
+    sav_zip = f'{pid}_sav.zip'
+    create_binary_file(data_path, sav_zip, sav_data)
+    unzip_and_delete(os.path.join(data_path, sav_zip), data_path)
+    #----
 
-        # get datamap xlsx
+    # DATA CHECK SETTING
+    map_xlsx = get_decipher_datamap(pid, 'xlsx')
+    create_binary_file(data_path, f'mapsheet_{pid}.xlsx', map_xlsx)
 
-        map_xlsx = api.get(f'{path}/datamap', format='xlsx')
-        
-        map_path = os.path.join(parent_path, 'map')
-        ensure_directory_exists(map_path)
-        create_binary_file(map_path, f'mapsheet_{pid}.xlsx', map_xlsx)
-
-        xl = openpyxl.load_workbook(os.path.join(map_path, f'mapsheet_{pid}.xlsx'))
-        map_sheet = 'datamap'
-        data_map = xl[map_sheet]
-
-        print('📢 Using Decipher REST API')
+    xl = openpyxl.load_workbook(os.path.join(data_path, f'mapsheet_{pid}.xlsx'))
+    map_sheet = 'datamap'
+    data_map = xl[map_sheet]
 
     mx_row = data_map.max_row
     mx_col = data_map.max_column
@@ -1930,8 +1925,7 @@ def DecipherSetting(pid: str,
     curr_var = {col:[] for col in col_name }
 
     variables = []
-    
-    #print("  ❌ DataCheck Setting Start")
+
     for row in range(1, mx_row+1) :
         if not_empty_cell(data_map, row) :
             for idx, col in enumerate(range(1, mx_col+1)) :
@@ -1955,14 +1949,8 @@ def DecipherSetting(pid: str,
         a_cell = variable['a']
         a_cell = [a for a in a_cell if a != '' and a != None]
         b_cell = variable['b']
-        #b_cell = [b for b in b_cell if b != '' and b != None]
         c_cell = variable['c']
-        #c_cell = [c for c in c_cell if c != '' and c != None]
         qid = a_cell[0] # qid
-
-        # print(qid)
-        # print(b_cell)
-        # print(c_cell)
 
         type_chk = a_cell[1] if len(a_cell) >= 2 else None # type check
 
@@ -2061,106 +2049,10 @@ def DecipherSetting(pid: str,
                     qel.append(el)
                     qids[na_el][eltxt] = qel
 
-    # print(qids)
-
-    # default setting
+    # DATACHECK NOTEBOOK
     nb = nbf.v4.new_notebook()
     ipynb_file_name = f'DataCheck_{pid}.ipynb'
     order_qid = list(qids.items())
-
-    # json export
-    if json_export :
-        with open(os.path.join(map_path, f'map_{pid}.json'), 'w', encoding='utf-8') as f :
-            json.dump(qids, f, ensure_ascii=False, indent=4)
-
-    if meta :
-        meta_path = os.path.join(parent_path, 'meta')
-        ensure_directory_exists(meta_path)
-        metadata = decipher_meta(pid)
-        title = decipher_title(pid)
-
-        with open(os.path.join(meta_path, f'meta_{pid}.json'), 'w', encoding='utf-8') as f :
-            json.dump(metadata, f, ensure_ascii=False, indent=4)
-        
-        with open(os.path.join(meta_path, f'title_{pid}.json'), 'w', encoding='utf-8') as f :
-            json.dump(title, f, ensure_ascii=False, indent=4)
-
-    # print(qids)
-    # data layout export
-    if data_layout :
-        try :
-            api.login(key, server)
-            survey = f'selfserve/548/{pid}'
-            url = f'surveys/{survey}/layouts'
-            map = api.get(url)
-        except :
-            print('❌ Error : Decipher API failed')
-        
-        maps = [m for m in map if m['description'] == base_layout ]
-        if not maps :
-            print(f'❌ Error : The base layout({base_layout}) is null')
-            return 
-        base_map = maps[0]
-
-        variables = base_map['variables']
-        # print(variables)
-        exactly_diff_vars = key_vars + sys_vars
-        ce_vars = ['radio', 'checkbox', 'number', 'float', 'select']
-        oe_vars = ['text', 'textarea']
-        diff_label_names = ['vqtable', 'voqtable', 'dummy', 'DUMMY', 'Dummmy']
-        
-        layout_path = os.path.join(parent_path, 'layout')
-        ensure_directory_exists(layout_path)
-        ce = open(os.path.join(layout_path, f'CE_{pid}.txt'), 'w')
-        oe = open(os.path.join(layout_path, f'OE_{pid}.txt'), 'w')
-
-        for label, width in [ ('record', 7), ('uuid', 16), ('UID', 16)]:
-            write_text = f'{label},{label},{width}\n'
-            ce.write(write_text)
-            oe.write(write_text)
-
-        resp_chk = [v for v in variables if v['label'] == 'RespStatus']
-        if resp_chk :
-            ce.write(f'RespStatus,RespStatus,8\n')
-
-        for var in variables :
-            label = var['label']
-            qlabel = var['qlabel']
-            qtype = var['qtype']
-            fwidth = var['fwidth']
-            altlabel = var['altlabel']
-            shown = var['shown']
-            if not shown :
-                continue
-
-            write_text = f'{label},{altlabel},{fwidth}\n'
-            if (not label in exactly_diff_vars and not qlabel in exactly_diff_vars) :
-                if [dl for dl in diff_label_names if (dl in label) or (dl in qlabel)] :
-                    continue
-                if qtype in ce_vars :
-                    if qtype in ['number', 'float'] :
-                        verify_check = [attr['value'].split('-')[1] for ql, attr in list(qids.items()) if (ql == qlabel) or (ql == label)]
-                        if verify_check :
-                            max_width = len(verify_check[0])
-                                # print(label, verify_check, max_width)
-                            if qtype == 'float' :
-                                max_width += 4
-                            write_text = f'{label},{altlabel},{max_width}\n'
-                    ce.write(write_text)
-                if qtype in oe_vars :
-                    oe.write(write_text)
-
-        oe.write(f'decLang,decLang,60\n')
-        # if resp_chk :
-        #     oe.write(f'RespStatus,RespStatus,8\n')
-
-        ce.close()
-        oe.close()
-
-    # variable py file create
-    variable_py_name = f'variables_{pid}.py'
-    py_file = open(os.path.join(map_path, variable_py_name), 'w')
-    py_file.write(f'# {pid} variables\n')
 
     ipynb_cell = []
 
@@ -2171,7 +2063,7 @@ def DecipherSetting(pid: str,
     default = f'''import pandas as pd
 import pyreadstat
 import numpy as np
-from map.variables_{pid} import * 
+from meta.variables_{pid} import * 
 from decipherAutomatic.dataProcessing.dataCheck import *
 
 pid = "{pid}"
@@ -2212,7 +2104,6 @@ df = {excel_meta}
 
                     if len(qels) >= 2 :
                         diff_na = [q for q in qels if not na in q]
-                        py_file.write(f"{qid} = {diff_na}\n")
 
                     for qel in qels :
                         if na in qel :
@@ -2221,14 +2112,10 @@ df = {excel_meta}
                             safreq = f"df.safreq('{qel}')"
                             if use_variable : safreq = f"df.safreq({qel})"
 
-                            py_file.write(f"{qel} = '{qel}'\n")
                             cell_texts.append(safreq)
 
                     if val_label :
                         values = [v for v in val_label.keys() if not int(v) == 0]
-                        py_file.write(f'{qid}_value = {values}\n')
-                        #values_txt = f'{qid}_values = {values}'
-                        #cell_texts.append(values_txt)
 
                     # rank check
                     if len(qels) >= 2 :
@@ -2244,8 +2131,6 @@ df = {excel_meta}
                             dup_diff_na = [q for q in qels if not na in q]
                             set_qid = f"('{dup_diff_na[0]}', '{dup_diff_na[-1]}')"
 
-                            py_file.write(f"{qid} = {dup_diff_na}\n")
-                            #cell_texts.append(f'{qid} = {set_qid}')
                             dupchk = f"df.dupchk({set_qid})"
                             if use_variable : dupchk = f"df.dupchk({qid})"
 
@@ -2253,8 +2138,6 @@ df = {excel_meta}
                 else :
                     if qval :
                         val_chk = f"# value : {qval}"
-                        py_file.write(f"{qid} = '{qid}'\n")
-                        py_file.write(f'{qid}_value = [0, 1]\n')
                         
                         cell_texts.append(val_chk)
                         safreq = f"df.safreq('{qels[0]}')"
@@ -2273,20 +2156,9 @@ df = {excel_meta}
                     last_el = diff_na[-1]
                     set_qid = f"('{first_el}', '{last_el}')"
 
-                    for q in diff_na :
-                        py_file.write(f"{q} = '{q}'\n")
-
-                    py_file.write(f"{qid} = {diff_na}\n")
 
                     if val_label :
                         values = [v for v in val_label.keys() if not int(v) == 0]
-                        if not values == [1] :
-                            py_file.write(f'{qid}_value = {values}\n')
-                            #values_txt = f'{qid}_values = {values}'
-                            #cell_texts.append(values_txt)
-                        else :
-                            py_file.write(f'{qid}_value = [0, 1]\n')
-                    # cell_texts.append(f'{qid} = {set_qid}')
 
                     mafreq = f"df.mafreq({set_qid})"
                     if use_variable : mafreq = f"df.mafreq({qid})"
@@ -2304,7 +2176,6 @@ df = {excel_meta}
 
                 if len(qels) >=2 :
                     diff_na = [q for q in qels if not na in q]
-                    py_file.write(f"{qid} = {diff_na}\n")
 
                 if qval :
                     values = qval.split('-')
@@ -2321,7 +2192,6 @@ df = {excel_meta}
                             safreq = f"df.safreq('{qel}')"
                             if use_variable : safreq = f"df.safreq({qel})"
 
-                        py_file.write(f"{qel} = '{qel}'\n")
                         cell_texts.append(safreq)
 
             ### num end ###
@@ -2330,7 +2200,6 @@ df = {excel_meta}
             elif qtype == 'OE' :
                 if len(qels) >=2 :
                     diff_na = [q for q in qels if not na in q]
-                    py_file.write(f"{qid} = {diff_na}\n")
 
                 for qel in qels :
                     if na in qel :
@@ -2339,18 +2208,16 @@ df = {excel_meta}
                         safreq = f"df.safreq('{qel}')"
                         if use_variable : safreq = f"df.safreq({qel})"
 
-                        py_file.write(f"{qel} = '{qel}'\n")
                         cell_texts.append(safreq)
             ### text end ###
 
             # other open check #
-            elif qtype == 'OTHER_OE' :
-                for qel in qels :
-                    safreq = f"df.safreq('{qel}')"
-                    if use_variable : safreq = f"df.safreq({qel})"
+            # elif qtype == 'OTHER_OE' :
+            #     for qel in qels :
+            #         safreq = f"df.safreq('{qel}')"
+            #         if use_variable : safreq = f"df.safreq({qel})"
 
-                    py_file.write(f"{qel} = '{qel}'\n")
-                    cell_texts.append(safreq)
+            #         cell_texts.append(safreq)
             ### other open end ###
 
 
@@ -2361,9 +2228,6 @@ df = {excel_meta}
                 mark = f'The {qid} not cotains elements'
                 ipynb_cell.append(nbf.v4.new_markdown_cell(mark))
 
-            py_file.write(f'\n')
-
-    py_file.close()
     #ipynb_cell
     nb['cells'] = ipynb_cell
     #print(nb)
@@ -2373,5 +2237,64 @@ df = {excel_meta}
             nbf.write(nb, f)
     else :
         print('❗ The DataCheck ipynb file already exists')
-    
-    print("✅ DataCheck Setting Complete")
+
+    #----
+
+    # META DATA
+    if meta :
+        meta_path = os.path.join(parent_path, 'meta')
+        ensure_directory_exists(meta_path)
+        metadata = decipher_meta(pid) # attr meta
+        title = decipher_title(pid) # title meta
+        map_py = decipher_map(pid) # import variable
+
+        with open(os.path.join(meta_path, f'meta_{pid}.json'), 'w', encoding='utf-8') as f :
+            json.dump(metadata, f, ensure_ascii=False, indent=4)
+        
+        with open(os.path.join(meta_path, f'title_{pid}.json'), 'w', encoding='utf-8') as f :
+            json.dump(title, f, ensure_ascii=False, indent=4)
+
+        with open(os.path.join(meta_path, f'variables_{pid}.py'), 'w', encoding='utf-8') as f :
+            for mp in map_py :
+                qlabel = mp['qlabel']
+                variables = mp['variables']
+                if len(variables) == 1 :
+                    main_qlabel = variables[0]
+                    qlabel = main_qlabel
+                    variables = f"""'{main_qlabel}'"""
+                
+                values = mp['values'] if 'values' in mp.keys() else None
+                attrs = mp['attrs'] if 'attrs' in mp.keys() else None
+                qtype = mp['type']
+
+                var_text = f"""
+# {qlabel} : {qtype}
+{qlabel} = {variables}
+"""
+                if values :
+                    var_text += f"""{qlabel}_value = {values}
+"""
+                if attrs :
+                    var_text += f"""{qlabel}_attrs = {attrs}
+"""
+                f.write(var_text)
+    #----
+
+    # LAYOUT
+    if data_layout :
+        layouts = decipher_create_layout(pid, base_layout=base_layout, qids=qids)
+        ce_layout = layouts['CE']
+        oe_layout = layouts['OE']
+        
+        layout_path = os.path.join(parent_path, 'layout')
+        ensure_directory_exists(layout_path)
+        with open(os.path.join(layout_path, f'Close_Ended_{pid}.txt'), 'w', encoding='utf-8') as f :
+            f.write(ce_layout)
+
+        with open(os.path.join(layout_path, f'Open_Ended_{pid}.txt'), 'w', encoding='utf-8') as f :
+            f.write(oe_layout)
+    #----
+
+
+    #---    
+    print("✅ Setting Complete")
