@@ -2146,7 +2146,7 @@ def DecipherSetting(pid: str,
 
     # set_file_name = 'pd.read_excel(file_name)' if mode == 'file' else 'pd.read_csv(file_name, low_memory=False)'
 
-    excel_meta = f'''DecipherDataProcessing(df, meta_path="meta/meta_{pid}.json", title_path="meta/title_{pid}.json")''' if meta else '''DecipherDataProcessing(df)'''
+    excel_meta = f'''DecipherDataProcessing(df, map_json=f"meta/map_{{pid}}.json")''' if meta else '''DecipherDataProcessing(df)'''
 
     default = f'''import pandas as pd
 import pyreadstat
