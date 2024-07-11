@@ -1564,8 +1564,14 @@ class DataCheck(pd.DataFrame):
             cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
             df = self[cond].copy()
 
-            index_meta = self.setting_meta(index_meta, index)
-            index_name = self.setting_title(index_name, index)
+            original_index_meta = index_meta
+            original_index_name = index_name
+
+            original_columns_meta = columns_meta
+            original_columns_name = columns_name
+            
+            index_meta = self.setting_meta(original_index_meta, index)
+            index_name = self.setting_title(original_index_name, index)
             if isinstance(index, str) and isinstance(index_meta, str) :
                 index_meta = None
 
@@ -1576,8 +1582,8 @@ class DataCheck(pd.DataFrame):
                 if index_sort == 'desc' :
                     index_meta = sorted(index_meta, key=lambda d: list(d.keys())[0], reverse=True)
 
-            columns_meta = self.setting_meta(columns_meta, columns)
-            columns_name = self.setting_title(columns_name, columns)
+            columns_meta = self.setting_meta(original_columns_meta, columns)
+            columns_name = self.setting_title(original_columns_name, columns)
             if isinstance(columns, str) and isinstance(columns_meta, str) :
                 columns_meta = None
 
@@ -1594,6 +1600,20 @@ class DataCheck(pd.DataFrame):
                     question_type = titles[index]['type']
                     if question_type == 'rating' :
                         qtype = 'rating'
+                    
+                    if question_type == 'number' :
+                        qtype = 'number'
+                    
+            if titles is not None and isinstance(index, list) :
+                if all((i in titles.keys()) and (titles[i]['type'] == 'rank') for i in index) :
+                    index_meta = self.setting_meta(original_index_meta, index[0])
+                    index_name = titles[index[0]]['title']
+                    qtype = 'rank'
+            
+            if titles is not None and isinstance(index, str) :
+                if titles[index]['type'] == 'rank' :
+                    qtype = 'rank'
+                    index = [index]
 
             if qtype in ['rating'] :
                 # default
@@ -1602,6 +1622,47 @@ class DataCheck(pd.DataFrame):
                 sort_index = 'desc'
                 if aggfunc is None :
                     aggfunc = ['mean']
+            
+            if qtype in ['number'] :
+                if aggfunc is None :
+                    aggfunc = ['mean', 'min', 'max']
+
+            if qtype in ['rank'] :
+                rank_df = df.copy()
+                new_index_meta = []
+                
+                if titles is not None :
+                    vgroup = list(set([titles[x]['vgroup'] for x in index]))
+                    if len(vgroup) >= 2 :
+                        raise ValueError('There are multiple vgroups in the index.')
+
+                    main_qid = vgroup[0]
+                    rk_meta = titles[main_qid]
+                    index_name = rk_meta['title']
+
+                    if len(index) == 1 :
+                        sub_title = titles[index[0]]['sub_title']
+                        index_name = f'{index_name}_{sub_title}'
+                    else :
+                        first_sub_title = titles[index[0]]['sub_title']
+                        last_sub_title = titles[index[-1]]['sub_title']
+                        index_name = f'{index_name}: {first_sub_title} to {last_sub_title}'
+
+                    rk_index = []
+                    for idx in index_meta :
+                        key = list(idx.keys())[0]
+                        key = int(key) if key.isdigit() else key
+                        label = list(idx.values())[0]
+                        rk = f'{main_qid}_ANS_{key}'
+                        
+                        new_index_meta.append({rk: label})
+                        rank_df[rk] = 0
+                        rank_df.loc[(rank_df[index]==key).any(axis=1), rk] = 1
+                        rk_index.append(rk)
+                    
+                    df = rank_df
+                    index = rk_index
+                    index_meta = new_index_meta
 
             result = create_crosstab(df,
                                     index=index,
@@ -1788,6 +1849,15 @@ def DecipherDataProcessing(dataframe: pd.DataFrame,
                 qtype = m['type']
                 meta = m['meta']
                 grouping = m['grouping']
+                mtitle = m['title']
+
+                title[m['qlabel']] = {
+                    "type": qtype,
+                    "title": mtitle,
+                    "sub_title": None,
+                    "vgroup": None
+                }
+
                 for v in variables :
                     qtitle = m['title']
                     base_var = [b[v] for b in base if list(b.keys())[0] == v][0]
@@ -1811,7 +1881,8 @@ def DecipherDataProcessing(dataframe: pd.DataFrame,
                     title[v] = {
                         "type": qtype,
                         "title": qtitle,
-                        "sub_title": sub_title
+                        "sub_title": sub_title,
+                        "vgroup": base_var['vgroup']
                     }
 
         except FileNotFoundError :
