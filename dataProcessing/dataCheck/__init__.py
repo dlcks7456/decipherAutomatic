@@ -424,13 +424,10 @@ class DataCheck(pd.DataFrame):
                 title = title_dict[match_qid]['title']
                 # qtype = title_dict[match_qid]['type']
 
-                row_title = title_dict[match_qid]['row_title']
-                col_title = title_dict[match_qid]['col_title']
+                sub_title = title_dict[match_qid]['sub_title']
 
-                if row_title is not None :
-                    result_alt = f'{alt_qid}: {title}_{row_title}'
-                elif col_title is not None :
-                    result_alt = f'{alt_qid}: {title}_{col_title}'
+                if sub_title is not None :
+                    result_alt = f'{alt_qid}: {title}_{sub_title}'
                 else :
                     result_alt = f'{alt_qid}: {title}'
 
@@ -1532,7 +1529,12 @@ class DataCheck(pd.DataFrame):
                 if chk_var in title_attr.keys() :
                     set_title = title_attr[chk_var]['title']
                     set_title = set_title.replace('(HIDDEN)', '').strip()
-                    
+
+                    sub_title = title_attr[chk_var]['sub_title']
+
+                    if sub_title is not None :
+                        set_title = f'{set_title}_{sub_title}'
+
                     return_title = set_title
 
         else :
@@ -1781,32 +1783,36 @@ def DecipherDataProcessing(dataframe: pd.DataFrame,
             title = {}
 
             for m in _map :
-                variables = m['variables']
+                base = m['variables']
+                variables = [list(v.keys())[0] for v in base]
                 qtype = m['type']
                 meta = m['meta']
-                qtitle = m['title']
+                grouping = m['grouping']
                 for v in variables :
+                    qtitle = m['title']
+                    base_var = [b[v] for b in base if list(b.keys())[0] == v][0]
+                    
                     if qtype in ['single', 'rating', 'rank'] :
                         metadata[v] = meta
+                    elif qtype in ['other_open'] :
+                        metadata[v] = list(meta[0].values())[0]
                     else :
-                        metadata[v] = [list(i.values())[0]['rowTitle'] or list(i.values())[0]['colTitle'] for i in meta if list(i.keys())[0] == v][0]
+                        if grouping == 'rows' :
+                            metadata[v] = [list(i.values())[0]['colTitle'] for i in meta if list(i.keys())[0] == v][0]
+                        else :
+                            metadata[v] = [list(i.values())[0]['rowTitle'] for i in meta if list(i.keys())[0] == v][0]
                     
-                    meta_keys = [list(i.keys())[0] for i in meta]
+                    sub_title = None
+                    if grouping == 'rows' :
+                        sub_title = base_var['rowTitle']
+                    if grouping == 'cols' :
+                        sub_title = base_var['colTitle']
 
-                    if v in meta_keys :
-                        title[v] = {
-                            "type": qtype,
-                            "title": qtitle,
-                            "row_title": [list(i.values())[0]['rowTitle'] for i in meta if list(i.keys())[0] == v][0],
-                            "col_title": [list(i.values())[0]['colTitle'] for i in meta if list(i.keys())[0] == v][0],
-                        }
-                    else :
-                        title[v] = {
-                            "type": qtype,
-                            "title": qtitle,
-                            "row_title": None,
-                            "col_title": None,
-                        }
+                    title[v] = {
+                        "type": qtype,
+                        "title": qtitle,
+                        "sub_title": sub_title
+                    }
 
         except FileNotFoundError :
             print(f"File not found: {title_path}")
@@ -1939,6 +1945,7 @@ def DecipherSetting(pid: str,
             for mp in map_py :
                 qlabel = mp['qlabel']
                 variables = mp['variables']
+                variables = [list(v.keys())[0] for v in variables]
                 qtype = mp['type']
                 var_text = f"""# {qlabel} : {qtype}\n"""
 

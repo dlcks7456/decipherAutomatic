@@ -537,6 +537,9 @@ def clean_text(text):
     matches = re.findall(pattern, text)
     if matches :
         clean_text = text.replace(matches[-1], '').strip()
+        if clean_text == '' :
+            return text
+    
         if clean_text in text :
             return clean_text
         else :
@@ -622,28 +625,34 @@ def decipher_map(pid: Union[str, int]) :
         qtype = q['type']
         title = q['qtitle']
         variables = q['variables']
-        label_list = [v['label'] for v in variables]
+        label_list = [{v['label']: {'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle'])}} for v in variables]
         value_list = []
         meta_list = []
         oe_variables = []
+        grouping = q['grouping']
         if not qtype in ['text'] :
             oe_variables = [{'qlabel': v['label'], \
                             'vgroup': qlabel, \
                             'type': 'other_open', \
                             'row': v['row'], \
                             'col': v['col'], \
-                            'variables': [v['label']],\
+                            'variables': [{v['label']: {'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle'])}}],\
                             'title': title,\
-                            'meta': [{v['label']: {'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle'])}}],\
+                            'grouping': grouping, \
+                            'meta': [{v['label']: v['title']}],\
                             } for v in variables if v['type']=='text']
-            label_list = [v['label'] for v in variables if v['type'] in ['single', 'multiple', 'number']]
+            label_list = [{v['label']: {'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle'])}} for v in variables if v['type'] in ['single', 'multiple', 'number']]
 
         if 'values' in q.keys():
             values = q['values']
             value_list = [x['value'] for x in values]
             meta_list = [{x['value']: x['title']} for x in values]
         else :
-            meta_list = [{x['label']: {'value': x['value'] if 'value' in x.keys() else None, 'rowTitle': clean_text(x['rowTitle']), 'colTitle': clean_text(x['colTitle'])}} for x in variables]
+            value_list = [v['value'] for v in variables if 'value' in v.keys()]
+            meta_list = [{x['label']: { \
+                            'value': x['value'] if 'value' in x.keys() else None, \
+                            'rowTitle': clean_text(x['rowTitle']), \
+                            'colTitle': clean_text(x['colTitle'])}} for x in variables]
         
         if 'dq' in q.keys() :
             if q['dq'] == 'atmtable' :
@@ -652,13 +661,43 @@ def decipher_map(pid: Union[str, int]) :
         col_list = [v['colTitle'] for v in variables]
         if any(col in rank_flag for col in col_list) :
             qtype = 'rank'
+        
+        # if qtype == 'multiple' :
+        multiples = [v for v in variables if v['type'] != 'text']
+        vgroups = [v['vgroup'] for v in multiples if not v['vgroup'] == qlabel]
+        if vgroups :
+            groups = []
+            for gr in vgroups :
+                if not gr in groups :
+                    groups.append(gr)
             
-        return_questions.append({'qlabel': qlabel, \
-                                'variables': label_list, \
-                                'values': value_list, \
-                                'type': qtype, \
-                                'meta': meta_list, \
-                                'title': title})
+            for gr in groups :
+                filt_variable = [v for v in multiples if v['vgroup'] == gr]
+                ma_label_list = [{v['label']: {'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle'])}} for v in filt_variable]
+                ma_values = [v['value'] for v in filt_variable]
+                ma_meta = [{x['label']: { \
+                            'value': x['value'] if 'value' in x.keys() else None, \
+                            'rowTitle': clean_text(x['rowTitle']), \
+                            'colTitle': clean_text(x['colTitle'])}} for x in filt_variable]
+                return_questions.append({
+                    'qlabel': gr, \
+                    'variables': ma_label_list,
+                    'type': qtype, \
+                    'values': ma_values, \
+                    'meta': ma_meta, \
+                    'grouping': grouping, \
+                    'title': title
+                })
+        else : 
+            return_questions.append({'qlabel': qlabel, \
+                                    'variables': label_list, \
+                                    'values': value_list, \
+                                    'type': qtype, \
+                                    'meta': meta_list, \
+                                    'grouping': grouping, \
+                                    'title': title})
+
+        
         if oe_variables :
             for oe in oe_variables :
                 return_questions.append(oe)
