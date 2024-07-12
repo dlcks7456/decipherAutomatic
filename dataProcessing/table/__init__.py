@@ -106,7 +106,10 @@ def create_crosstab(df: pd.DataFrame,
                     bottom: Optional[Union[int, List[int]]] = None,
                     aggfunc: Optional[list] = None,
                     float_round: int = 2,
-                    reverse_rating: Optional[bool]=False) -> pd.DataFrame:
+                    reverse_rating: Optional[bool]=False,
+                    total_label: str = 'Total',
+                    all_label: str = 'All',
+                    count_label: str = 'Count',) -> pd.DataFrame:
     """
     Creates a crosstab from the provided DataFrame with optional metadata for reordering and relabeling indices and columns, and with options to include top/bottom summaries and index sorting.
     
@@ -124,9 +127,6 @@ def create_crosstab(df: pd.DataFrame,
     Returns:
         pd.DataFrame: The resulting crosstab with optional reordering, relabeling, top/bottom summaries, and total sum row.
     """
-    total_label = 'Total'
-    all_label   = 'All'
-    count_label = 'Count'
 
     def extract_order_and_labels(metadata: Union[list, dict], front_variable: Optional[list] = None, back_variable: Optional[list] = None):
         """

@@ -1,7 +1,7 @@
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
 from IPython.display import display, HTML
-from typing import Union, List, Tuple, Dict, Optional, Literal, Callable, Any, NoReturn
+from typing import Union, List, Tuple, Dict, Optional, Literal, Callable, Any
 import numpy as np
 from dataclasses import dataclass, field
 import contextlib
@@ -16,7 +16,7 @@ import time
 from decipherAutomatic.key import api_key, api_server
 from decipherAutomatic.getFiles import *
 from decipherAutomatic.utils import *
-from decipherAutomatic.dataProcessing.table import *
+from decipherAutomatic.dataProcessing.table import CrossTabs, create_crosstab
 from pandas.io.formats import excel
 import zipfile
 
@@ -421,13 +421,17 @@ class DataCheck(pd.DataFrame):
             
             title_dict = self.attrs['title']
             if match_qid in title_dict.keys() :
-                title = title_dict[match_qid]['title']
-                # qtype = title_dict[match_qid]['type']
+                vgroup = title_dict[match_qid]['vgroup']
+                title = title_dict[vgroup]['title']
+                qtype = title_dict[vgroup]['type']
 
-                sub_title = title_dict[match_qid]['sub_title']
+                if not qtype in ['multiple'] :
+                    sub_title = title_dict[match_qid]['sub_title']
 
-                if sub_title is not None :
-                    result_alt = f'{alt_qid}: {title}_{sub_title}'
+                    if sub_title is not None :
+                        result_alt = f'{alt_qid}: {title}_{sub_title}'
+                    else :
+                        result_alt = f'{alt_qid}: {title}'
                 else :
                     result_alt = f'{alt_qid}: {title}'
 
@@ -519,7 +523,7 @@ class DataCheck(pd.DataFrame):
         if self.attrs['display_msg'] ==  'all' :
             display(HTML(print_result))
 
-    def count_col(self, cnt_col_name: str, cols: Union[List[str], Tuple[str], str], value: Optional[Union[int, List[int]]] = None) -> None:
+    def count_col(self, cnt_col_name: str, cols: Union[List[str], Tuple[str], str], value: Optional[Union[int, List[int], range]] = None) -> None:
         """
         주어진 열의 응답을 세어 새로운 열을 추가하는 메서드  
         (`nan` / `0` 이 아닌 컬럼 카운트)  
@@ -545,7 +549,7 @@ class DataCheck(pd.DataFrame):
             new_col = self[cnt_col].apply(lambda row: row.isin([value]).sum(), axis=1).rename(cnt_col_name)
         elif isinstance(value, list):
             new_col = self[cnt_col].apply(lambda row: row.isin(value).sum(), axis=1).rename(cnt_col_name)
-        if isinstance(value, range):
+        elif isinstance(value, range):
             value = list(value) + [value[-1] + 1]
             new_col = self[cnt_col].apply(lambda row: row.isin(value).sum(), axis=1).rename(cnt_col_name)
 
@@ -1023,7 +1027,7 @@ class DataCheck(pd.DataFrame):
             display(HTML(print_text))
 
     def masa(self, 
-             ma_qid: Union[List[str], Tuple[str]], 
+             ma_qid: Union[List[str], Tuple[str, ...]], 
              sa_qid: str, 
              cond: Optional[pd.Series] = None, 
              diff_value: Optional[Union[List[Any], range, int, str]] = None,
@@ -1110,8 +1114,8 @@ class DataCheck(pd.DataFrame):
         return edf
 
     def mama(self,
-             base_ma: Union[List[str], Tuple[str]], 
-             chk_ma: Union[List[str], Tuple[str]], 
+             base_ma: Union[List[str], Tuple[str, ...]], 
+             chk_ma: Union[List[str], Tuple[str, ...]], 
              cond: Optional[pd.Series] = None, 
              diff_value: Optional[Union[List[Any], range, int, str]] = None,
              alt: Optional[str]=None,
@@ -1224,8 +1228,8 @@ class DataCheck(pd.DataFrame):
         return edf
 
     def mark(self,
-            base_qid: Union[List[str], Tuple[str]], 
-            rank_qid: Union[List[str], Tuple[str]], 
+            base_qid: Union[List[str], Tuple[str, ...]], 
+            rank_qid: Union[List[str], Tuple[str, ...]], 
             cond: Optional[pd.Series] = None, 
             diff_value: Optional[Union[List[Any], range, int, str]] = None,
             alt: Optional[str]=None,
@@ -1343,8 +1347,8 @@ class DataCheck(pd.DataFrame):
 
 
     def rate_rank(self,
-                  rate_qid: Union[List[str], Tuple[str]], 
-                  rank_qid: Union[List[str], Tuple[str]],
+                  rate_qid: Union[List[str], Tuple[str, ...]], 
+                  rank_qid: Union[List[str], Tuple[str, ...]],
                   cond: Optional[pd.Series] = None,
                   alt: Optional[str]=None,
                   key_var: Optional[str]=None)  -> 'ErrorDataFrame' :
@@ -1526,14 +1530,18 @@ class DataCheck(pd.DataFrame):
                 if isinstance(chk_var, list) :
                     chk_var = variable[0]
                 
+                vgroup = title_attr[chk_var]['vgroup']
+
                 if chk_var in title_attr.keys() :
-                    set_title = title_attr[chk_var]['title']
+                    set_title = title_attr[vgroup]['title']
                     set_title = set_title.replace('(HIDDEN)', '').strip()
 
-                    sub_title = title_attr[chk_var]['sub_title']
+                    qtype = title_attr[vgroup]['type']
+                    if not qtype in ['multiple'] :
+                        sub_title = title_attr[chk_var]['sub_title']
 
-                    if sub_title is not None :
-                        set_title = f'{set_title}_{sub_title}'
+                        if sub_title is not None :
+                            set_title = f'{set_title}_{sub_title}'
 
                     return_title = set_title
 
@@ -1542,7 +1550,7 @@ class DataCheck(pd.DataFrame):
 
         return return_title
 
-    def table(self, index: Union[str, List[str]],
+    def table(self, index: Union[str, List[str], Tuple[str, ...]],
                     columns: Optional[Union[str, List[str]]] = None,
                     cond: Optional[pd.Series] = None,
                     index_meta: Optional[List[Dict[str, str]]] = None,
@@ -1559,11 +1567,22 @@ class DataCheck(pd.DataFrame):
                     bottom: Optional[int] = None,
                     reverse_rating: Optional[bool]=False,
                     aggfunc: Optional[list] = None,
+                    with_value: bool = True,
                     float_round: int = 2) -> pd.DataFrame :
 
             cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
             df = self[cond].copy()
 
+            # Index
+            if isinstance(index, (list, tuple)) :
+                index = self.ma_return(index)
+                if not self.col_name_check(*index) : return
+
+            # Columns
+            if isinstance(columns, (list, tuple)) :
+                columns = self.ma_return(columns)
+                if not self.col_name_check(*columns) : return
+            
             original_index_meta = index_meta
             original_index_name = index_name
 
@@ -1572,6 +1591,7 @@ class DataCheck(pd.DataFrame):
             
             index_meta = self.setting_meta(original_index_meta, index)
             index_name = self.setting_title(original_index_name, index)
+            
             if isinstance(index, str) and isinstance(index_meta, str) :
                 index_meta = None
 
@@ -1581,6 +1601,16 @@ class DataCheck(pd.DataFrame):
                 
                 if index_sort == 'desc' :
                     index_meta = sorted(index_meta, key=lambda d: list(d.keys())[0], reverse=True)
+
+            if index_meta is not None and with_value :
+                new_index_meta = []
+                for idx in index_meta :
+                    new_meta = {}
+                    for k, m in idx.items() :
+                        new_meta[k] = f'[{k}] {m}'
+                    new_index_meta.append(new_meta)
+                
+                index_meta = new_index_meta
 
             columns_meta = self.setting_meta(original_columns_meta, columns)
             columns_name = self.setting_title(original_columns_name, columns)
@@ -1663,7 +1693,11 @@ class DataCheck(pd.DataFrame):
                     df = rank_df
                     index = rk_index
                     index_meta = new_index_meta
-
+            
+            total_label ='Total'
+            if columns is None :
+                total_label = index_name
+            
             result = create_crosstab(df,
                                     index=index,
                                     columns=columns,
@@ -1679,7 +1713,8 @@ class DataCheck(pd.DataFrame):
                                     bottom=bottom,
                                     aggfunc=aggfunc,
                                     float_round=float_round,
-                                    reverse_rating=reverse_rating)
+                                    reverse_rating=reverse_rating, 
+                                    total_label=total_label)
 
             return CrossTabs(result)
 
@@ -1732,7 +1767,7 @@ class DataCheck(pd.DataFrame):
 
 
     def banner_table(self, 
-                    index: Union[str, List[str]],
+                    index: Union[str, List[str], Tuple[str]],
                     cond: Optional[pd.Series] = None,
                     index_meta: Optional[List[Dict[str, str]]] = None,
                     columns_meta: Optional[List[Dict[str, str]]] = None,
@@ -1741,33 +1776,53 @@ class DataCheck(pd.DataFrame):
                     index_sort: Optional[Literal['asc', 'desc']]=None,
                     columns_sort: Optional[Literal['asc', 'desc']]=None,
                     fill: bool = True,
-                    qtype: Literal['single', 'rating', 'rank', 'multiple', 'number', 'text'] = None,
+                    qtype: Literal['single', 'multiple', 'number', 'text', 'rating', 'rank', 'ranksort'] = None,
                     score: Optional[int] = None,
                     top: Optional[int] = None,
                     medium: Optional[Union[int, List[int], bool]] = True,
                     bottom: Optional[int] = None,
                     reverse_rating: Optional[bool]=False,
+                    with_value: bool = True,
                     aggfunc: Optional[list] = None,
                     float_round: int = 2,) -> pd.DataFrame :
 
-            return self.table(index=index,
-                              cond=cond,
-                              columns=self.attrs['banner'],
-                              index_meta=index_meta,
-                              columns_meta=columns_meta,
-                              index_name=index_name,
-                              columns_name=columns_name,
-                              index_sort=index_sort,
-                              columns_sort=columns_sort,
-                              qtype=qtype,
-                              score=score,
-                              fill=fill,
-                              top=top,
-                              medium=medium,
-                              bottom=bottom,
-                              aggfunc=aggfunc,
-                              float_round=float_round,
-                              reverse_rating=reverse_rating,)
+        return self.table(index=index,
+                            cond=cond,
+                            columns=self.attrs['banner'],
+                            index_meta=index_meta,
+                            columns_meta=columns_meta,
+                            index_name=index_name,
+                            columns_name=columns_name,
+                            index_sort=index_sort,
+                            columns_sort=columns_sort,
+                            qtype=qtype,
+                            score=score,
+                            fill=fill,
+                            top=top,
+                            medium=medium,
+                            bottom=bottom,
+                            aggfunc=aggfunc,
+                            float_round=float_round,
+                            with_value=with_value,
+                            reverse_rating=reverse_rating,)
+    
+    def grid_summary(self, index: Union[List[str], List[List[str]], Tuple[str], CrossTabs],
+                    summary_name: str = 'Summary',
+                    cond: Optional[pd.Series] = None,) :
+        if not isinstance(index, list):
+            raise ValueError(f'index must be list : {index}')
+
+        summary_df = []
+        for idx in index :
+            if isinstance(idx, CrossTabs):
+                summary_df.append(idx)
+            else :
+                summary_df.append(self.table(idx, cond=cond))
+        
+        summary = pd.concat(summary_df, axis=1)
+        summary.index.name = summary_name
+
+        return CrossTabs(summary)
 
 
 
@@ -1875,8 +1930,12 @@ def DecipherDataProcessing(dataframe: pd.DataFrame,
                     sub_title = None
                     if grouping == 'rows' :
                         sub_title = base_var['rowTitle']
+                        if sub_title is None :
+                            sub_title = base_var['colTitle']
                     if grouping == 'cols' :
                         sub_title = base_var['colTitle']
+                        if sub_title is None :
+                            sub_title = base_var['rowTitle']
 
                     title[v] = {
                         "type": qtype,
