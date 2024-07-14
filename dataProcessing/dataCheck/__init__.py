@@ -16,9 +16,10 @@ import time
 from decipherAutomatic.key import api_key, api_server
 from decipherAutomatic.getFiles import *
 from decipherAutomatic.utils import *
-from decipherAutomatic.dataProcessing.table import CrossTabs, create_crosstab
+from decipherAutomatic.dataProcessing.table import CrossTabs, create_crosstab, decipher_map, decipher_meta, decipher_title, get_decipher_data, get_decipher_datamap
 from pandas.io.formats import excel
 import zipfile
+from pprint import pprint
 
 def check_print(variables: Union[List[str], Tuple[str, ...], str], 
                 error_type: Literal['SA', 'MA', 'LOGIC', 'MASA', 'MAMA', 'MARK', 'RATERANK', 'DUP'], 
@@ -298,8 +299,7 @@ class ErrorDataFrame:
         return ''
 
 class DataCheck(pd.DataFrame):
-    _metadata = ['_keyid', '_css', '_meta_origin', '_meta', '_title', '_default_top', '_default_bottom']
-
+    _metadata = ['_keyid', '_css', '_meta_origin', '_meta', '_title', '_default_top', '_default_bottom', '_default_medium', '_default_ratio_round', '_default_agg_round']
     def __init__(self, *args, **kwargs):
         self._keyid = kwargs.pop('keyid', None)
         self._css = kwargs.pop('css', None)
@@ -307,6 +307,9 @@ class DataCheck(pd.DataFrame):
         self._title = kwargs.pop('title', None)
         self._default_top = kwargs.pop('default_top', None)
         self._default_bottom = kwargs.pop('default_bottom', None)
+        self._default_medium = kwargs.pop('default_medium', None)
+        self._default_ratio_round = kwargs.pop('default_ratio_round', None)
+        self._default_agg_round = kwargs.pop('default_agg_round', None)
         
         super().__init__(*args, **kwargs)
         if self._keyid is not None:
@@ -328,6 +331,9 @@ class DataCheck(pd.DataFrame):
         self.attrs['banner'] = []
         self.attrs['default_top'] = 2 if self._default_top is None else self._default_top
         self.attrs['default_bottom'] = 2 if self._default_bottom is None else self._default_bottom
+        self.attrs['default_medium'] = True if self._default_medium is None else self._default_medium
+        self.attrs['default_ratio_round'] = 0 if self._default_ratio_round is None else self._default_ratio_round
+        self.attrs['default_agg_round'] = 2 if self._default_agg_round is None else self._default_agg_round
 
 
     @property
@@ -1529,14 +1535,20 @@ class DataCheck(pd.DataFrame):
                 chk_var = variable
                 if isinstance(chk_var, list) :
                     chk_var = variable[0]
-                
-                vgroup = title_attr[chk_var]['vgroup']
-
+            
                 if chk_var in title_attr.keys() :
-                    set_title = title_attr[vgroup]['title']
+                    set_title = ''
+                    qtype = None
+                    if 'vgroup' in title_attr.keys() :
+                        vgroup = title_attr[chk_var]['vgroup']
+                        set_title = title_attr[vgroup]['title']
+                        qtype = title_attr[vgroup]['type']
+                    else :
+                        set_title = title_attr[chk_var]['title']
+                        qtype = title_attr[chk_var]['type']
+                    
                     set_title = set_title.replace('(HIDDEN)', '').strip()
 
-                    qtype = title_attr[vgroup]['type']
                     if not qtype in ['multiple'] :
                         sub_title = title_attr[chk_var]['sub_title']
 
@@ -1560,18 +1572,23 @@ class DataCheck(pd.DataFrame):
                     index_sort: Optional[Literal['asc', 'desc']]=None,
                     columns_sort: Optional[Literal['asc', 'desc']]=None,
                     fill: bool = True,
+                    mode: Optional[Literal['count', 'ratio', 'both']] = 'count',
                     qtype: Literal['single', 'rating', 'rank', 'multiple', 'number', 'text'] = None,
                     score: Optional[int] = None,
                     top: Optional[int] = None,
-                    medium: Optional[Union[int, List[int], bool]] = True,
+                    medium: Optional[Union[int, List[int], bool]] = None,
                     bottom: Optional[int] = None,
                     reverse_rating: Optional[bool]=False,
                     aggfunc: Optional[list] = None,
                     with_value: bool = True,
-                    float_round: int = 2) -> pd.DataFrame :
+                    ratio_round: int = None,
+                    agg_round: int = None) -> pd.DataFrame :
 
             cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
             df = self[cond].copy()
+
+            ratio_round = self.attrs['default_ratio_round'] if ratio_round is None else ratio_round
+            agg_round = self.attrs['default_agg_round'] if agg_round is None else agg_round
 
             # Index
             if isinstance(index, (list, tuple)) :
@@ -1649,7 +1666,8 @@ class DataCheck(pd.DataFrame):
                 # default
                 top = self.attrs['default_top'] if top is None else top
                 bottom = self.attrs['default_bottom'] if bottom is None else bottom
-                sort_index = 'desc'
+                medium = self.attrs['default_medium'] if medium is None else medium
+                
                 if aggfunc is None :
                     aggfunc = ['mean']
             
@@ -1705,27 +1723,32 @@ class DataCheck(pd.DataFrame):
                                     columns_meta=columns_meta,
                                     index_name=index_name,
                                     columns_name=columns_name,
-                                    qtype=qtype ,
-                                    score=score ,
+                                    qtype=qtype,
+                                    score=score,
+                                    mode=mode,
                                     fill=fill,
                                     top=top,
                                     medium=medium,
                                     bottom=bottom,
                                     aggfunc=aggfunc,
-                                    float_round=float_round,
+                                    ratio_round=ratio_round,
+                                    agg_round=agg_round,
                                     reverse_rating=reverse_rating, 
                                     total_label=total_label)
 
             return CrossTabs(result)
 
-    def set_banner(self, banner_list: List[Tuple]):
+    def set_banner(self, banner_list: List[Union[Tuple, List]]):
         # [ ('banner column name', 'banner title', banner condition) ]
         self.attrs['banner'] = []  # clear banner
         update_banner_list = self.attrs['banner']
         new_columns = {}
         new_meta = self.attrs['meta_origin']
         new_data = {}
-
+        
+        # Banner Groups
+        group_flag = any(isinstance(ba, list) for ba in banner_list)
+        
         def add_banner_column(col, title, cond):
             if not isinstance(col, str):
                 raise ValueError(f'banner column name must be string : {col}')
@@ -1742,25 +1765,41 @@ class DataCheck(pd.DataFrame):
             self.__dict__.update(result.__dict__)
             
             new_meta[col] = title
-            update_banner_list.append(col)
+            
+            if not group_flag :
+                update_banner_list.append(col)
+
+        def add_banner_group(group_label, group_title, banners) :
+            new_meta[group_label] = group_title
+            
+            banner_child = []
+            for ba in banners :
+                col, title, cond = ba
+                add_banner_column(col, title, cond)
+                banner_child.append(col)
+
+            update_banner_list.append({group_label: banner_child})
 
         for banner in banner_list:
-            if isinstance(banner, tuple):
+            if isinstance(banner, tuple) and not group_flag :
                 col, title, cond = banner
                 add_banner_column(col, title, cond)
             
+            if isinstance(banner, tuple) and group_flag :
+                col, title, cond = banner
+                add_banner_group(col, title, [banner])
+
             if isinstance(banner, list):
-                group, each = banner
-                if not isinstance(group, str):
-                    raise ValueError(f'banner group name must be string : {banner}')
+                group, bas = banner
+                if not isinstance(group, tuple):
+                    raise ValueError(f'banner group must be tuple : {banner}')
                 
-                if not isinstance(each, list):
+                if not isinstance(bas, list):
                     raise ValueError(f'banner variable must be list : {banner}')
                 
-                for var in each:
-                    col, title, cond = var
-                    add_banner_column(col, title, cond)
-        
+                glabel, gtitle = group
+                add_banner_group(glabel, gtitle, bas)
+                
         # Add all new columns to the dataframe at once
         # self.dataframe = pd.concat([self.dataframe, pd.DataFrame(new_columns, index=self.dataframe.index)], axis=1)
         self.attrs['meta'] = new_meta
@@ -1775,20 +1814,33 @@ class DataCheck(pd.DataFrame):
                     columns_name: Optional[str] = None,
                     index_sort: Optional[Literal['asc', 'desc']]=None,
                     columns_sort: Optional[Literal['asc', 'desc']]=None,
+                    mode: Optional[Literal['count', 'ratio', 'both']] = 'count',
                     fill: bool = True,
                     qtype: Literal['single', 'multiple', 'number', 'text', 'rating', 'rank', 'ranksort'] = None,
                     score: Optional[int] = None,
                     top: Optional[int] = None,
-                    medium: Optional[Union[int, List[int], bool]] = True,
+                    medium: Optional[Union[int, List[int], bool]] = None,
                     bottom: Optional[int] = None,
                     reverse_rating: Optional[bool]=False,
                     with_value: bool = True,
                     aggfunc: Optional[list] = None,
-                    float_round: int = 2,) -> pd.DataFrame :
+                    ratio_round: int = None,
+                    agg_round: int = None,
+                    table_title: Optional[Union[str, list]] = None) -> pd.DataFrame :
 
-        return self.table(index=index,
+        banners = self.attrs['banner']
+        meta_attr = self.attrs['meta']
+
+        set_columns = banners
+
+        group_flag = all(isinstance(ba, dict) for ba in banners)
+        if group_flag :
+            set_columns = [list(ba.values())[0] for ba in banners]
+            set_columns = sum(set_columns, [])
+
+        table_result = self.table(index=index,
                             cond=cond,
-                            columns=self.attrs['banner'],
+                            columns=set_columns,
                             index_meta=index_meta,
                             columns_meta=columns_meta,
                             index_name=index_name,
@@ -1797,15 +1849,52 @@ class DataCheck(pd.DataFrame):
                             columns_sort=columns_sort,
                             qtype=qtype,
                             score=score,
+                            mode=mode,
                             fill=fill,
                             top=top,
                             medium=medium,
                             bottom=bottom,
                             aggfunc=aggfunc,
-                            float_round=float_round,
+                            ratio_round=ratio_round,
+                            agg_round=agg_round,
                             with_value=with_value,
-                            reverse_rating=reverse_rating,)
+                            reverse_rating=reverse_rating)
+
+        if group_flag :
+            if meta_attr is not None :
+                group_keys = [list(ba.keys())[0] for ba in banners]
+
+                multicols = [('', 'Total')]
+                for gkey in group_keys :
+                    group_title = meta_attr[gkey]
+                    group_title = f'▣ {group_title}'
+                    each_banners = [list(ba.values())[0] for ba in banners if list(ba.keys())[0] == gkey]
+                    each_banners = sum(each_banners, [])
+                    for x in each_banners :
+                        banner_title = meta_attr[x]
+                        multicols.append((group_title, banner_title))
+
+
+                multicols = pd.MultiIndex.from_tuples(multicols)
+                table_result.columns = multicols
+        
+        if table_title is not None :
+            if group_flag :
+                if isinstance(table_title, str) :
+                    table_result.columns.names = [table_title, None]
+                elif isinstance(table_title, list):
+                    table_result.columns.names = table_title
+                else :
+                    raise ValueError(f'table_title must be str or list : {table_title}')
+            else :
+                if isinstance(table_title, str) :
+                    table_result.columns.name = table_title
+                else :
+                    raise ValueError(f'table_title must be str : {table_title}')
+
+        return table_result
     
+
     def grid_summary(self, index: Union[List[str], List[List[str]], Tuple[str], CrossTabs],
                     summary_name: str = 'Summary',
                     cond: Optional[pd.Series] = None,) :
@@ -1865,8 +1954,13 @@ def DecipherDataProcessing(dataframe: pd.DataFrame,
                            map_json: Optional[str] = None,
                            meta_path: Optional[str] = None,
                            title_path: Optional[str] = None,
-                           default_top: Optional[int] = None,
-                        default_bottom: Optional[int] = None) :
+                           default_args: Optional[dict] = {
+                               'top': 2,
+                               'medium': True,
+                               'bottom': 2,
+                               'ratio_round': 0,
+                               'agg_round': 2,
+                           }) :
     module_path = os.path.dirname(__file__)
     css_path = os.path.join(os.path.dirname(module_path), 'dataCheck')
     css = get_css(os.path.join(css_path, 'styles.css'))
@@ -1947,13 +2041,15 @@ def DecipherDataProcessing(dataframe: pd.DataFrame,
         except FileNotFoundError :
             print(f"File not found: {title_path}")
     
+
+    default_args = {f'default_{key}': value for key, value in default_args.items()}
+
     return DataCheck(df, 
                      css=css, 
                      keyid=keyid,
                      meta=metadata, 
                      title=title, 
-                     default_top=default_top, 
-                     default_bottom=default_bottom)
+                     **default_args)
     # return DataProcessing(dc, meta=metadata, title=title, default_top=default_top, default_bottom=default_bottom)
 
 

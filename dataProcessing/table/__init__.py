@@ -24,7 +24,7 @@ def custom_calc(df: pd.DataFrame,
                 all_label: str = 'All',
                 total_label: str = 'Total',
                 aggfunc: Union[str, List[str]] = ['mean'], 
-                float_round: int = 2) -> pd.DataFrame:
+                agg_round: int = 2) -> pd.DataFrame:
     """
     Calculates descriptive statistics for the specified index column based on the values of the columns parameter.
 
@@ -33,7 +33,7 @@ def custom_calc(df: pd.DataFrame,
     index (str): The column name to group by and calculate statistics for.
     columns (Union[str, List[str]]): The column name(s) to use for grouping.
     aggfunc (Union[str, List[str]]): The aggregation function(s) to apply. Default is 'mean'.
-    float_round (int): Number of decimal places to round the results to. Default is 2.
+    agg_round (int): Number of decimal places to round the results to. Default is 2.
 
     Returns:
     pd.DataFrame: A DataFrame containing the calculated statistics.
@@ -63,28 +63,28 @@ def custom_calc(df: pd.DataFrame,
             values = df[columns].value_counts().index.to_list()
 
             for v in values:
-                desc = df[df[columns] == v][index].describe().round(float_round).to_dict()
+                desc = df[df[columns] == v][index].describe().round(agg_round).to_dict()
                 for af in aggfunc:
                     ndf.loc[af, str(v)] = set_value(desc[af])
             
             # Total
-            desc = df[~df[columns].isna()][index].describe().round(float_round).to_dict()
+            desc = df[~df[columns].isna()][index].describe().round(agg_round).to_dict()
             for af in aggfunc:
                 ndf.loc[af, total_label] = set_value(desc[af])
             
         elif isinstance(columns, list):
             # Binary data case
             for col in columns:
-                desc = df[(~df[col].isna()) & (df[col] != 0)][index].describe().round(float_round).to_dict()
+                desc = df[(~df[col].isna()) & (df[col] != 0)][index].describe().round(agg_round).to_dict()
                 for af in aggfunc:
                     ndf.loc[af, col] = set_value(desc[af])
             
             # Total
-            desc = df[((~df[columns].isna()).any(axis=1)) & ((df[columns] != 0).any(axis=1))][index].describe().round(float_round).to_dict()
+            desc = df[((~df[columns].isna()).any(axis=1)) & ((df[columns] != 0).any(axis=1))][index].describe().round(agg_round).to_dict()
             for af in aggfunc:
                 ndf.loc[af, total_label] = set_value(desc[af])
     else :
-        desc = df[index].describe().round(float_round).to_dict()
+        desc = df[index].describe().round(agg_round).to_dict()
         for af in aggfunc:
             ndf.loc[af, total_label] = set_value(desc[af])
             
@@ -99,13 +99,15 @@ def create_crosstab(df: pd.DataFrame,
                     index_name: Optional[Union[str, bool]] = None,
                     columns_name: Optional[Union[str, bool]] = None,
                     fill: bool = True,
+                    mode: Optional[Literal['count', 'ratio', 'both']] = 'count',
                     qtype: Optional[str] = None,
                     score: Optional[int] = None,
                     top: Optional[Union[int, List[int]]] = None,
                     medium: Optional[Union[int, List[int], bool]] = True,
                     bottom: Optional[Union[int, List[int]]] = None,
                     aggfunc: Optional[list] = None,
-                    float_round: int = 2,
+                    ratio_round: int = 0,
+                    agg_round: int = 2,
                     reverse_rating: Optional[bool]=False,
                     total_label: str = 'Total',
                     all_label: str = 'All',
@@ -268,6 +270,10 @@ def create_crosstab(df: pd.DataFrame,
     else:
         raise ValueError("Index must be either a string or a list of strings.")
     
+
+    if not mode in ["count", "ratio", "both"]:
+        raise ValueError("Mode must be either 'count', 'ratio', or 'both'")
+
     # Create the appropriate crosstab
     if columns is None:
         if index_is_binary:
@@ -320,6 +326,9 @@ def create_crosstab(df: pd.DataFrame,
 
         crosstab_result = crosstab_result.sort_index(ascending=reverse_rating)
 
+    original_index_order = crosstab_result.index.to_list()
+    original_columns_order = crosstab_result.columns.to_list()
+
     # Total Setting
     if isinstance(index, str) :
         if columns is None :
@@ -349,9 +358,13 @@ def create_crosstab(df: pd.DataFrame,
             crosstab_result.loc[all_label, :] = pd.Series({col: ((~df[col].isna()) & (df[col]!=0)).sum() for col in base_columns})
             crosstab_result.loc[all_label, total_label] = ((df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1) & (df[columns]!=0).any(axis=1) & (~df[columns].isna()).any(axis=1)).sum()
 
+    # ALL/TOTAL ORDER SETTING
+    # crosstab_result.index = [all_label] + original_index_order
+    # crosstab_result.columns = [total_label] + original_columns_order
+    
 
     medium_auto_flag = False
-    if all([n is not None for n in [top, bottom]]) :
+    if all([n is not None for n in [top, bottom]]) and (medium is not False) :
         medium_auto_flag = True
 
     top_cols = []
@@ -475,8 +488,39 @@ def create_crosstab(df: pd.DataFrame,
 
         crosstab_result = pd.concat([crosstab_result, net_result])
 
-    crosstab_result = crosstab_result.fillna(0)
-    crosstab_result = crosstab_result.astype(int)
+    index_order = [all_label] + [i for i in crosstab_result.index.to_list() if not i == all_label]
+    column_order = [total_label] + [i for i in crosstab_result.columns.to_list() if not i == total_label]
+    
+    crosstab_result = crosstab_result.reindex(index_order)
+    crosstab_result = crosstab_result[column_order]
+    
+    if mode in ['count'] :
+        crosstab_result = crosstab_result.astype(int)
+
+    elif mode in ['ratio'] :
+        crosstab_result = crosstab_result.astype(float)
+        all_value = crosstab_result.iloc[0]
+        crosstab_result.iloc[1:, :] = (crosstab_result.iloc[1:, :].div(all_value))*100
+        crosstab_result = crosstab_result.round(ratio_round)
+        crosstab_result = crosstab_result.astype(str)
+        crosstab_result.iloc[0] = crosstab_result.iloc[0].apply(lambda x: str(int(float(x))))
+        if ratio_round == 0 :
+            crosstab_result = crosstab_result.applymap(lambda x: int(x.replace('.0', '')))
+        
+    elif mode in ['both'] :
+        crosstab_result = crosstab_result.astype(float)
+        all_value = crosstab_result.iloc[0]
+        
+        def transform_value(x, col) :
+            if ratio_round == 0 :
+                calc = round(x/all_value[col]*100, ratio_round)
+                calc = str(calc).replace('.0', '')
+                return f'{int(x)} ({calc}%)'
+            else :
+                return f'{int(x)} ({round(x/all_value[col]*100, ratio_round)}%)'
+
+        crosstab_result.iloc[1:, :] = crosstab_result.iloc[1:, :].apply(lambda col: col.apply(lambda x: transform_value(x, col.name)))
+
 
     # Calc
     calc = None
@@ -486,7 +530,7 @@ def create_crosstab(df: pd.DataFrame,
                            index=index, 
                            columns=columns, 
                            aggfunc=aggfunc, 
-                           float_round=float_round,
+                           agg_round=agg_round,
                            total_label=total_label)
         calc.index = calc.index.map(str)
         calc.columns = calc.columns.map(str)
@@ -506,7 +550,6 @@ def create_crosstab(df: pd.DataFrame,
         crosstab_result = add_missing_indices(crosstab_result.T, columns_order).T
         crosstab_result = reorder_and_relabel(crosstab_result, columns_order, columns_labels, axis=1, name=columns_name)
     
-    original_index_order = crosstab_result.index.to_list()
 
     if qtype in ['number'] : 
         crosstab_result = crosstab_result.loc[[all_label, *aggfunc], :]
@@ -517,6 +560,8 @@ def create_crosstab(df: pd.DataFrame,
         crosstab_result = crosstab_result.loc[(crosstab_result != 0).any(axis=1), (crosstab_result != 0).any(axis=0)]
 
     return crosstab_result
+
+
 
 class CrossTabs(pd.DataFrame):
     def __init__(self, crosstab_result: pd.DataFrame):
