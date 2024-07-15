@@ -325,7 +325,7 @@ def create_crosstab(df: pd.DataFrame,
                 crosstab_result.loc[idx] = 0
 
         crosstab_result = crosstab_result.sort_index(ascending=reverse_rating)
-
+        base_index = crosstab_result.index.to_list()
 
     # Total Setting
     if isinstance(index, str) :
@@ -333,12 +333,12 @@ def create_crosstab(df: pd.DataFrame,
             crosstab_result.loc[all_label, total_label] = (~df[index].isna()).sum()
 
         if isinstance(columns, str) :
-            crosstab_result.loc[all_label, :] = pd.Series({col: (df[columns]==col).sum() for col in base_columns})
+            crosstab_result.loc[all_label, :] = pd.Series({col: ((df[columns]==col) & (~df[index].isna())).sum() for col in base_columns})
             crosstab_result.loc[:, total_label] = pd.Series({idx: (df[index]==idx).sum() for idx in base_index})
             crosstab_result.loc[all_label, total_label] = ((~df[index].isna()) & (~df[columns].isna())).sum()
             
         if isinstance(columns, list) :
-            crosstab_result.loc[all_label, :] = pd.Series({col: ((~df[col].isna()) & (df[col]!=0)).sum() for col in base_columns})
+            crosstab_result.loc[all_label, :] = pd.Series({col: ((df[index]==idx) & (~df[col].isna()) & (df[col]!=0)).sum() for col in base_columns})
             crosstab_result.loc[:, total_label] = pd.Series({idx: (df[index]==idx).sum() for idx in base_index})
             crosstab_result.loc[all_label, total_label] = ((~df[index].isna()) & (df[columns]!=0).any(axis=1) & (~df[columns].isna()).any(axis=1)).sum()
         
@@ -347,13 +347,13 @@ def create_crosstab(df: pd.DataFrame,
             crosstab_result.loc[all_label, total_label] = ((df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum()
         
         if isinstance(columns, str) :
-            crosstab_result.loc[:, total_label] = pd.Series({idx: ((~df[idx].isna()) & (df[idx]!=0)).sum() for idx in base_index})
-            crosstab_result.loc[all_label, :] = pd.Series({col: (df[columns]==col).sum() for col in base_columns})
+            crosstab_result.loc[:, total_label] = pd.Series({idx: ((~df[idx].isna()) & (df[idx]!=0) & (~df[columns].isna())).sum() for idx in base_index})
+            crosstab_result.loc[all_label, :] = pd.Series({col: ((df[columns]==col) & (df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum() for col in base_columns})
             crosstab_result.loc[all_label, total_label] = ((~df[columns].isna()) & (df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum()
     
         if isinstance(columns, list) :
             crosstab_result.loc[:, total_label] = pd.Series({idx: ((~df[idx].isna()) & (df[idx]!=0)).sum() for idx in base_index})
-            crosstab_result.loc[all_label, :] = pd.Series({col: ((~df[col].isna()) & (df[col]!=0)).sum() for col in base_columns})
+            crosstab_result.loc[all_label, :] = pd.Series({col: ((~df[col].isna()) & (df[col]!=0) & (df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum() for col in base_columns})
             crosstab_result.loc[all_label, total_label] = ((df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1) & (df[columns]!=0).any(axis=1) & (~df[columns].isna()).any(axis=1)).sum()
 
     # ALL/TOTAL ORDER SETTING
@@ -378,7 +378,7 @@ def create_crosstab(df: pd.DataFrame,
 
         top_result = []
         for t in top_list :
-            top_indices = crosstab_result.iloc[:t].sum()
+            top_indices = crosstab_result.loc[base_index[:t]].sum()
             
             top_name = f'Top {t}'
             top_cols.append(top_name)
@@ -414,9 +414,9 @@ def create_crosstab(df: pd.DataFrame,
             vtop = min(top_list)
             vbot = min(bot_list)
                     
-            medium_index = crosstab_result.iloc[vbot:-vtop].index.to_list()
+            medium_index = crosstab_result.loc[base_index[vbot:-vtop]].index.to_list()
             if medium_index :
-                medium_indices = crosstab_result.iloc[vbot:-vtop].sum()
+                medium_indices = crosstab_result.loc[base_index[vbot:-vtop]].sum()
                 medium_name = 'Medium'
                 med_cols.append(medium_name)
                 back_index.append(medium_name)
@@ -430,10 +430,10 @@ def create_crosstab(df: pd.DataFrame,
                 medium_list = [medium]
             
             if medium_list :
-                medium_indices = crosstab_result.iloc[medium_list].sum()
+                medium_indices = crosstab_result.loc[[x for x in base_index if x in medium_list]].sum()
                 medium_list = [str(x) for x in medium_list]
                 medium_txt = ', '.join(medium_list)
-                medium_name = f'Medium ({medium_txt})'
+                medium_name = f'Medium [{medium_txt}]'
                 med_cols.append(medium_name)
                 back_index.append(medium_name)
                 medium_indices.name = medium_name
@@ -455,7 +455,7 @@ def create_crosstab(df: pd.DataFrame,
         
         bot_result = []
         for b in bot_list :
-            bottom_indices = crosstab_result.iloc[-(b+1):-1].sum()
+            bottom_indices = crosstab_result.loc[base_index[-b:]].sum()
             bot_name = f'Bottom {b}'
             bot_cols.append(bot_name)
             back_index.append(bot_name)
@@ -492,7 +492,6 @@ def create_crosstab(df: pd.DataFrame,
     crosstab_result = crosstab_result.reindex(index_order)
     crosstab_result = crosstab_result[column_order]
     
-    crosstab_result.fillna(0, inplace=True)
     if mode in ['count'] :
         crosstab_result = crosstab_result.astype(int)
         
@@ -501,6 +500,7 @@ def create_crosstab(df: pd.DataFrame,
         all_value = crosstab_result.iloc[0]
         crosstab_result.iloc[1:, :] = (crosstab_result.iloc[1:, :].div(all_value))*100
         crosstab_result = crosstab_result.round(ratio_round)
+        crosstab_result = crosstab_result.map(lambda x: f"{x:.{ratio_round}f}")
         crosstab_result = crosstab_result.astype(str)
         crosstab_result.iloc[0] = crosstab_result.iloc[0].apply(lambda x: str(int(float(x))))
         if ratio_round == 0 :
@@ -509,16 +509,22 @@ def create_crosstab(df: pd.DataFrame,
     elif mode in ['both'] :
         crosstab_result = crosstab_result.astype(float)
         all_value = crosstab_result.iloc[0]
-        
-        def transform_value(x, col) :
-            if ratio_round == 0 :
-                calc = round(x/all_value[col]*100, ratio_round)
+
+        def transform_value(x, col):
+            if ratio_round == 0:
+                calc = round(x / all_value[col] * 100, ratio_round)
+                calc = f"{calc:.{ratio_round}f}"
                 calc = str(calc).replace('.0', '')
                 return f'{int(x)} ({calc}%)'
-            else :
-                return f'{int(x)} ({round(x/all_value[col]*100, ratio_round)}%)'
+            else:
+                calc = round(x / all_value[col] * 100, ratio_round)
+                calc = f"{calc:.{ratio_round}f}"
+                return f'{int(x)} ({calc}%)'
 
-        crosstab_result.iloc[1:, :] = crosstab_result.iloc[1:, :].apply(lambda col: col.apply(lambda x: transform_value(x, col.name)))
+        # crosstab_result의 나머지 부분을 문자열로 변환합니다
+        crosstab_result = crosstab_result.astype(str)
+        crosstab_result.iloc[0] = crosstab_result.iloc[0].apply(lambda x: str(int(float(x))))
+        crosstab_result.iloc[1:, :] = crosstab_result.iloc[1:, :].apply(lambda col: col.apply(lambda x: transform_value(float(x), col.name)))
 
 
     # Calc

@@ -1573,7 +1573,7 @@ class DataCheck(pd.DataFrame):
                     columns_sort: Optional[Literal['asc', 'desc']]=None,
                     fill: bool = True,
                     mode: Optional[Literal['count', 'ratio', 'both']] = 'count',
-                    qtype: Literal['single', 'rating', 'rank', 'multiple', 'number', 'text'] = None,
+                    qtype: Optional[Literal['single', 'rating', 'rank', 'multiple', 'number', 'text']] = None,
                     score: Optional[int] = None,
                     top: Optional[int] = None,
                     medium: Optional[Union[int, List[int], bool]] = None,
@@ -1589,7 +1589,7 @@ class DataCheck(pd.DataFrame):
 
             ratio_round = self.attrs['default_ratio_round'] if ratio_round is None else ratio_round
             agg_round = self.attrs['default_agg_round'] if agg_round is None else agg_round
-
+            
             # Index
             if isinstance(index, (list, tuple)) :
                 index = self.ma_return(index)
@@ -1642,75 +1642,77 @@ class DataCheck(pd.DataFrame):
                     columns_meta = sorted(columns_meta, key=lambda d: list(d.keys())[0], reverse=True)
 
             titles = self.attrs['title']
-            if titles is not None and isinstance(index, str) :
-                if index in titles.keys() :
-                    question_type = titles[index]['type']
-                    if question_type == 'rating' :
-                        qtype = 'rating'
-                    
-                    if question_type == 'number' :
-                        qtype = 'number'
-                    
-            if titles is not None and isinstance(index, list) :
-                if all((i in titles.keys()) and (titles[i]['type'] == 'rank') for i in index) :
-                    index_meta = self.setting_meta(original_index_meta, index[0])
-                    index_name = titles[index[0]]['title']
-                    qtype = 'rank'
-            
-            if titles is not None and isinstance(index, str) :
-                if titles[index]['type'] == 'rank' :
-                    qtype = 'rank'
-                    index = [index]
-
-            if qtype in ['rating'] :
-                # default
-                top = self.attrs['default_top'] if top is None else top
-                bottom = self.attrs['default_bottom'] if bottom is None else bottom
-                medium = self.attrs['default_medium'] if medium is None else medium
-                
-                if aggfunc is None :
-                    aggfunc = ['mean']
-            
-            if qtype in ['number'] :
-                if aggfunc is None :
-                    aggfunc = ['mean', 'min', 'max']
-
-            if qtype in ['rank'] :
-                rank_df = df.copy()
-                new_index_meta = []
-                
-                if titles is not None :
-                    vgroup = list(set([titles[x]['vgroup'] for x in index]))
-                    if len(vgroup) >= 2 :
-                        raise ValueError('There are multiple vgroups in the index.')
-
-                    main_qid = vgroup[0]
-                    rk_meta = titles[main_qid]
-                    index_name = rk_meta['title']
-
-                    if len(index) == 1 :
-                        sub_title = titles[index[0]]['sub_title']
-                        index_name = f'{index_name}_{sub_title}'
-                    else :
-                        first_sub_title = titles[index[0]]['sub_title']
-                        last_sub_title = titles[index[-1]]['sub_title']
-                        index_name = f'{index_name}: {first_sub_title} to {last_sub_title}'
-
-                    rk_index = []
-                    for idx in index_meta :
-                        key = list(idx.keys())[0]
-                        key = int(key) if key.isdigit() else key
-                        label = list(idx.values())[0]
-                        rk = f'{main_qid}_ANS_{key}'
+            if qtype is None :
+                if titles is not None and isinstance(index, str) :
+                    if index in titles.keys() :
+                        question_type = titles[index]['type']
+                        if question_type == 'rating' :
+                            qtype = 'rating'
                         
-                        new_index_meta.append({rk: label})
-                        rank_df[rk] = 0
-                        rank_df.loc[(rank_df[index]==key).any(axis=1), rk] = 1
-                        rk_index.append(rk)
+                        if question_type == 'number' :
+                            qtype = 'number'
+                        
+                if titles is not None and isinstance(index, list) :
+                    if all((i in titles.keys()) and (titles[i]['type'] == 'rank') for i in index) :
+                        index_meta = self.setting_meta(original_index_meta, index[0])
+                        index_name = titles[index[0]]['title']
+                        qtype = 'rank'
+                
+                if titles is not None and isinstance(index, str) :
+                    if titles[index]['type'] == 'rank' :
+                        qtype = 'rank'
+                        index = [index]
+
+                if qtype in ['rating'] :
+                    # default
+                    top = self.attrs['default_top'] if top is None else top
+                    bottom = self.attrs['default_bottom'] if bottom is None else bottom
+                    medium = self.attrs['default_medium'] if medium is None else medium
                     
-                    df = rank_df
-                    index = rk_index
-                    index_meta = new_index_meta
+                    if aggfunc is None :
+                        aggfunc = ['mean']
+                
+                if qtype in ['number'] :
+                    if aggfunc is None :
+                        aggfunc = ['mean', 'min', 'max']
+
+                if qtype in ['rank'] :
+                    rank_df = df.copy()
+                    new_index_meta = []
+                    
+                    if titles is not None :
+                        vgroup = list(set([titles[x]['vgroup'] for x in index]))
+                        if len(vgroup) >= 2 :
+                            raise ValueError('There are multiple vgroups in the index.')
+
+                        main_qid = vgroup[0]
+                        rk_meta = titles[main_qid]
+                        index_name = rk_meta['title']
+
+                        if len(index) == 1 :
+                            sub_title = titles[index[0]]['sub_title']
+                            index_name = f'{index_name}_{sub_title}'
+                        else :
+                            first_sub_title = titles[index[0]]['sub_title']
+                            last_sub_title = titles[index[-1]]['sub_title']
+                            index_name = f'{index_name}: {first_sub_title} to {last_sub_title}'
+
+                        rk_index = []
+                        for idx in index_meta :
+                            key = list(idx.keys())[0]
+                            key = int(key) if key.isdigit() else key
+                            label = list(idx.values())[0]
+                            rk = f'{main_qid}_ANS_{key}'
+                            
+                            new_index_meta.append({rk: f'[{key}] {label}' if with_value else label})
+                            rank_df[rk] = 0
+                            rank_df.loc[(rank_df[index]==key).any(axis=1), rk] = 1
+                            rk_index.append(rk)
+                        
+                        df = rank_df
+                        index = rk_index
+                        index_meta = new_index_meta
+                
             
             total_label ='Total'
             if columns is None :
@@ -1742,9 +1744,8 @@ class DataCheck(pd.DataFrame):
         # [ ('banner column name', 'banner title', banner condition) ]
         self.attrs['banner'] = []  # clear banner
         update_banner_list = self.attrs['banner']
-        new_columns = {}
         new_meta = self.attrs['meta_origin']
-        new_data = {}
+        
         
         # Banner Groups
         group_flag = any(isinstance(ba, list) for ba in banner_list)
@@ -1803,6 +1804,8 @@ class DataCheck(pd.DataFrame):
         # Add all new columns to the dataframe at once
         # self.dataframe = pd.concat([self.dataframe, pd.DataFrame(new_columns, index=self.dataframe.index)], axis=1)
         self.attrs['meta'] = new_meta
+        self.attrs['banner'] = update_banner_list
+        
 
 
     def banner_table(self, 
