@@ -326,8 +326,6 @@ def create_crosstab(df: pd.DataFrame,
 
         crosstab_result = crosstab_result.sort_index(ascending=reverse_rating)
 
-    original_index_order = crosstab_result.index.to_list()
-    original_columns_order = crosstab_result.columns.to_list()
 
     # Total Setting
     if isinstance(index, str) :
@@ -454,11 +452,10 @@ def create_crosstab(df: pd.DataFrame,
                 bot_list.append(b)
 
         bot_list = list(set(bot_list))
-        bot_list.sort()
-
+        
         bot_result = []
         for b in bot_list :
-            bottom_indices = crosstab_result.iloc[-b:].sum()
+            bottom_indices = crosstab_result.iloc[-(b+1):-1].sum()
             bot_name = f'Bottom {b}'
             bot_cols.append(bot_name)
             back_index.append(bot_name)
@@ -488,15 +485,17 @@ def create_crosstab(df: pd.DataFrame,
 
         crosstab_result = pd.concat([crosstab_result, net_result])
 
+    
     index_order = [all_label] + [i for i in crosstab_result.index.to_list() if not i == all_label]
     column_order = [total_label] + [i for i in crosstab_result.columns.to_list() if not i == total_label]
     
     crosstab_result = crosstab_result.reindex(index_order)
     crosstab_result = crosstab_result[column_order]
     
+    crosstab_result.fillna(0, inplace=True)
     if mode in ['count'] :
         crosstab_result = crosstab_result.astype(int)
-
+        
     elif mode in ['ratio'] :
         crosstab_result = crosstab_result.astype(float)
         all_value = crosstab_result.iloc[0]
@@ -505,7 +504,7 @@ def create_crosstab(df: pd.DataFrame,
         crosstab_result = crosstab_result.astype(str)
         crosstab_result.iloc[0] = crosstab_result.iloc[0].apply(lambda x: str(int(float(x))))
         if ratio_round == 0 :
-            crosstab_result = crosstab_result.applymap(lambda x: int(x.replace('.0', '')))
+            crosstab_result = crosstab_result.map(lambda x: int(x.replace('.0', '')) if not x == 'nan' else 0)
         
     elif mode in ['both'] :
         crosstab_result = crosstab_result.astype(float)
@@ -555,6 +554,8 @@ def create_crosstab(df: pd.DataFrame,
         crosstab_result = crosstab_result.loc[[all_label, *aggfunc], :]
         if index_name is not None and index_name is not False :
             crosstab_result.index.name = index_name
+
+    crosstab_result.fillna(0, inplace=True)
 
     if not fill :
         crosstab_result = crosstab_result.loc[(crosstab_result != 0).any(axis=1), (crosstab_result != 0).any(axis=0)]

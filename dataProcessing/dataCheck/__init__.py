@@ -1806,7 +1806,7 @@ class DataCheck(pd.DataFrame):
 
 
     def banner_table(self, 
-                    index: Union[str, List[str], Tuple[str]],
+                    index: Union[str, List[str], Tuple[str], Literal['banner']],
                     cond: Optional[pd.Series] = None,
                     index_meta: Optional[List[Dict[str, str]]] = None,
                     columns_meta: Optional[List[Dict[str, str]]] = None,
@@ -1838,6 +1838,29 @@ class DataCheck(pd.DataFrame):
             set_columns = [list(ba.values())[0] for ba in banners]
             set_columns = sum(set_columns, [])
 
+        origin_index = index
+        if origin_index == 'banner' :
+            index = self.attrs['banner']
+            if group_flag :
+                set_index = [list(ba.values())[0] for ba in banners]
+                set_index = sum(set_index, [])
+                index = set_index
+                
+                if meta_attr is not None :
+                    group_keys = [list(ba.keys())[0] for ba in banners]
+
+                    multi_index = [('', 'All')]
+                    for gkey in group_keys :
+                        group_title = meta_attr[gkey]
+                        group_title = f'▣ {group_title}'
+                        each_banners = [list(ba.values())[0] for ba in banners if list(ba.keys())[0] == gkey]
+                        each_banners = sum(each_banners, [])
+                        for x in each_banners :
+                            banner_title = meta_attr[x]
+                            multi_index.append((group_title, banner_title))
+
+                    multi_index = pd.MultiIndex.from_tuples(multi_index)
+
         table_result = self.table(index=index,
                             cond=cond,
                             columns=set_columns,
@@ -1861,6 +1884,9 @@ class DataCheck(pd.DataFrame):
                             reverse_rating=reverse_rating)
 
         if group_flag :
+            if origin_index == 'banner' :
+                table_result.index = multi_index
+            
             if meta_attr is not None :
                 group_keys = [list(ba.keys())[0] for ba in banners]
 
