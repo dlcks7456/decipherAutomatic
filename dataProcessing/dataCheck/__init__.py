@@ -16,7 +16,7 @@ import time
 from decipherAutomatic.key import api_key, api_server
 from decipherAutomatic.getFiles import *
 from decipherAutomatic.utils import *
-from decipherAutomatic.dataProcessing.table import CrossTabs, create_crosstab, decipher_map, decipher_meta, decipher_title, get_decipher_data, get_decipher_datamap
+from decipherAutomatic.dataProcessing.table import *
 from pandas.io.formats import excel
 import zipfile
 from pprint import pprint
