@@ -96,8 +96,6 @@ def create_crosstab(df: pd.DataFrame,
                     columns: Optional[Union[str, List[str]]] = None,
                     index_meta: Optional[List[Dict[str, str]]] = None,
                     columns_meta: Optional[List[Dict[str, str]]] = None,
-                    index_name: Optional[Union[str, bool]] = None,
-                    columns_name: Optional[Union[str, bool]] = None,
                     fill: bool = True,
                     mode: Optional[Literal['count', 'ratio', 'both']] = 'count',
                     qtype: Optional[str] = None,
@@ -121,8 +119,6 @@ def create_crosstab(df: pd.DataFrame,
         columns (str or list, optional): The column name or list of column names to use for the crosstab columns.
         index_meta (list of dict, optional): Metadata for the index values and labels.
         columns_meta (list of dict, optional): Metadata for the columns values and labels.
-        index_name (str, optional): The name to assign to the crosstab index.
-        columns_name (str, optional): The name to assign to the crosstab columns.
         top (int, optional): Number of top rows to summarize.
         bottom (int, optional): Number of bottom rows to summarize.
     
@@ -338,7 +334,7 @@ def create_crosstab(df: pd.DataFrame,
             crosstab_result.loc[all_label, total_label] = ((~df[index].isna()) & (~df[columns].isna())).sum()
             
         if isinstance(columns, list) :
-            crosstab_result.loc[all_label, :] = pd.Series({col: ((df[index]==idx) & (~df[col].isna()) & (df[col]!=0)).sum() for col in base_columns})
+            crosstab_result.loc[all_label, :] = pd.Series({col: ((~df[index].isna()) & (~df[col].isna()) & (df[col]!=0)).sum() for col in base_columns})
             crosstab_result.loc[:, total_label] = pd.Series({idx: (df[index]==idx).sum() for idx in base_index})
             crosstab_result.loc[all_label, total_label] = ((~df[index].isna()) & (df[columns]!=0).any(axis=1) & (~df[columns].isna()).any(axis=1)).sum()
         
@@ -547,19 +543,19 @@ def create_crosstab(df: pd.DataFrame,
     if index_meta :
         index_order, index_labels = extract_order_and_labels(index_meta, [all_label], back_index)
         crosstab_result = add_missing_indices(crosstab_result, index_order)
-        crosstab_result = reorder_and_relabel(crosstab_result, index_order, index_labels, axis=0, name=index_name)
+        crosstab_result = reorder_and_relabel(crosstab_result, index_order, index_labels, axis=0, name=None)
 
     # Process columns metadata
     if columns_meta:
         columns_order, columns_labels = extract_order_and_labels(columns_meta, [total_label])
         crosstab_result = add_missing_indices(crosstab_result.T, columns_order).T
-        crosstab_result = reorder_and_relabel(crosstab_result, columns_order, columns_labels, axis=1, name=columns_name)
+        crosstab_result = reorder_and_relabel(crosstab_result, columns_order, columns_labels, axis=1, name=None)
     
 
     if qtype in ['number'] : 
         crosstab_result = crosstab_result.loc[[all_label, *aggfunc], :]
-        if index_name is not None and index_name is not False :
-            crosstab_result.index.name = index_name
+        # if index_name is not None and index_name is not False :
+        #     crosstab_result.index.name = index_name
 
     crosstab_result.fillna(0, inplace=True)
 

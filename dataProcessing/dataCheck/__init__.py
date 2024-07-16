@@ -327,13 +327,14 @@ class DataCheck(pd.DataFrame):
         self.attrs['css'] = self._css
         self.attrs['meta_origin'] = self._meta if self._meta is not None else {}
         self.attrs['meta'] = self._meta if self._meta is not None else {}
+        self.attrs['title_origin'] = self._title if self._title is not None else {}
         self.attrs['title'] = self._title if self._title is not None else {}
-        self.attrs['banner'] = []
         self.attrs['default_top'] = 2 if self._default_top is None else self._default_top
         self.attrs['default_bottom'] = 2 if self._default_bottom is None else self._default_bottom
         self.attrs['default_medium'] = True if self._default_medium is None else self._default_medium
         self.attrs['default_ratio_round'] = 0 if self._default_ratio_round is None else self._default_ratio_round
         self.attrs['default_agg_round'] = 2 if self._default_agg_round is None else self._default_agg_round
+        self.attrs['nets'] = {}
 
 
     @property
@@ -1567,8 +1568,8 @@ class DataCheck(pd.DataFrame):
                     cond: Optional[pd.Series] = None,
                     index_meta: Optional[List[Dict[str, str]]] = None,
                     columns_meta: Optional[List[Dict[str, str]]] = None,
-                    index_name: Optional[str] = None,
-                    columns_name: Optional[str] = None,
+                    index_filter: Optional[List[Union[str, int]]] = None,
+                    columns_filter: Optional[List[Union[str, int]]] = None,
                     index_sort: Optional[Literal['asc', 'desc']]=None,
                     columns_sort: Optional[Literal['asc', 'desc']]=None,
                     fill: bool = True,
@@ -1590,25 +1591,38 @@ class DataCheck(pd.DataFrame):
             ratio_round = self.attrs['default_ratio_round'] if ratio_round is None else ratio_round
             agg_round = self.attrs['default_agg_round'] if agg_round is None else agg_round
             
+            filt_variables = []
+
             # Index
             if isinstance(index, (list, tuple)) :
                 index = self.ma_return(index)
                 if not self.col_name_check(*index) : return
+                filt_variables += index
+            else :
+                filt_variables.append(index)
 
             # Columns
             if isinstance(columns, (list, tuple)) :
                 columns = self.ma_return(columns)
                 if not self.col_name_check(*columns) : return
+                filt_variables += columns
+            else :
+                if columns is not None :
+                    filt_variables.append(columns)
+
+            df = df[filt_variables].copy()
             
             original_index_meta = index_meta
-            original_index_name = index_name
-
             original_columns_meta = columns_meta
-            original_columns_name = columns_name
             
             index_meta = self.setting_meta(original_index_meta, index)
-            index_name = self.setting_title(original_index_name, index)
-            
+            if index_filter is not None :
+                if index_meta is not None :
+                    index_meta_dict = {list(idx.keys())[0]:list(idx.values())[0] for idx in index_meta}
+                    index_meta = [{str(i) : index_meta_dict[str(i)]} for i in index_filter]
+                else :
+                    index_meta = [{str(i) : i} for i in index_filter]
+
             if isinstance(index, str) and isinstance(index_meta, str) :
                 index_meta = None
 
@@ -1619,18 +1633,15 @@ class DataCheck(pd.DataFrame):
                 if index_sort == 'desc' :
                     index_meta = sorted(index_meta, key=lambda d: list(d.keys())[0], reverse=True)
 
-            if index_meta is not None and with_value :
-                new_index_meta = []
-                for idx in index_meta :
-                    new_meta = {}
-                    for k, m in idx.items() :
-                        new_meta[k] = f'[{k}] {m}'
-                    new_index_meta.append(new_meta)
-                
-                index_meta = new_index_meta
-
             columns_meta = self.setting_meta(original_columns_meta, columns)
-            columns_name = self.setting_title(original_columns_name, columns)
+            if columns_filter is not None :
+                if columns_meta is not None :
+                    columns_meta_dict = {list(col.keys())[0]:list(col.values())[0] for col in columns_meta}
+                    columns_meta = [{str(i) : columns_meta_dict[str(i)]} for i in columns_filter]
+                else :
+                    columns_meta = [{str(i) : i} for i in columns_filter]
+
+
             if isinstance(columns, str) and isinstance(columns_meta, str) :
                 columns_meta = None
 
@@ -1655,7 +1666,6 @@ class DataCheck(pd.DataFrame):
                 if titles is not None and isinstance(index, list) :
                     if all((i in titles.keys()) and (titles[i]['type'] == 'rank') for i in index) :
                         index_meta = self.setting_meta(original_index_meta, index[0])
-                        index_name = titles[index[0]]['title']
                         qtype = 'rank'
                 
                 if titles is not None and isinstance(index, str) :
@@ -1686,25 +1696,15 @@ class DataCheck(pd.DataFrame):
                             raise ValueError('There are multiple vgroups in the index.')
 
                         main_qid = vgroup[0]
-                        rk_meta = titles[main_qid]
-                        index_name = rk_meta['title']
-
-                        if len(index) == 1 :
-                            sub_title = titles[index[0]]['sub_title']
-                            index_name = f'{index_name}_{sub_title}'
-                        else :
-                            first_sub_title = titles[index[0]]['sub_title']
-                            last_sub_title = titles[index[-1]]['sub_title']
-                            index_name = f'{index_name}: {first_sub_title} to {last_sub_title}'
-
+ 
                         rk_index = []
                         for idx in index_meta :
                             key = list(idx.keys())[0]
                             key = int(key) if key.isdigit() else key
                             label = list(idx.values())[0]
-                            rk = f'{main_qid}_ANS_{key}'
+                            rk = f'{main_qid}_A{key}'
                             
-                            new_index_meta.append({rk: f'[{key}] {label}' if with_value else label})
+                            new_index_meta.append({rk: label})
                             rank_df[rk] = 0
                             rank_df.loc[(rank_df[index]==key).any(axis=1), rk] = 1
                             rk_index.append(rk)
@@ -1712,19 +1712,26 @@ class DataCheck(pd.DataFrame):
                         df = rank_df
                         index = rk_index
                         index_meta = new_index_meta
+
+            if index_meta is not None and with_value :
+                new_index_meta = []
+                for idx in index_meta :
+                    new_meta = {}
+                    for k, m in idx.items() :
+                        new_meta[k] = f'[{k}] {m}'
+                    new_index_meta.append(new_meta)
                 
+                index_meta = new_index_meta
             
             total_label ='Total'
-            if columns is None :
-                total_label = index_name
+            # if columns is None :
+            #     total_label = index_name
             
             result = create_crosstab(df,
                                     index=index,
                                     columns=columns,
                                     index_meta=index_meta,
                                     columns_meta=columns_meta,
-                                    index_name=index_name,
-                                    columns_name=columns_name,
                                     qtype=qtype,
                                     score=score,
                                     mode=mode,
@@ -1740,17 +1747,13 @@ class DataCheck(pd.DataFrame):
 
             return CrossTabs(result)
 
-    def set_banner(self, banner_list: List[Union[Tuple, List]]):
+    def netting(self, banner_list: List[Union[Tuple, List]]):
         # [ ('banner column name', 'banner title', banner condition) ]
-        self.attrs['banner'] = []  # clear banner
-        update_banner_list = self.attrs['banner']
         new_meta = self.attrs['meta_origin']
-        
-        
-        # Banner Groups
-        group_flag = any(isinstance(ba, list) for ba in banner_list)
-        
-        def add_banner_column(col, title, cond):
+        new_title = self.attrs['title_origin']
+        nets = self.attrs['nets']
+    
+        def add_netting_column(col, title, cond, vgroup=None):
             if not isinstance(col, str):
                 raise ValueError(f'banner column name must be string : {col}')
             
@@ -1766,30 +1769,42 @@ class DataCheck(pd.DataFrame):
             self.__dict__.update(result.__dict__)
             
             new_meta[col] = title
-            
-            if not group_flag :
-                update_banner_list.append(col)
+            new_title[col] = {
+                'type': 'multiple',
+                'title': title,
+                'sub_title': None,
+                'vgroup': vgroup,
+            }
+            if vgroup is None :
+                nets[col] = col
 
-        def add_banner_group(group_label, group_title, banners) :
+        def add_netting_group(group_label, group_title, banners) :
             new_meta[group_label] = group_title
             
             banner_child = []
+            col_group = []
+            
+            new_title[group_label] = {
+                'type': 'multiple',
+                'title': group_title,
+                'sub_title': None,
+                'vgroup': None,
+            }
+
             for ba in banners :
                 col, title, cond = ba
-                add_banner_column(col, title, cond)
+                add_netting_column(col, title, cond, group_label)
                 banner_child.append(col)
+                col_group.append(col)
 
-            update_banner_list.append({group_label: banner_child})
+            nets[group_label] = col_group
+
 
         for banner in banner_list:
-            if isinstance(banner, tuple) and not group_flag :
+            if isinstance(banner, tuple) :
                 col, title, cond = banner
-                add_banner_column(col, title, cond)
+                add_netting_column(col, title, cond)
             
-            if isinstance(banner, tuple) and group_flag :
-                col, title, cond = banner
-                add_banner_group(col, title, [banner])
-
             if isinstance(banner, list):
                 group, bas = banner
                 if not isinstance(group, tuple):
@@ -1799,130 +1814,47 @@ class DataCheck(pd.DataFrame):
                     raise ValueError(f'banner variable must be list : {banner}')
                 
                 glabel, gtitle = group
-                add_banner_group(glabel, gtitle, bas)
+                add_netting_group(glabel, gtitle, bas)
                 
         # Add all new columns to the dataframe at once
         # self.dataframe = pd.concat([self.dataframe, pd.DataFrame(new_columns, index=self.dataframe.index)], axis=1)
         self.attrs['meta'] = new_meta
-        self.attrs['banner'] = update_banner_list
+        self.attrs['title'] = new_title
+
+        show_nets = f"""<table>
+    <thead>
+        <th>Group Varialbe</th>
+        <th>Group Title</th>
+        <th>Variable</th>
+        <th>Title</th>
+        <th>Sample</th>
+    </thead>
+"""
+        for key, value in nets.items():
+            if isinstance(value, str):
+                meta = self.attrs['meta'][value]
+                sample = (self[value]==1).sum()
+                show_nets += f"""<tr><td></td><td></td><td>{value}</td><td>{meta}</td><td>{sample}'s</td></tr>"""
+            if isinstance(value, list):
+                for v in value :
+                    meta = self.attrs['meta'][v]
+                    sample = (self[v]==1).sum()
+                    title = self.attrs['meta'][key]
+                    show_nets += f"""<tr><td>{key}</td><td>{title}</td><td>{v}</td><td>{meta}</td><td>{sample}'s</td></tr>"""
+        show_nets += """</table>"""
+
+        display(HTML(show_nets))
+
+
+    def net(self, key: str) :
+        if not isinstance(key, str):
+            raise ValueError(f'key must be str : {key}')
         
+        if key not in self.attrs['nets'].keys():
+            raise ValueError(f'key not found in nets : {key}')
 
-
-    def banner_table(self, 
-                    index: Union[str, List[str], Tuple[str], Literal['banner']],
-                    cond: Optional[pd.Series] = None,
-                    index_meta: Optional[List[Dict[str, str]]] = None,
-                    columns_meta: Optional[List[Dict[str, str]]] = None,
-                    index_name: Optional[str] = None,
-                    columns_name: Optional[str] = None,
-                    index_sort: Optional[Literal['asc', 'desc']]=None,
-                    columns_sort: Optional[Literal['asc', 'desc']]=None,
-                    mode: Optional[Literal['count', 'ratio', 'both']] = 'count',
-                    fill: bool = True,
-                    qtype: Literal['single', 'multiple', 'number', 'text', 'rating', 'rank', 'ranksort'] = None,
-                    score: Optional[int] = None,
-                    top: Optional[int] = None,
-                    medium: Optional[Union[int, List[int], bool]] = None,
-                    bottom: Optional[int] = None,
-                    reverse_rating: Optional[bool]=False,
-                    with_value: bool = True,
-                    aggfunc: Optional[list] = None,
-                    ratio_round: int = None,
-                    agg_round: int = None,
-                    table_title: Optional[Union[str, list]] = None) -> pd.DataFrame :
-
-        banners = self.attrs['banner']
-        meta_attr = self.attrs['meta']
-
-        set_columns = banners
-
-        group_flag = all(isinstance(ba, dict) for ba in banners)
-        if group_flag :
-            set_columns = [list(ba.values())[0] for ba in banners]
-            set_columns = sum(set_columns, [])
-
-        origin_index = index
-        if origin_index == 'banner' :
-            index = self.attrs['banner']
-            if group_flag :
-                set_index = [list(ba.values())[0] for ba in banners]
-                set_index = sum(set_index, [])
-                index = set_index
-                
-                if meta_attr is not None :
-                    group_keys = [list(ba.keys())[0] for ba in banners]
-
-                    multi_index = [('', 'All')]
-                    for gkey in group_keys :
-                        group_title = meta_attr[gkey]
-                        group_title = f'▣ {group_title}'
-                        each_banners = [list(ba.values())[0] for ba in banners if list(ba.keys())[0] == gkey]
-                        each_banners = sum(each_banners, [])
-                        for x in each_banners :
-                            banner_title = meta_attr[x]
-                            multi_index.append((group_title, banner_title))
-
-                    multi_index = pd.MultiIndex.from_tuples(multi_index)
-
-        table_result = self.table(index=index,
-                            cond=cond,
-                            columns=set_columns,
-                            index_meta=index_meta,
-                            columns_meta=columns_meta,
-                            index_name=index_name,
-                            columns_name=columns_name,
-                            index_sort=index_sort,
-                            columns_sort=columns_sort,
-                            qtype=qtype,
-                            score=score,
-                            mode=mode,
-                            fill=fill,
-                            top=top,
-                            medium=medium,
-                            bottom=bottom,
-                            aggfunc=aggfunc,
-                            ratio_round=ratio_round,
-                            agg_round=agg_round,
-                            with_value=with_value,
-                            reverse_rating=reverse_rating)
-
-        if group_flag :
-            if origin_index == 'banner' :
-                table_result.index = multi_index
-            
-            if meta_attr is not None :
-                group_keys = [list(ba.keys())[0] for ba in banners]
-
-                multicols = [('', 'Total')]
-                for gkey in group_keys :
-                    group_title = meta_attr[gkey]
-                    group_title = f'▣ {group_title}'
-                    each_banners = [list(ba.values())[0] for ba in banners if list(ba.keys())[0] == gkey]
-                    each_banners = sum(each_banners, [])
-                    for x in each_banners :
-                        banner_title = meta_attr[x]
-                        multicols.append((group_title, banner_title))
-
-
-                multicols = pd.MultiIndex.from_tuples(multicols)
-                table_result.columns = multicols
+        return self.attrs['nets'][key]
         
-        if table_title is not None :
-            if group_flag :
-                if isinstance(table_title, str) :
-                    table_result.columns.names = [table_title, None]
-                elif isinstance(table_title, list):
-                    table_result.columns.names = table_title
-                else :
-                    raise ValueError(f'table_title must be str or list : {table_title}')
-            else :
-                if isinstance(table_title, str) :
-                    table_result.columns.name = table_title
-                else :
-                    raise ValueError(f'table_title must be str : {table_title}')
-
-        return table_result
-    
 
     def grid_summary(self, index: Union[List[str], List[List[str]], Tuple[str], CrossTabs],
                     summary_name: str = 'Summary',
@@ -1941,6 +1873,21 @@ class DataCheck(pd.DataFrame):
         summary.index.name = summary_name
 
         return CrossTabs(summary)
+
+    def get_title(self, qid: str) :
+        title = self.attrs['title']
+        if title :
+            if qid in title.keys():
+                qtitle = title[qid]['title']
+                sub_title = title[qid]['sub_title']
+                if sub_title :
+                    return f'{qtitle}_{sub_title}'
+                else :
+                    return qtitle
+            else :
+                return qid
+        else :
+            return qid
 
 
 
