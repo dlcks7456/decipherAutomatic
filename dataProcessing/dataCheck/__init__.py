@@ -1619,7 +1619,7 @@ class DataCheck(pd.DataFrame):
             if index_filter is not None :
                 if index_meta is not None :
                     index_meta_dict = {list(idx.keys())[0]:list(idx.values())[0] for idx in index_meta}
-                    index_meta = [{str(i) : index_meta_dict[str(i)]} for i in index_filter]
+                    index_meta = [{str(i) : index_meta_dict[str(i)]} for i in index_filter if str(i) in index_meta_dict.keys()]
                 else :
                     index_meta = [{str(i) : i} for i in index_filter]
 
@@ -1666,6 +1666,12 @@ class DataCheck(pd.DataFrame):
                 if titles is not None and isinstance(index, list) :
                     if all((i in titles.keys()) and (titles[i]['type'] == 'rank') for i in index) :
                         index_meta = self.setting_meta(original_index_meta, index[0])
+                        if index_filter is not None :
+                            if index_meta is not None :
+                                index_meta_dict = {list(idx.keys())[0]:list(idx.values())[0] for idx in index_meta}
+                                index_meta = [{str(i) : index_meta_dict[str(i)]} for i in index_filter if str(i) in index_meta_dict.keys()]
+                            else :
+                                index_meta = [{str(i) : i} for i in index_filter]
                         qtype = 'rank'
                 
                 if titles is not None and isinstance(index, str) :
