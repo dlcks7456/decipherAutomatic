@@ -283,7 +283,7 @@ class ErrorDataFrame:
     def __post_init__(self):
         self.show_col_with_err = self.err_list + self.show_cols
         self.err_base = [x for x in self.err_list if x not in ['BASE_COND', 'ANSWER_COND']]
-        self.df[self.err_list] = self.df[self.err_list].fillna(0).astype(int)
+        self.df[self.err_list] = self.df[self.err_list].where(self.df[self.err_list].notna(), 0).astype(int)
         err_df = self.df[(self.df[self.err_base]==1).any(axis=1)]
         self.err = PrintDataFrame(self.show_col_with_err, err_df)
         self.full = PrintDataFrame(self.show_col_with_err, self.df)
