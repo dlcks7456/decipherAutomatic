@@ -767,9 +767,12 @@ class DataCheck(pd.DataFrame):
                 add_df = add_df[~add_df[qid].isna()].copy()
                 if len(add_df) > 0 :
                     add_df[ans_err] = 1
-                    err_list.append(ans_err)
+                    # err_list.append(ans_err)
 
-                    chk_df = pd.concat([chk_df, add_df], ignore_index=True)
+                    # chk_df = pd.concat([chk_df, add_df], ignore_index=True)
+                    
+                    err_list = [ans_err]
+                    chk_df = add_df
 
         set_alt = self.result_alt(qid, alt)
         edf = ErrorDataFrame(qid, 'SA', show_cols, chk_df, err_list, warnings, set_alt)
@@ -911,9 +914,11 @@ class DataCheck(pd.DataFrame):
                 add_df = add_df[~add_filt].copy()
                 if len(add_df) > 0 :
                     add_df[ans_err] = 1
-                    err_list.append(ans_err)
+                    # err_list.append(ans_err)
 
-                    chk_df = pd.concat([chk_df, add_df], ignore_index=True)
+                    # chk_df = pd.concat([chk_df, add_df], ignore_index=True)
+                    err_list = [ans_err]
+                    chk_df = add_df
 
 
             show_cols = [cnt] + show_cols
