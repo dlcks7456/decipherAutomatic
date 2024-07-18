@@ -733,7 +733,7 @@ def decipher_map(pid: Union[str, int]) :
             for gr in groups :
                 filt_variable = [v for v in multiples if v['vgroup'] == gr]
                 ma_label_list = [{v['label']: {'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle']), 'vgroup': v['vgroup']}} for v in filt_variable]
-                ma_values = [v['value'] for v in filt_variable]
+                ma_values = [v['value'] for v in filt_variable if 'value' in v.keys()]
                 ma_meta = [{x['label']: { \
                             'value': x['value'] if 'value' in x.keys() else None, \
                             'rowTitle': clean_text(x['rowTitle']), \
