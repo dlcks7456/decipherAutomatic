@@ -1732,7 +1732,7 @@ class DataCheck(pd.DataFrame):
                         rk_index = []
                         for idx in index_meta :
                             key = list(idx.keys())[0]
-                            key = int(key) if key.isdigit() else key
+                            key = int(key) if str(key).isdigit() else key
                             label = list(idx.values())[0]
                             rk = f'{main_qid}_A{key}'
                             
@@ -1744,7 +1744,7 @@ class DataCheck(pd.DataFrame):
                         df = rank_df
                         index = rk_index
                         index_meta = new_index_meta
-
+                        
             if index_meta is not None and with_value :
                 new_index_meta = []
                 for idx in index_meta :
