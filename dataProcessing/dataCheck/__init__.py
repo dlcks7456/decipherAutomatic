@@ -1680,7 +1680,7 @@ class DataCheck(pd.DataFrame):
 
             titles = self.attrs['title']
             if qtype is None :
-                if titles is not None and isinstance(index, str) :
+                if (titles is not None) and (titles) and isinstance(index, str) :
                     if index in titles.keys() :
                         question_type = titles[index]['type']
                         if question_type == 'rating' :
@@ -1689,7 +1689,7 @@ class DataCheck(pd.DataFrame):
                         if question_type == 'number' :
                             qtype = 'number'
                         
-                if titles is not None and isinstance(index, list) :
+                if (titles is not None) and (titles) and isinstance(index, list) :
                     if all((i in titles.keys()) and (titles[i]['type'] == 'rank') for i in index) :
                         index_meta = self.setting_meta(original_index_meta, index[0])
                         if index_filter is not None :
@@ -1700,7 +1700,7 @@ class DataCheck(pd.DataFrame):
                                 index_meta = [{str(i) : i} for i in index_filter]
                         qtype = 'rank'
                 
-                if titles is not None and isinstance(index, str) :
+                if (titles is not None) and (titles) and isinstance(index, str) :
                     if titles[index]['type'] == 'rank' :
                         qtype = 'rank'
                         index = [index]
@@ -1722,7 +1722,7 @@ class DataCheck(pd.DataFrame):
                     rank_df = df.copy()
                     new_index_meta = []
                     
-                    if titles is not None :
+                    if (titles is not None) and (titles) :
                         vgroup = list(set([titles[x]['vgroup'] for x in index]))
                         if len(vgroup) >= 2 :
                             raise ValueError('There are multiple vgroups in the index.')
