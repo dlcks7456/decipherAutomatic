@@ -723,8 +723,26 @@ class DataCheck(pd.DataFrame):
         cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
         chk_df = self[cond].copy()
 
+        def no_base_check() :
+            if cond is not None :
+                ans_err = 'DC_NO_BASE'
+                add_df = self[(self.attrs['default_filter']) & ~(cond)].copy()
+                add_df = add_df[~add_df[qid].isna()].copy()
+                if len(add_df) > 0 :
+                    add_df[ans_err] = 1
+                    err_list = [ans_err]
+                    chk_df = add_df
+                    return [chk_df, err_list]
+                else :
+                    return None
+            else :
+                return None
+
         if len(chk_df) == 0 :
             warnings.append("No response to this condition")
+            no_base = no_base_check()
+            if no_base is not None :
+                chk_df, err_list = no_base
         else :
             ms_err = 'DC_BASE'
             filt = (chk_df[qid].isna())  # Default
@@ -761,19 +779,10 @@ class DataCheck(pd.DataFrame):
                 err_list.append(isnot_err)
 
             # Cases responded to other than base
-            if cond is not None :
-                ans_err = 'DC_NO_BASE'
-                add_df = self[(self.attrs['default_filter']) & ~(cond)].copy()
-                add_df = add_df[~add_df[qid].isna()].copy()
-                if len(add_df) > 0 :
-                    add_df[ans_err] = 1
-                    # err_list.append(ans_err)
-
-                    # chk_df = pd.concat([chk_df, add_df], ignore_index=True)
-                    
-                    err_list = [ans_err]
-                    chk_df = add_df
-
+            no_base = no_base_check()
+            if no_base is not None :
+                chk_df, err_list = no_base
+        
         set_alt = self.result_alt(qid, alt)
         edf = ErrorDataFrame(qid, 'SA', show_cols, chk_df, err_list, warnings, set_alt)
         self.show_message(edf)
@@ -826,8 +835,28 @@ class DataCheck(pd.DataFrame):
         cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
         chk_df = self[cond].copy()
 
+        def no_base_check() :
+            if cond is not None and no_base :
+                ans_err = 'DC_NO_BASE'
+                add_df = self[self.attrs['default_filter'] & ~(cond)].copy()
+                add_df[cnt] = add_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
+                add_filt = (add_df[show_cols].isna() | (add_df[show_cols] == 0)).all(axis=1)
+                add_df = add_df[~add_filt].copy()
+                if len(add_df) > 0 :
+                    add_df[ans_err] = 1
+                    err_list = [ans_err]
+                    chk_df = add_df
+                    return [chk_df, err_list]
+                else :
+                    return None
+            else :
+                return None
+
         if len(chk_df) == 0 :
             warnings.append("No response to this condition")
+            no_base = no_base_check()
+            if no_base is not None :
+                chk_df, err_list = no_base
         else :            
             cnt = 'ANSWER_CNT'
             chk_df[cnt] = chk_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
@@ -906,19 +935,11 @@ class DataCheck(pd.DataFrame):
             # Cases responded to other than base
             if not no_base : 
                 warnings.append('No Base Check does not run')
+            
             if cond is not None and no_base :
-                ans_err = 'DC_NO_BASE'
-                add_df = self[self.attrs['default_filter'] & ~(cond)].copy()
-                add_df[cnt] = add_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
-                add_filt = (add_df[show_cols].isna() | (add_df[show_cols] == 0)).all(axis=1)
-                add_df = add_df[~add_filt].copy()
-                if len(add_df) > 0 :
-                    add_df[ans_err] = 1
-                    # err_list.append(ans_err)
-
-                    # chk_df = pd.concat([chk_df, add_df], ignore_index=True)
-                    err_list = [ans_err]
-                    chk_df = add_df
+                no_base = no_base_check()
+                if no_base is not None :
+                    chk_df, err_list = no_base
 
 
             show_cols = [cnt] + show_cols
