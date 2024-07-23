@@ -2169,13 +2169,12 @@ class DataCheck(pd.DataFrame):
         #     })
 
         for key, table in proc_result.items():
-            start_row = data_start_row + 3
-            index_sheet.write_url(row, col, f'internal:Table!A{start_row}', string=key, cell_format=index_format)
-            index_sheet.write(row, col + 1, f'Data starts at row {start_row}')
+            index_sheet.write_url(row, col, f'internal:Table!A{data_start_row + 3}', string=key, cell_format=index_format)
+            index_sheet.write(row, col + 1, f'Data starts at row {data_start_row + 3}')
             row += 1
             
             # styled_table = apply_styles(table)
-            table.to_excel(writer, sheet_name='Table', startrow=start_row, startcol=0, engine='openpyxl')
+            table.to_excel(writer, sheet_name='Table', startrow=data_start_row, startcol=0, engine='openpyxl')
             data_start_row += len(table.index.to_list()) + 3  # 3행 간격
 
 
