@@ -1536,13 +1536,15 @@ class DataCheck(pd.DataFrame):
         return_meta = None
         if meta is None :
             meta_attr = self.attrs['meta']
-            if meta_attr is not None :
+            if meta_attr :
                 if isinstance(variable, str) :
                     if variable in meta_attr.keys() :
                         return_meta = meta_attr[variable]
                 
                 if isinstance(variable, list) :
                     return_meta = [{v: meta_attr[v]} if v in meta_attr.keys() else {v: ''} for v in variable]
+            else :
+                return None
         else :
             return_meta = meta
         
@@ -1558,7 +1560,7 @@ class DataCheck(pd.DataFrame):
         return_title = None
         if title is None :
             title_attr = self.attrs['title']
-            if title_attr is not None :
+            if title_attr :
                 chk_var = variable
                 if isinstance(chk_var, list) :
                     chk_var = variable[0]
@@ -1583,7 +1585,8 @@ class DataCheck(pd.DataFrame):
                             set_title = f'{set_title}_{sub_title}'
 
                     return_title = set_title
-
+            else :
+                return None
         else :
             return_title = title
 
@@ -1679,72 +1682,76 @@ class DataCheck(pd.DataFrame):
                     columns_meta = sorted(columns_meta, key=lambda d: list(d.keys())[0], reverse=True)
 
             titles = self.attrs['title']
-            if qtype is None :
-                if (titles is not None) and (titles) and isinstance(index, str) :
-                    if index in titles.keys() :
-                        question_type = titles[index]['type']
-                        if question_type == 'rating' :
-                            qtype = 'rating'
-                        
-                        if question_type == 'number' :
-                            qtype = 'number'
-                        
-                if (titles is not None) and (titles) and isinstance(index, list) :
-                    if all((i in titles.keys()) and (titles[i]['type'] == 'rank') for i in index) :
-                        index_meta = self.setting_meta(original_index_meta, index[0])
-                        if index_filter is not None :
-                            if index_meta is not None :
-                                index_meta_dict = {list(idx.keys())[0]:list(idx.values())[0] for idx in index_meta}
-                                index_meta = [{str(i) : index_meta_dict[str(i)]} for i in index_filter if str(i) in index_meta_dict.keys()]
-                            else :
-                                index_meta = [{str(i) : i} for i in index_filter]
-                        qtype = 'rank'
+
+            # Number Type
+            if qtype == 'number' :
+                if not isinstance(index, str) :
+                    raise TypeError("index must be str")
                 
-                if (titles is not None) and (titles) and isinstance(index, str) :
-                    if titles[index]['type'] == 'rank' :
-                        qtype = 'rank'
-                        index = [index]
+                if aggfunc is None :
+                    aggfunc = ['mean', 'min', 'max']
 
-                if qtype in ['rating'] :
-                    # default
-                    top = self.attrs['default_top'] if top is None else top
-                    bottom = self.attrs['default_bottom'] if bottom is None else bottom
-                    medium = self.attrs['default_medium'] if medium is None else medium
-                    
-                    if aggfunc is None :
-                        aggfunc = ['mean']
+            # Rating Type
+            if qtype == 'rating' :
+                if not isinstance(index, str) :
+                    raise TypeError("index must be str")
                 
-                if qtype in ['number'] :
-                    if aggfunc is None :
-                        aggfunc = ['mean', 'min', 'max']
+                top = self.attrs['default_top'] if top is None else top
+                bottom = self.attrs['default_bottom'] if bottom is None else bottom
+                medium = self.attrs['default_medium'] if medium is None else medium
+                
+                if aggfunc is None :
+                    aggfunc = ['mean']
+                
+                if score is None :
+                    answers = max(df[index].value_counts().index.tolist())
+                    score = answers
+            
+            # Rank Type (Grid Rank)
+            if qtype == 'rank' :
+                if not isinstance(index, list) :
+                    raise TypeError("index must be list")
+                
+                answers = []
+                if index_meta is None :
+                    for idx in index :
+                        if not isinstance(idx, str) :
+                            raise TypeError("The elements in the index must be strings")
 
-                if qtype in ['rank'] :
-                    rank_df = df.copy()
-                    new_index_meta = []
+                        answer = df[idx].value_counts().index.to_list()
+                        answers += answer
                     
-                    if (titles is not None) and (titles) :
-                        vgroup = list(set([titles[x]['vgroup'] for x in index]))
-                        if len(vgroup) >= 2 :
-                            raise ValueError('There are multiple vgroups in the index.')
+                    answers = list(set(answers))
+                else :
+                    answers = [list(idx.keys())[0] for idx in index_meta]
+                
+                rank_df = df.copy()
 
-                        main_qid = vgroup[0]
- 
-                        rk_index = []
-                        for idx in index_meta :
-                            key = list(idx.keys())[0]
-                            key = int(key) if str(key).isdigit() else key
-                            label = list(idx.values())[0]
-                            rk = f'{main_qid}_A{key}'
-                            
-                            new_index_meta.append({rk: label})
-                            rank_df[rk] = 0
-                            rank_df.loc[(rank_df[index]==key).any(axis=1), rk] = 1
-                            rk_index.append(rk)
-                        
-                        df = rank_df
-                        index = rk_index
-                        index_meta = new_index_meta
-                        
+                # Grid Sinlge Rank to Multi Variable
+                rank_index = []
+                rank_index_meta = []
+                
+                for ans in answers :
+                    set_var = f'#CODE_{ans}'
+                    rank_df.loc[:, set_var] = 0
+                    rank_df.loc[(rank_df[index]==ans).any(axis=1), set_var] = 1
+
+                    rank_index.append(set_var)
+                    if index_meta is None :
+                        rank_index_meta.append({set_var: ans})
+                    else :
+                        meta_dict = {list(idx.keys())[0]: list(idx.values())[0] for idx in index_meta}
+                        if ans in meta_dict.keys() :
+                            rank_index_meta.append({set_var: meta_dict[ans]})
+                        else :
+                            rank_index_meta.append({set_var: ans})
+
+                index = rank_index
+                index_meta = rank_index_meta
+                df = rank_df
+
+            
+            # With Value
             if index_meta is not None and with_value :
                 new_index_meta = []
                 for idx in index_meta :
@@ -1756,8 +1763,6 @@ class DataCheck(pd.DataFrame):
                 index_meta = new_index_meta
             
             total_label ='Total'
-            # if columns is None :
-            #     total_label = index_name
             
             result = create_crosstab(df,
                                     index=index,
@@ -1890,16 +1895,27 @@ class DataCheck(pd.DataFrame):
 
     def grid_summary(self, index: Union[List[str], List[List[str]], Tuple[str], CrossTabs],
                     summary_name: str = 'Summary',
-                    cond: Optional[pd.Series] = None,) :
+                    cond: Optional[pd.Series] = None,
+                    qtype: Optional[Literal['single', 'rating', 'rank', 'multiple', 'number', 'text']] = None,
+                    score: Optional[int] = None) :
         if not isinstance(index, list):
             raise ValueError(f'index must be list : {index}')
 
         summary_df = []
+        cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
+        df = self[cond].copy()
+
+        
         for idx in index :
             if isinstance(idx, CrossTabs):
                 summary_df.append(idx)
             else :
-                summary_df.append(self.table(idx, cond=cond))
+                # Rating
+                if qtype == 'rating' :
+                    if score is None :
+                        answers = max(df[idx].value_counts().index.tolist())
+                        score = answers
+                summary_df.append(self.table(idx, cond=cond, qtype=qtype, score=score))
         
         summary = pd.concat(summary_df, axis=1)
         summary.index.name = summary_name
@@ -1956,6 +1972,28 @@ def SetUpDataCheck(dataframe: pd.DataFrame, **kwargs) :
     df = convert_columns_to_nullable_int(dataframe)
     return DataCheck(df, css=css, **kwargs)
 
+
+def DataProcessing(dataframe: pd.DataFrame, 
+                   keyid: Optional[str] = None,
+                   default_args: Optional[dict] = {
+                    'top': 2,
+                    'medium': True,
+                    'bottom': 2,
+                    'ratio_round': 0,
+                    'agg_round': 2,
+                    }):
+    module_path = os.path.dirname(__file__)
+    css_path = os.path.join(os.path.dirname(module_path), 'dataCheck')
+    css = get_css(os.path.join(css_path, 'styles.css'))
+    display(HTML(css))
+    df = convert_columns_to_nullable_int(dataframe)
+
+    default_args = {f'default_{key}': value for key, value in default_args.items()}
+
+    return DataCheck(df, 
+                     css=css, 
+                     keyid=keyid,
+                     **default_args)
 
 def DecipherDataProcessing(dataframe: pd.DataFrame, 
                            keyid: Optional[str] = "record",
