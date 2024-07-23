@@ -2168,15 +2168,16 @@ class DataCheck(pd.DataFrame):
         #         'border': '1px solid black',
         #     })
 
-        for key, table in proc_result.items():
+        for key, result in proc_result.items():
             index_sheet.write_url(row, col, f'internal:Table!A{data_start_row + 3}', string=key, cell_format=index_format)
             index_sheet.write(row, col + 1, f'Data starts at row {data_start_row + 3}')
             row += 1
             
             # styled_table = apply_styles(table)
-            table.to_excel(writer, sheet_name='Table', startrow=data_start_row, startcol=0, engine='openpyxl')
-            data_start_row += len(table.index.to_list()) + 3  # 3행 간격
-
+            result.to_excel(writer, sheet_name='Table', startrow=data_start_row, startcol=0, engine='openpyxl')
+            
+            data_start_row += len(result) + 6  # 3행 간격
+            
 
         writer.close()
 

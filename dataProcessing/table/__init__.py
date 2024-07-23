@@ -347,21 +347,21 @@ def create_crosstab(df: pd.DataFrame,
         if isinstance(columns, list) :
             crosstab_result.loc[all_label, :] = pd.Series({col: ((~df[index].isna()) & (~df[col].isna()) & (df[col]!=0)).sum() for col in base_columns})
             crosstab_result.loc[:, total_label] = pd.Series({idx: (df[index]==idx).sum() for idx in base_index})
-            crosstab_result.loc[all_label, total_label] = ((~df[index].isna()) & (df[columns]!=0).any(axis=1) & (~df[columns].isna()).any(axis=1)).sum()
+            crosstab_result.loc[all_label, total_label] = ((~df[index].isna()) & ((df[columns]!=0).any(axis=1)) & ((~df[columns].isna()).any(axis=1))).sum()
         
     if isinstance(index, list) :
         if columns is None :
-            crosstab_result.loc[all_label, total_label] = ((df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum()
+            crosstab_result.loc[all_label, total_label] = (((df[index]!=0).any(axis=1)) & ((~df[index].isna()).any(axis=1))).sum()
         
         if isinstance(columns, str) :
             crosstab_result.loc[:, total_label] = pd.Series({idx: ((~df[idx].isna()) & (df[idx]!=0) & (~df[columns].isna())).sum() for idx in base_index})
             crosstab_result.loc[all_label, :] = pd.Series({col: ((df[columns]==col) & (df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum() for col in base_columns})
-            crosstab_result.loc[all_label, total_label] = ((~df[columns].isna()) & (df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum()
+            crosstab_result.loc[all_label, total_label] = ((~df[columns].isna()) & ((df[index]!=0).any(axis=1)) & ((~df[index].isna()).any(axis=1))).sum()
     
         if isinstance(columns, list) :
             crosstab_result.loc[:, total_label] = pd.Series({idx: ((~df[idx].isna()) & (df[idx]!=0)).sum() for idx in base_index})
-            crosstab_result.loc[all_label, :] = pd.Series({col: ((~df[col].isna()) & (df[col]!=0) & (df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum() for col in base_columns})
-            crosstab_result.loc[all_label, total_label] = ((df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1) & (df[columns]!=0).any(axis=1) & (~df[columns].isna()).any(axis=1)).sum()
+            crosstab_result.loc[all_label, :] = pd.Series({col: ((~df[col].isna()) & (df[col]!=0) & ((df[index]!=0).any(axis=1)) & ((~df[index].isna()).any(axis=1))).sum() for col in base_columns})
+            crosstab_result.loc[all_label, total_label] = (((df[index]!=0).any(axis=1)) &( (~df[index].isna()).any(axis=1)) &( (df[columns]!=0).any(axis=1)) & ((~df[columns].isna()).any(axis=1))).sum()
 
     # ALL/TOTAL ORDER SETTING
     # crosstab_result.index = [all_label] + original_index_order
