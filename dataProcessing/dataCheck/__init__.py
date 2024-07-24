@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 import contextlib
 import os
 import openpyxl
+from openpyxl import load_workbook
+from openpyxl.styles import Alignment
 import re
 import nbformat as nbf
 from collections import OrderedDict, defaultdict
@@ -1702,6 +1704,7 @@ class DataCheck(pd.DataFrame):
                     columns_meta = sorted(columns_meta, key=lambda d: list(d.keys())[0], reverse=True)
 
             titles = self.attrs['title']
+            metas = self.attrs['meta']
 
             if qtype is None :
                 if isinstance(index, str) :
@@ -1743,7 +1746,17 @@ class DataCheck(pd.DataFrame):
                 
                 answers = []
                 
-                if original_index_meta is None :
+                index_meta = None
+                if titles :
+                    vgroup = list(set([titles[i]['vgroup'] for i in index if i in titles.keys()]))
+                    if vgroup :
+                        if len(vgroup) != 1 :
+                            raise ValueError("The elements in the index must be in the same vgroup")
+                                                
+                        if vgroup[0] in metas.keys() :
+                            index_meta = metas[vgroup[0]]
+                
+                if index_meta is None :
                     for idx in index :
                         if not isinstance(idx, str) :
                             raise TypeError("The elements in the index must be strings")
@@ -1753,7 +1766,7 @@ class DataCheck(pd.DataFrame):
                     
                     answers = list(set(answers))
                 else :
-                    answers = [list(idx.keys())[0] for idx in original_index_meta]
+                    answers = [int(list(idx.keys())[0]) for idx in index_meta]
                 
                 rank_df = df.copy()
 
@@ -1768,13 +1781,15 @@ class DataCheck(pd.DataFrame):
 
                     rank_index.append(set_var)
                     if index_meta is None :
-                        rank_index_meta.append({set_var: ans})
-                    else :
-                        meta_dict = {list(idx.keys())[0]: list(idx.values())[0] for idx in index_meta}
-                        if ans in meta_dict.keys() :
-                            rank_index_meta.append({set_var: meta_dict[ans]})
+                        if original_index_meta is not None :
+                            set_label = [list(i.values())[0] for i in original_index_meta if list(i.keys())[0] == ans]
+                            if set_label :
+                                rank_index_meta.append({set_var: set_label[0]})
                         else :
                             rank_index_meta.append({set_var: ans})
+                    else :
+                        meta_dict = {list(idx.keys())[0]: list(idx.values())[0] for idx in index_meta}
+                        rank_index_meta.append({set_var: meta_dict[str(ans)]})
                 
                 index = rank_index
                 index_meta = rank_index_meta
@@ -1889,29 +1904,48 @@ class DataCheck(pd.DataFrame):
         self.attrs['title'] = new_title
         self.attrs['nets'] = nets
 
-        show_nets = f"""<table>
-    <thead>
-        <th>Group Varialbe</th>
-        <th>Group Title</th>
-        <th>Variable</th>
-        <th>Title</th>
-        <th>Sample</th>
-    </thead>
-"""
+        # 데이터 저장을 위한 리스트 초기화
+        data = []
+
         for key, value in nets.items():
             if isinstance(value, str):
                 meta = self.attrs['meta'][value]
-                sample = (self[value]==1).sum()
-                show_nets += f"""<tr><td></td><td></td><td>{value}</td><td>{meta}</td><td>{sample}'s</td></tr>"""
+                sample = (self[value] == 1).sum()
+                data.append([None, None, value, meta, sample])
             if isinstance(value, list):
-                for v in value :
+                for v in value:
                     meta = self.attrs['meta'][v]
-                    sample = (self[v]==1).sum()
+                    sample = (self[v] == 1).sum()
                     title = self.attrs['meta'][key]
-                    show_nets += f"""<tr><td>{key}</td><td>{title}</td><td>{v}</td><td>{meta}</td><td>{sample}'s</td></tr>"""
-        show_nets += """</table>"""
+                    data.append([key, title, v, meta, sample])
 
-        display(HTML(show_nets))
+        # 리스트를 DataFrame으로 변환
+        df = pd.DataFrame(data, columns=["Group Variable", "Group Title", "Variable", "Title", "Sample"])
+        return df
+
+#         show_nets = f"""<table>
+#     <thead>
+#         <th>Group Varialbe</th>
+#         <th>Group Title</th>
+#         <th>Variable</th>
+#         <th>Title</th>
+#         <th>Sample</th>
+#     </thead>
+# """
+#         for key, value in nets.items():
+#             if isinstance(value, str):
+#                 meta = self.attrs['meta'][value]
+#                 sample = (self[value]==1).sum()
+#                 show_nets += f"""<tr><td></td><td></td><td>{value}</td><td>{meta}</td><td>{sample}'s</td></tr>"""
+#             if isinstance(value, list):
+#                 for v in value :
+#                     meta = self.attrs['meta'][v]
+#                     sample = (self[v]==1).sum()
+#                     title = self.attrs['meta'][key]
+#                     show_nets += f"""<tr><td>{key}</td><td>{title}</td><td>{v}</td><td>{meta}</td><td>{sample}'s</td></tr>"""
+#         show_nets += """</table>"""
+
+#         display(HTML(show_nets))
 
 
     def net(self, key: Optional[str] = None) :
@@ -2099,9 +2133,20 @@ class DataCheck(pd.DataFrame):
             return qid
 
 
-    def proc_append(self, table_id:str, table: Union[pd.DataFrame, CrossTabs]) :
-        if not isinstance(table_id, str) :
-            raise ValueError(f'table_id must be str')
+    def proc_append(self, table_id: Union[str, tuple], table: Union[pd.DataFrame, CrossTabs]) :
+        if not isinstance(table_id, (str, tuple)) :
+            raise ValueError(f'table_id must be str or tuple')
+        
+        table_name = table_id
+        table_desc = None
+
+        if isinstance(table_id, tuple) :
+            if len(table_id) != 2 :
+                raise ValueError(f'table_id must be tuple with 2 elements')
+            else :
+                table_name = table_id[0]
+                table_desc = table_id[1]
+                
 
         if not isinstance(table, (pd.DataFrame, CrossTabs)) :
             raise ValueError(f'table must be pd.DataFrame or CrossTabs')
@@ -2111,22 +2156,22 @@ class DataCheck(pd.DataFrame):
         if len(table.index.names) == 1 :
             new_index = [('', idx) for idx in table.index]
             table.index = pd.MultiIndex.from_tuples(new_index)
-            table.index.names = pd.Index([table_id, 'Index'])
+            table.index.names = pd.Index([table_name, 'Index'])
         else :
-            table.index.names = pd.Index([table_id, 'Index'])
+            table.index.names = pd.Index([table_name, 'Index'])
 
-        if table_id in proc_result.keys() :
-            print(f'⚠️ result title already exists : {table_id}')
+        if table_name in proc_result.keys() :
+            print(f'⚠️ result title already exists : {table_name}')
         
-        proc_result[table_id] = table
+        proc_result[table_name] = {'desc': table_desc, 'table': table}
 
         display(HTML(table.to_html(escape=False, index=True, border=0, classes='table table-striped table-hover')))
+    
     
     def proc_export_excel(self, file_name: str) :
         proc_result = self.attrs['proc_result']
         if not proc_result : 
-            print('⚠️ No result to export')
-            return
+            raise ValueError('No result to export')
         
         excel.ExcelFormatter.header_style = {
             "font": {"bold": True, "size": 9},
@@ -2136,7 +2181,7 @@ class DataCheck(pd.DataFrame):
                 "bottom": "medium",
                 "left": "thin",
             },
-            "alignment": {"horizontal": "center", "vertical": "center", "wrapText": False},
+            "alignment": {"horizontal": "center", "vertical": "center", "wrapText": True},
             "fill": {"bgColor": "#DCE6F1"}
         }
 
@@ -2147,39 +2192,91 @@ class DataCheck(pd.DataFrame):
 
         # 목차 시트 추가
         index_sheet = workbook.add_worksheet('Index')
-        index_format = workbook.add_format({'bold': True, 'underline': True, 'font_color': 'blue'})
+        index_format = workbook.add_format({
+            'align': 'center', 
+            'bold': True, 
+            'underline': True, 
+            'font_size': 11,
+            'font_color': '#2d6df6', 
+            'border': 1})
+        
+        desc_format = workbook.add_format({
+            'align': 'left', 
+            'italic': True,
+            'font_size': 11,
+            'border': 1})
+        
+        head_format = workbook.add_format({
+            'align': 'center', 
+            'font_size': 12,
+            'bold': True, 
+            'border': 1, 
+            'bg_color': '#DDEBF7'})
+        
 
         # 데이터프레임을 저장할 시트 추가
         data_sheet = workbook.add_worksheet('Table')
 
         # B열 틀고정
-        data_sheet.freeze_panes(0, 2)
+        data_sheet.freeze_panes(0, 3)
 
         # 목차 시트에 하이퍼링크 추가
-        row = 0
+        row = 1
         col = 0
         data_start_row = 2
 
         # 스타일 함수 정의
-        # def apply_styles(df):
-        #     return df.style.set_properties(**{
-        #         'font-size': '9pt',
-        #         'text-align': 'center',
-        #         'border': '1px solid black',
-        #     })
+        def apply_styles(df):
+            return df.style.set_properties(**{
+                'font-size': '9pt',
+                'text-align': 'center',
+                'border': '1px solid black',
+            })
 
-        for key, result in proc_result.items():
+        index_sheet.write(0, 0, 'Table Index', head_format)
+        index_sheet.write(0, 1, 'Table Description', head_format)
+
+        # 너비 설정
+        index_sheet.set_column('A:A', 20)
+        index_sheet.set_column('B:B', 60)
+
+        data_sheet.set_column('A:A', 20)
+        data_sheet.set_column('B:B', 30)
+        data_sheet.set_column('C:C', 7)
+
+        for key, table_attrs in proc_result.items():
+            result = table_attrs['table']
+            desc = table_attrs['desc']
+
             index_sheet.write_url(row, col, f'internal:Table!A{data_start_row + 3}', string=key, cell_format=index_format)
-            index_sheet.write(row, col + 1, f'Data starts at row {data_start_row + 3}')
+            index_sheet.write(row, col + 1, desc, desc_format)
             row += 1
             
-            # styled_table = apply_styles(table)
-            result.to_excel(writer, sheet_name='Table', startrow=data_start_row, startcol=0, engine='openpyxl')
+            styled_table = apply_styles(result)
+            styled_table.to_excel(writer, 
+                                  sheet_name='Table', 
+                                  startrow=data_start_row, 
+                                  startcol=0, engine='openpyxl')            
             
             data_start_row += len(result) + 6  # 3행 간격
-            
-
+        
         writer.close()
+        
+        wb = load_workbook(file_name)
+        ws = wb['Table']
+        
+        # 열 A의 서식 설정: 자동 줄바꿈 및 위쪽 정렬
+        for cell in ws['A']:
+            cell.alignment = Alignment(wrap_text=True, vertical='top', horizontal='center')
+
+        # 열 B의 서식 설정: 오른쪽 정렬
+        for cell in ws['B']:
+            cell.alignment = Alignment(horizontal='right')
+
+        # Last Column
+
+
+        wb.save(file_name)
 
 
 def get_css(path: os.path) -> str:
@@ -2310,6 +2407,8 @@ def DecipherDataProcessing(dataframe: pd.DataFrame,
                     "sub_title": None,
                     "vgroup": None
                 }
+
+                metadata[m['qlabel']] = meta
 
                 for v in variables :
                     qtitle = m['title']
