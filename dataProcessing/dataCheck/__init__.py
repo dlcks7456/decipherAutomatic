@@ -2332,7 +2332,7 @@ def DataProcessing(dataframe: pd.DataFrame,
                     'ratio_round': 0,
                     'agg_round': 2,
                     'mode': 'count',
-                    'with_value': False
+                    'with_value': True
                     }):
     module_path = os.path.dirname(__file__)
     css_path = os.path.join(os.path.dirname(module_path), 'dataCheck')
@@ -2360,7 +2360,7 @@ def DecipherDataProcessing(dataframe: pd.DataFrame,
                                'ratio_round': 0,
                                'agg_round': 2,
                                'mode': 'count',
-                               'with_value': False
+                               'with_value': True
                            }) :
     module_path = os.path.dirname(__file__)
     css_path = os.path.join(os.path.dirname(module_path), 'dataCheck')
