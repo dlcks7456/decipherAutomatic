@@ -1775,7 +1775,7 @@ class DataCheck(pd.DataFrame):
                 rank_index_meta = []
                 
                 for ans in answers :
-                    set_var = f'#CODE_{ans}'
+                    set_var = f'#C{ans}'
                     rank_df.loc[:, set_var] = 0
                     rank_df.loc[(rank_df[index]==ans).any(axis=1), set_var] = 1
 
@@ -2070,7 +2070,7 @@ class DataCheck(pd.DataFrame):
 
             if index_header is not None :
                 merge_result.index = pd.MultiIndex.from_tuples([(index_header, idx) for idx in merge_result.index])
-                merge_result.index.names = pd.Index([index_header, 'Index'])
+                merge_result.index.names = pd.Index(['', 'Index'])
 
         merge_result = merge_result.fillna('-')
         if not fill :
@@ -2138,7 +2138,7 @@ class DataCheck(pd.DataFrame):
             raise ValueError(f'table_id must be str or tuple')
         
         table_name = table_id
-        table_desc = None
+        table_desc = 'Index'
 
         if isinstance(table_id, tuple) :
             if len(table_id) != 2 :
@@ -2153,13 +2153,15 @@ class DataCheck(pd.DataFrame):
         
         proc_result = self.attrs['proc_result']
 
+
         if len(table.index.names) == 1 :
             new_index = [('', idx) for idx in table.index]
             table.index = pd.MultiIndex.from_tuples(new_index)
-            table.index.names = pd.Index([table_name, 'Index'])
+            table.index.names = pd.Index([table_name, table_desc])
         else :
-            table.index.names = pd.Index([table_name, 'Index'])
-
+            table.index.names = pd.Index([table_name, table_desc])
+        
+            
         if table_name in proc_result.keys() :
             print(f'⚠️ result title already exists : {table_name}')
         
