@@ -592,19 +592,25 @@ class CrossTabs(pd.DataFrame):
         return super().__str__()
 
     def _repr_html_(self) -> str:
+        # result = self.copy()
+        # mask = ~result.index.isin([idx for idx in result.index if idx[-1] in ['mean', 'man', 'min', 'std', 'Total']])
+        # result = result.round(0)
         return super()._repr_html_()
     
-    def ratio(self, ratio_round: int = None) -> pd.DataFrame :
+    def ratio(self, ratio_round: int = 0) -> pd.DataFrame:
+        if not isinstance(ratio_round, int) :
+            raise TypeError('ratio_round must be int')
+
+        if ratio_round < 0 :
+            raise ValueError('ratio_round must be greater than 0')
+
         result = self.astype(float)
         all_value = result.iloc[0]
-        result.iloc[1:, :] = (result.iloc[1:, :].div(all_value))*100
-        if ratio_round is not None :
-            result = result.round(ratio_round)
-        
-        # result = result.astype(str)
-        # result.iloc[0] = result.iloc[0].apply(lambda x: str(int(float(x))))
-        # if ratio_round == 0 :
-        #     result = result.map(lambda x: int(x.replace('.0', '')) if not x == 'nan' else 0)
+
+        if isinstance(result.index, pd.MultiIndex) :
+            mask = ~result.index.isin([idx for idx in result.index if idx[-1] in ['mean', 'man', 'min', 'std', 'Total']])
+            result.loc[mask, :] = (result.loc[mask, :].div(all_value)) * 100
+            result.loc[mask, :] = result.loc[mask].round(ratio_round)
 
         return result
     
