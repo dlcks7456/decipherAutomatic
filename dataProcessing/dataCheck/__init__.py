@@ -25,7 +25,7 @@ from pprint import pprint
 
 VarWithHeader = Tuple[str, Union[str, List[str]]]
 ColumnsWithHeader = List[VarWithHeader]
-IndexWithHeader = Union[str, List[str], VarWithHeader]
+IndexWithTypes = Union[str, List[str], Tuple[str]]
 
 def check_print(variables: Union[List[str], Tuple[str, ...], str], 
                 error_type: Literal['SA', 'MA', 'LOGIC', 'MASA', 'MAMA', 'MARK', 'RATERANK', 'DUP'], 
@@ -266,6 +266,29 @@ def lambda_ma_to_list(row, qids) :
     
     return [return_int_or_str(x) for x in qids if not (pd.isna(row[x]) or row[x] == 0)]
 
+def check_duplicate_meta(input_list: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    value_counts = {}
+    for item in input_list:
+        for key, value in item.items():
+            if value in value_counts:
+                value_counts[value] += 1
+            else:
+                value_counts[value] = 1
+    
+    value_indices = {value: 1 for value in value_counts}
+    output_list = []
+
+    for item in input_list:
+        for key, value in item.items():
+            if value_counts[value] > 1:
+                new_value = f"{value_indices[value]}. {value}"
+                value_indices[value] += 1
+            else:
+                new_value = value
+            output_list.append({key: new_value})
+
+    return output_list
+
 @dataclass
 class PrintDataFrame:
     show_cols: List[str]
@@ -305,7 +328,7 @@ class ErrorDataFrame:
         return ''
 
 class DataCheck(pd.DataFrame):
-    _metadata = ['_keyid', '_css', '_meta_origin', '_meta', '_title', '_default_top', '_default_bottom', '_default_medium', '_default_ratio_round', '_default_agg_round', '_default_mode', '_default_with_value']
+    _metadata = ['_keyid', '_css', '_meta_origin', '_meta', '_title', '_default_top', '_default_bottom', '_default_medium', '_default_with_value']
     def __init__(self, *args, **kwargs):
         self._keyid = kwargs.pop('keyid', None)
         self._css = kwargs.pop('css', None)
@@ -314,9 +337,6 @@ class DataCheck(pd.DataFrame):
         self._default_top = kwargs.pop('default_top', None)
         self._default_bottom = kwargs.pop('default_bottom', None)
         self._default_medium = kwargs.pop('default_medium', None)
-        self._default_ratio_round = kwargs.pop('default_ratio_round', None)
-        self._default_agg_round = kwargs.pop('default_agg_round', None)
-        self._default_mode = kwargs.pop('default_mode', None)
         self._default_with_value = kwargs.pop('default_with_value', None)
         
         super().__init__(*args, **kwargs)
@@ -340,10 +360,7 @@ class DataCheck(pd.DataFrame):
         self.attrs['default_top'] = 2 if self._default_top is None else self._default_top
         self.attrs['default_bottom'] = 2 if self._default_bottom is None else self._default_bottom
         self.attrs['default_medium'] = True if self._default_medium is None else self._default_medium
-        self.attrs['default_ratio_round'] = 0 if self._default_ratio_round is None else self._default_ratio_round
-        self.attrs['default_agg_round'] = 2 if self._default_agg_round is None else self._default_agg_round
-        self.attrs['default_mode'] = 'count' if self._default_mode is None else self._default_mode
-        self.attrs['default_with_value'] = True if self._default_with_value is None else self._default_with_value
+        self.attrs['default_with_value'] = False if self._default_with_value is None else self._default_with_value
         self.attrs['nets'] = {}
         self.attrs['banner'] = None
         self.attrs['proc_result'] = OrderedDict()
@@ -1538,7 +1555,7 @@ class DataCheck(pd.DataFrame):
         return filt
 
     # DataProcessing
-    def setting_meta(self, meta, variable) :
+    def setting_meta(self, meta, variable, dup_chk=True) :
         if variable is None :
             return None
 
@@ -1560,6 +1577,9 @@ class DataCheck(pd.DataFrame):
         else :
             return_meta = meta
         
+        if return_meta is not None and dup_chk :
+            return_meta = check_duplicate_meta(return_meta)
+
         return return_meta
 
     def setting_title(self, title, variable) :
@@ -1614,7 +1634,6 @@ class DataCheck(pd.DataFrame):
                     index_sort: Optional[Literal['asc', 'desc']]=None,
                     columns_sort: Optional[Literal['asc', 'desc']]=None,
                     fill: bool = True,
-                    mode: Optional[Literal['count', 'ratio', 'both']] = None,
                     qtype: Optional[Literal['single', 'rating', 'rank', 'multiple', 'number', 'text']] = None,
                     score: Optional[int] = None,
                     top: Optional[int] = None,
@@ -1623,24 +1642,43 @@ class DataCheck(pd.DataFrame):
                     reverse_rating: Optional[bool]=False,
                     aggfunc: Optional[list] = None,
                     with_value: bool = None,
-                    ratio_round: int = None,
-                    agg_round: int = None) -> pd.DataFrame :
+                    group_name: Optional[str] = None,
+                    base_desc: Optional[str] = None) -> pd.DataFrame :
 
             cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
             df = self[cond].copy()
 
-            ratio_round = self.attrs['default_ratio_round'] if ratio_round is None else ratio_round
-            agg_round = self.attrs['default_agg_round'] if agg_round is None else agg_round
-            mode = self.attrs['default_mode'] if mode is None else mode
             with_value = self.attrs['default_with_value'] if with_value is None else with_value
 
             filt_variables = []
 
-            if isinstance(index, tuple) :
-                raise NotImplementedError('tuple index is not supported')
+            # if isinstance(index, tuple) :
+            #     raise NotImplementedError('tuple index is not supported')
             
+            # if isinstance(columns, tuple) :
+            #     raise NotImplementedError('tuple columns is not supported')
+
+            if isinstance(index, tuple) :
+                index = self.ma_return(index)
+                if not self.col_name_check(*index) : return
+
             if isinstance(columns, tuple) :
-                raise NotImplementedError('tuple columns is not supported')
+                columns = self.ma_return(columns)
+                if not self.col_name_check(*columns) : return
+
+
+            # Table Header
+            varable_text = []
+            if isinstance(index, list) :
+                varable_text.append(f'{index[0]}-{index[-1]}')
+            else :
+                varable_text.append(index)
+
+            if isinstance(columns, list) :
+                varable_text.append(f'{columns[0]}-{columns[-1]}')
+            else :
+                if columns is not None :
+                    varable_text.append(columns)
 
             # Index
             if isinstance(index, (list)) :
@@ -1662,11 +1700,23 @@ class DataCheck(pd.DataFrame):
             filt_variables = list(set(filt_variables))
 
             df = df[filt_variables].copy()
-            
+
             original_index_meta = index_meta
             original_columns_meta = columns_meta
-            
-            index_meta = self.setting_meta(original_index_meta, index)
+
+            titles = self.attrs['title']
+            metas = self.attrs['meta']
+
+            if qtype is None :
+                if isinstance(index, str) :
+                    if index in titles.keys() :
+                        qtype = titles[index]['type']
+
+                if isinstance(index, list) :
+                    if index[0] in titles.keys() :
+                        qtype = titles[index[0]]['type']
+
+            index_meta = self.setting_meta(original_index_meta, index, not qtype in ['rank'])
             if index_filter is not None :
                 if index_meta is not None :
                     index_meta_dict = {list(idx.keys())[0]:list(idx.values())[0] for idx in index_meta}
@@ -1684,7 +1734,7 @@ class DataCheck(pd.DataFrame):
                 if index_sort == 'desc' :
                     index_meta = sorted(index_meta, key=lambda d: list(d.keys())[0], reverse=True)
 
-            columns_meta = self.setting_meta(original_columns_meta, columns)
+            columns_meta = self.setting_meta(original_columns_meta, columns, dup_chk=False)
             if columns_filter is not None :
                 if columns_meta is not None :
                     columns_meta_dict = {list(col.keys())[0]:list(col.values())[0] for col in columns_meta}
@@ -1703,18 +1753,7 @@ class DataCheck(pd.DataFrame):
                 if columns_sort == 'desc' :
                     columns_meta = sorted(columns_meta, key=lambda d: list(d.keys())[0], reverse=True)
 
-            titles = self.attrs['title']
-            metas = self.attrs['meta']
-
-            if qtype is None :
-                if isinstance(index, str) :
-                    if index in titles.keys() :
-                        qtype = titles[index]['type']
-                
-                if isinstance(index, list) :
-                    if index[0] in titles.keys() :
-                        qtype = titles[index[0]]['type']
-
+ 
             # Number Type
             if qtype == 'number' :
                 if not isinstance(index, str) :
@@ -1816,18 +1855,32 @@ class DataCheck(pd.DataFrame):
                                     columns_meta=columns_meta,
                                     qtype=qtype,
                                     score=score,
-                                    mode=mode,
                                     fill=fill,
                                     top=top,
                                     medium=medium,
                                     bottom=bottom,
                                     aggfunc=aggfunc,
-                                    ratio_round=ratio_round,
-                                    agg_round=agg_round,
                                     reverse_rating=reverse_rating, 
                                     total_label=total_label)
+            
+            result = CrossTabs(result)
+            result.attrs['type'] = qtype
 
-            return CrossTabs(result)
+            
+            if base_desc is None :
+                sample_count = len(self)
+                all_count = int(result.iloc[0, 0])
+                
+                if sample_count == all_count :
+                    base_desc = 'All Base'
+                else :
+                    sample_ratio = round(all_count/sample_count, 2) * 100
+                    base_desc = f'Not All Base ({sample_ratio:.0f}%)'
+
+            result.index = pd.MultiIndex.from_tuples([('' if group_name is None else group_name, i) for i in result.index])
+            result.index.names = pd.Index(['/'.join(varable_text), base_desc])
+
+            return result
 
     def netting(self, banner_list: List[Union[Tuple, List]]):
         # [ ('banner column name', 'banner title', banner condition) ]
@@ -1968,7 +2021,13 @@ class DataCheck(pd.DataFrame):
         self.attrs['banner'] = banner_list
         
 
-    def proc(self, index: IndexWithHeader, columns: Optional[ColumnsWithHeader] = None, fill=True, **options) :
+    def proc(self, 
+             index: IndexWithTypes, 
+             columns: Optional[ColumnsWithHeader] = None, 
+             fill: bool = True, 
+             group_name: Optional[str] = None,
+             base_desc: Optional[str] = None,
+             **options) :
         merge_result = None
 
         if columns is None :
@@ -1983,108 +2042,69 @@ class DataCheck(pd.DataFrame):
         if not isinstance(columns, list) :
             raise TypeError("columns must be a list")
 
-        if isinstance(index, list) and all(isinstance(i, tuple) for i in index) :
-            group_index_table = []
-            for head, idx in index :
-                tables = []
-                index_header = head
-                if head in titles.keys() :
-                    index_header = titles[head]['title']
+        index_name = index
+        if isinstance(index, tuple) :
+            index = self.ma_return(index)
+            if not self.col_name_check(*index) : return
 
-                for col_head, col in columns :
-                    tables.append((col_head, self.table(idx, col, **options)))
-                
-                merge_table = pd.concat([t for col_head, t in tables], axis=1)
-                
-                new_columns = []
-                for col_head, table in tables :
-                    new_columns.append(('', table.columns[0]))
-                    header = col_head
-                    if col_head in titles.keys() :
-                        header = titles[col_head]['title']
+        if isinstance(index, list) :
+            if len(index) == 1 :
+                index_name = index[0]
+            else :
+                index_name = f'{index[0]}-{index[-1]}'
 
-                    for col in table.columns[1:] : # Total 제외
-                        # From Tuple
-                        new_columns.append((header, col))
-                
-                merge_table.columns = pd.MultiIndex.from_tuples(new_columns)
-                merge_result = merge_table.loc[:, ~merge_table.columns.duplicated()]
-
-                merge_result.index = pd.MultiIndex.from_tuples([(index_header, idx) for idx in merge_result.index])
-                group_index_table.append(merge_result)
-
-            merge_result = pd.concat(group_index_table)
-        else :
-            index_header = None
-            if isinstance(index, tuple) :
-                if not len(index) == 2 :
-                    raise ValueError("index must be tuple of (head, idx)")
-
-                index_header = index[0]
-                if index_header in titles.keys() :
-                    index_header = titles[index_header]['title']
-                index = index[1]
-
-            elif isinstance(index, str) :
-                if index in titles.keys() :
-                    index_header = titles[index]['title']
-                else :
-                    index_header = index
+        tables = []
+        for col_head, col in columns :
+            header = col_head
+            if col_head in titles.keys() :
+                header = titles[col_head]['title']
             
-            elif isinstance(index, list) :
-                first_index = index[0]
-                if first_index in titles.keys() :
-                    if 'vgroup' in titles[first_index].keys() :
-                        vgroup = titles[first_index]['vgroup']
+            tables.append((header, self.table(index, col, **options)))
 
-                        if vgroup in titles.keys() :
-                            index_header = titles[vgroup]['title']
-                        else :
-                            index_header = vgroup
-                    else :
-                        index_header = titles[first_index]['title']
-                else :
-                    if len(index) == 1 :
-                        index_header = index[0]
-                    else :
-                        index_header = f'{index[0]} - {index[-1]}'
+        merge_table = pd.concat([t for head, t in tables], axis=1)
+        new_columns = []
+        qtypes = []
+        for head, table in tables :
+            new_columns.append(('', table.columns[0]))
+            qtypes.append(table.attrs['type'])
+            for col in table.columns[1:] : # Total 제외
+                # From Tuple
+                new_columns.append((head, col))
+        
+        merge_table.columns = pd.MultiIndex.from_tuples(new_columns)
+        merge_result = merge_table.loc[:, ~merge_table.columns.duplicated()]
 
-            tables = []
-            for col_head, col in columns :
-                header = col_head
-                if col_head in titles.keys() :
-                    header = titles[col_head]['title']
-                
-                tables.append((header, self.table(index, col, **options)))
+        if isinstance(merge_result.index, pd.MultiIndex) :
+            merge_result.index = merge_result.index.droplevel(0)
 
-            merge_table = pd.concat([t for head, t in tables], axis=1)
-            new_columns = []
-            for head, table in tables :
-                new_columns.append(('', table.columns[0]))
-                for col in table.columns[1:] : # Total 제외
-                    # From Tuple
-                    new_columns.append((head, col))
-            
-            merge_table.columns = pd.MultiIndex.from_tuples(new_columns)
-            merge_result = merge_table.loc[:, ~merge_table.columns.duplicated()]
+        merge_result.index = pd.MultiIndex.from_tuples([('' if group_name is None else group_name, idx) for idx in merge_result.index])
+        
+        if base_desc is None :
+            sample_count = len(self)
+            all_count = int(merge_result.iloc[0, 0])
+            if sample_count == all_count :
+                base_desc = 'All Base'
+            else :
+                sample_ratio = round(all_count/sample_count, 2) * 100
+                base_desc = f'Not All Base ({sample_ratio:.0f}%)'
 
-            if index_header is not None :
-                merge_result.index = pd.MultiIndex.from_tuples([(index_header, idx) for idx in merge_result.index])
-                merge_result.index.names = pd.Index(['', 'Index'])
+        merge_result.index.names = pd.Index([index_name, base_desc])
 
-        merge_result = merge_result.fillna('-')
+        # merge_result = merge_result.fillna('-')
         if not fill :
             merge_result = merge_result.loc[(merge_result != 0).any(axis=1), (merge_result != 0).any(axis=0)]
-            merge_result = merge_result.loc[(merge_result != '-').any(axis=1), (merge_result != '-').any(axis=0)]
-
-        return merge_result
+            #merge_result = merge_result.loc[(merge_result != '-').any(axis=1), (merge_result != '-').any(axis=0)]
+        
+        result = CrossTabs(merge_result)
+        result.attrs['type'] = list(set(qtypes))
+        return result
 
 
     def grid_summary(self, index: Union[List[str], List[List[str]], Tuple[str], CrossTabs],
-                    summary_name: str = 'Summary',
+                    summary_name: str = '',
                     cond: Optional[pd.Series] = None,
-                    qtype: Optional[Literal['single', 'rating', 'rank', 'multiple', 'number', 'text']] = None,
-                    score: Optional[int] = None) :
+                    base_desc: Optional[str] = None,
+                    **kwargs) :
         if not isinstance(index, list):
             raise ValueError(f'index must be list : {index}')
 
@@ -2097,25 +2117,58 @@ class DataCheck(pd.DataFrame):
             table = None
             if isinstance(idx, CrossTabs):
                 table = idx
-            else :
-                # Rating
-                if qtype == 'rating' :
-                    if score is None :
-                        answers = max(df[idx].value_counts().index.tolist())
-                        score = answers
-                    
-                table = self.table(idx, cond=cond, qtype=qtype, score=score)
-                
-            col_name = table.index.name           
+            else : 
+                table = self.table(idx, cond=cond, **kwargs)
+
+            index_name = idx
+            if isinstance(idx, tuple) :
+                idx = self.ma_return(idx)
+                if not self.col_name_check(*idx) : return
+
+            if isinstance(idx, list) :
+                if len(idx) == 1 :
+                    index_name = idx[0]
+                else :
+                    index_name = f'{idx[0]}-{idx[-1]}'
+            
+            col_name = index_name
             table = table.rename(columns={'Total': col_name})
             summary_df.append(table)
         
+        qtypes = [x.attrs['type'] for x in summary_df]
+        qtypes = list(set(qtypes))
         summary = pd.concat(summary_df, axis=1)
         
         # summary.index.name = summary_name
+        if isinstance(summary.index, pd.MultiIndex) :
+            summary.index = summary.index.droplevel(0)
+        
         summary.index = pd.MultiIndex.from_tuples([(summary_name, idx) for idx in summary.index])
+        result = CrossTabs(summary)
+        result.attrs['type'] = qtypes
+        result.columns = pd.MultiIndex.from_tuples([(f'Variable : {len(index)}', idx) for idx in summary.columns])
+        
 
-        return CrossTabs(summary)
+        if base_desc is None :
+            sample_count = len(self)
+            all_count = [x for x in list(result.iloc[0, :])]
+            dup_chk = list(set(all_count))
+            if len(dup_chk) > 1 :
+                base_desc = 'Difference Total'
+            else :
+                all_count = all_count[0]
+                if sample_count == all_count :
+                    base_desc = 'All Base'
+                else :
+                    sample_ratio = round(all_count/sample_count, 2) * 100
+                    base_desc = f'Not All Base ({sample_ratio:.0f}%)'
+
+        var_names = [f'{i[0]}-{i[-1]}' if isinstance(i, list) else i for i in index]
+        var_names = '/'.join(var_names)
+
+
+        result.index.names = pd.Index([var_names, base_desc])
+        return result
 
     def get_title(self, qid: str) :
         title = self.attrs['title']
@@ -2138,7 +2191,7 @@ class DataCheck(pd.DataFrame):
             raise ValueError(f'table_id must be str or tuple')
         
         table_name = table_id
-        table_desc = 'Index'
+        table_desc = None
 
         if isinstance(table_id, tuple) :
             if len(table_id) != 2 :
@@ -2151,26 +2204,30 @@ class DataCheck(pd.DataFrame):
         if not isinstance(table, (pd.DataFrame, CrossTabs)) :
             raise ValueError(f'table must be pd.DataFrame or CrossTabs')
         
-        proc_result = self.attrs['proc_result']
-
-
-        if len(table.index.names) == 1 :
-            new_index = [('', idx) for idx in table.index]
-            table.index = pd.MultiIndex.from_tuples(new_index)
-            table.index.names = pd.Index([table_name, table_desc])
-        else :
-            table.index.names = pd.Index([table_name, table_desc])
+        if not isinstance(table, CrossTabs) :
+            table = CrossTabs(table)
         
-            
+        proc_result = self.attrs['proc_result']
+        
         if table_name in proc_result.keys() :
             print(f'⚠️ result title already exists : {table_name}')
         
         proc_result[table_name] = {'desc': table_desc, 'table': table}
 
-        display(HTML(table.to_html(escape=False, index=True, border=0, classes='table table-striped table-hover')))
+        table_html = table.to_html(escape=False, index=True, border=0, classes='table table-striped table-hover')
+        table_id_html = f"""
+            <div style="width: fit-content;padding: 7px; font-size:1rem;font-weight:bold; background-color: #2d6df6; border-radius: 5px; color:white; margin-bottom: 7px;">
+                {table_name}
+            </div>
+            <div>
+                {table_html}
+            </div>
+        """
+        display(HTML(table_id_html))
     
     
     def proc_export_excel(self, file_name: str) :
+        total_label = 'Total'
         proc_result = self.attrs['proc_result']
         if not proc_result : 
             raise ValueError('No result to export')
@@ -2207,42 +2264,54 @@ class DataCheck(pd.DataFrame):
             'italic': True,
             'font_size': 11,
             'border': 1})
-        
+
+        qid_format = workbook.add_format({
+            'align': 'center', 
+            'font_size': 11,
+            'border': 1})
+
         head_format = workbook.add_format({
             'align': 'center', 
             'font_size': 12,
             'bold': True, 
             'border': 1, 
             'bg_color': '#DDEBF7'})
+
+        table_head = workbook.add_format({
+            'align': 'center',
+            'font_size': 9,
+            'bold': True,
+            'border': 1,
+            'top': 2,
+            'bottom': 2,
+            'bg_color': '#DCE6F1',
+        })
         
 
         # 데이터프레임을 저장할 시트 추가
         data_sheet = workbook.add_worksheet('Table')
 
         # B열 틀고정
-        data_sheet.freeze_panes(0, 3)
+        data_sheet.freeze_panes(0, 2)
 
         # 목차 시트에 하이퍼링크 추가
         row = 1
         col = 0
         data_start_row = 2
 
-        # 스타일 함수 정의
-        def apply_styles(df):
-            return df.style.set_properties(**{
-                'font-size': '9pt',
-                'text-align': 'center',
-                'border': '1px solid black',
-            })
 
         index_sheet.write(0, 0, 'Table Index', head_format)
         index_sheet.write(0, 1, 'Table Description', head_format)
+        index_sheet.write(0, 2, 'Variable', head_format)
+        index_sheet.write(0, 3, 'Base', head_format)
 
         # 너비 설정
-        index_sheet.set_column('A:A', 20)
-        index_sheet.set_column('B:B', 60)
+        index_sheet.set_column('A:A', 20) # Talbe Index
+        index_sheet.set_column('B:B', 60) # Table Description
+        index_sheet.set_column('C:C', 20) # Variable
+        index_sheet.set_column('D:D', 30) # Base
 
-        data_sheet.set_column('A:A', 20)
+        data_sheet.set_column('A:A', 15)
         data_sheet.set_column('B:B', 30)
         data_sheet.set_column('C:C', 7)
 
@@ -2250,27 +2319,158 @@ class DataCheck(pd.DataFrame):
             result = table_attrs['table']
             desc = table_attrs['desc']
 
-            index_sheet.write_url(row, col, f'internal:Table!A{data_start_row + 3}', string=key, cell_format=index_format)
+
+            new_group_name = {
+                'index': '',
+                'columns': key
+            }
+            for item, gr_name in new_group_name.items() :
+                base = getattr(result, item)
+                if not isinstance(base, pd.MultiIndex) :
+                    setattr(result, item, pd.MultiIndex.from_tuples([('' if b == total_label else gr_name, b) for b in base]))
+
+                else :
+                    group_lenth = base.nlevels
+                    if group_lenth > 2 :
+                        setattr(result, item, pd.MultiIndex.from_tuples([('' if b[-1]==total_label else b[-2], b[-1]) for b in base]))
+
+            index_header = None
+            if all(i is None for i in result.index.names) :
+                if total_label in result.index.get_level_values(-1) and total_label in result.columns.get_level_values(-1) :
+                    all_count = result.loc[('', total_label), ('', total_label)]
+                    sample_count = len(self)
+                    if sample_count == all_count :
+                        index_header = 'All Base'
+                    else :
+                        sample_ratio = round(all_count/sample_count, 2) * 100
+                        index_header = f'Not All Base ({sample_ratio:.0f}%)'
+                    
+                    result.index.names = pd.Index(['', index_header])
+
+            index_sheet.write_url(row, col, f'internal:Table!A{data_start_row+1}', string=key, cell_format=index_format)
             index_sheet.write(row, col + 1, desc, desc_format)
+
+            base_desc = None
+            qid_name = None
+
+            if isinstance(result, CrossTabs) :
+                qid_name = result.index.names[0]
+                base_desc = result.index.names[-1]
+                
+                resurt_type = result.attrs['type']
+                
+                if isinstance(resurt_type, list) :
+                    if all(not x in ['number'] for x in resurt_type) :
+                        result = result.ratio()
+                    
+                elif not resurt_type in ['number'] :
+                    result = result.ratio()
+                
+
+            index_sheet.write(row, col + 2, qid_name, qid_format)
+            index_sheet.write(row, col + 3, base_desc, qid_format)
+
             row += 1
+
+            result.to_excel(writer, 
+                            sheet_name='Table', 
+                            startrow=data_start_row, 
+                            startcol=0, engine='openpyxl')
+
+            data_sheet.merge_range(data_start_row, col, data_start_row, col+1, key, table_head)
+            data_sheet.merge_range(data_start_row+1, col, data_start_row+1, col+1, desc, table_head)
             
-            styled_table = apply_styles(result)
-            styled_table.to_excel(writer, 
-                                  sheet_name='Table', 
-                                  startrow=data_start_row, 
-                                  startcol=0, engine='openpyxl')            
             
+            zero_float_format = workbook.add_format({
+                'num_format': '0',
+                'align': 'center',
+                'border': 1,
+                'font_size': 9,
+            })
+
+            float_format = workbook.add_format({
+                'num_format': '0.00',
+                'align': 'center',
+                'border': 1,
+                'font_size': 9,
+            })
+
+            default_format = workbook.add_format({
+                'align': 'center',
+                'border': 1,
+                'font_size': 9,
+            })
+            
+            total_format = workbook.add_format({
+                'num_format': '0',
+                'align': 'center',
+                'border': 1,
+                'font_size': 9,
+                'bold': True,
+            })
+
+            head_row = data_start_row + 1
+            blank_row = data_start_row + 2
+            format_start = data_start_row+3
+
+
+
+            set_group = []
+            for col_idx, col_name in enumerate(result.columns) :
+                set_col = col_idx+2
+                group_col_name = col_name[0]
+                set_col_name = col_name[-1]
+                if col_idx == 0 and set_col_name == 'Total' :
+                    data_sheet.write(data_start_row, set_col, None, table_head)
+                    data_sheet.write(head_row, set_col, None, table_head)
+                    data_sheet.write(blank_row, set_col, set_col_name, table_head)
+                else :
+                    data_sheet.write(blank_row, set_col, set_col_name, table_head)
+                    
+                    if not group_col_name in set_group :
+                        if group_col_name != '' and group_col_name is not None :
+                            set_group.append(group_col_name)
+                            merge_col_count = len([x for x in result.columns if x[0] == group_col_name]) - 1
+                            end_col = set_col+merge_col_count
+                            for m in range(set_col, end_col+1) :
+                                data_sheet.write(data_start_row, m, f'#{len(set_group)}', table_head)
+                            
+                            if merge_col_count > 0 :
+                                data_sheet.merge_range(head_row, set_col, head_row, set_col+merge_col_count, group_col_name, table_head)
+                            else :
+                                data_sheet.write(head_row, set_col, group_col_name, table_head)
+            
+            if len(set_group) == 1 :
+                data_sheet.write(data_start_row, 2, None, table_head)
+
+            for df_row, i in enumerate(range(format_start, format_start+len(result))) :
+                for df_col, j in enumerate(range(2, len(result.columns)+2)) :
+                    cell_value = result.iloc[df_row, df_col]
+                    if pd.isna(cell_value) :
+                        cell_value = '-'
+
+                    df_row_name = result.index[df_row]
+
+                    if isinstance(result.index, pd.MultiIndex) :
+                        df_row_name = result.index[df_row][-1]
+
+                    if df_row_name == 'Total' :
+                        data_sheet.write(i, j, cell_value, total_format)
+                    else :
+                        data_sheet.write(i, j, cell_value, zero_float_format)
+
+                        if df_row_name in ['mean', 'min', 'max', 'std'] :
+                            data_sheet.write(i, j, cell_value, float_format)
+                            
+
             data_start_row += len(result) + 6  # 3행 간격
-        
+
+            
         writer.close()
         
         wb = load_workbook(file_name)
         ws = wb['Table']
         
-        # 열 A의 서식 설정: 자동 줄바꿈 및 위쪽 정렬
-        for cell in ws['A']:
-            cell.alignment = Alignment(wrap_text=True, vertical='top', horizontal='center')
-
         # 열 B의 서식 설정: 오른쪽 정렬
         for cell in ws['B']:
             cell.alignment = Alignment(horizontal='right')
@@ -2319,9 +2519,6 @@ class DefaultArgs(TypedDict, total=False):
     top: Union[int, List[int]]
     medium: Union[bool, int, List[int]]
     bottom: Union[int, List[int]]
-    ratio_round: int
-    agg_round: int
-    mode: Literal['count', 'ratio', 'both']
     with_value: bool
 
 
@@ -2331,10 +2528,7 @@ def DataProcessing(dataframe: pd.DataFrame,
                     'top': 2,
                     'medium': True,
                     'bottom': 2,
-                    'ratio_round': 0,
-                    'agg_round': 2,
-                    'mode': 'count',
-                    'with_value': True
+                    'with_value': False
                     }):
     module_path = os.path.dirname(__file__)
     css_path = os.path.join(os.path.dirname(module_path), 'dataCheck')
@@ -2359,10 +2553,7 @@ def DecipherDataProcessing(dataframe: pd.DataFrame,
                                'top': 2,
                                'medium': True,
                                'bottom': 2,
-                               'ratio_round': 0,
-                               'agg_round': 2,
-                               'mode': 'count',
-                               'with_value': True
+                               'with_value': False
                            }) :
     module_path = os.path.dirname(__file__)
     css_path = os.path.join(os.path.dirname(module_path), 'dataCheck')
