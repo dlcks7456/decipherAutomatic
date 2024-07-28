@@ -1037,6 +1037,7 @@ class DataCheck(pd.DataFrame):
 
     def dupchk(self, 
            qid: Union[List[str], Tuple[str, ...]], 
+           cond: Optional[pd.Series] = None, 
            okUnique: Optional[Union[List[Any], range, int, str]] = None,
            alt: Optional[str]=None) -> 'ErrorDataFrame' :
         """
@@ -1053,7 +1054,8 @@ class DataCheck(pd.DataFrame):
         warnings = []
         err_list = []
 
-        chk_df = self[self.attrs['default_filter']].copy()
+        cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
+        chk_df = self[cond].copy()
         
         dup_err = 'DC_DUP'
         err_list.append(dup_err)
@@ -1083,7 +1085,7 @@ class DataCheck(pd.DataFrame):
         chk_df[dup_err] = chk_df[show_cols].apply(check_duplicates, axis=1)
 
         rk = show_cols
-        qid = f"""{rk[0]}-{rk[-1]} (DUP)"""
+        alt = f"""{rk[0]}-{rk[-1]} (DUP)"""
         edf = ErrorDataFrame(qid, 'DUP', show_cols, chk_df, err_list, warnings, alt)
         self.show_message(edf)
         self.result_html_update(alt=self.result_alt(qid, alt), result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
