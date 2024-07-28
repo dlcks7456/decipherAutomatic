@@ -604,11 +604,9 @@ class CrossTabs(pd.DataFrame):
         # result = result.round(0)
         return super()._repr_html_()
     
-    def ratio(self, ratio_round: int = 0, heatmap: bool = True, post_text:Optional[str] = None) -> pd.DataFrame:
-        if not isinstance(ratio_round, int) :
-            raise TypeError('ratio_round must be int')
+    def ratio(self, ratio_round: Optional[int] = 0, heatmap: bool = True, post_text:Optional[str] = None) -> pd.DataFrame:
 
-        if ratio_round < 0 :
+        if ratio_round is not None and ratio_round < 0 :
             raise ValueError('ratio_round must be greater than 0')
 
         result = self.astype(float)
@@ -621,7 +619,8 @@ class CrossTabs(pd.DataFrame):
             mask = ~result.index.isin(mask_index)
         
         result.loc[mask, :] = (result.loc[mask, :].div(all_value)) * 100
-        result.loc[mask, :] = result.loc[mask].round(ratio_round)
+        if ratio_round is not None :
+            result.loc[mask, :] = result.loc[mask].round(ratio_round)
 
         if heatmap :
             cmap = LinearSegmentedColormap.from_list("custom_blue", ["#ffffff", "#2d6df6"])
@@ -634,7 +633,9 @@ class CrossTabs(pd.DataFrame):
                 vmin=0, vmax=100
             )
 
-            format_string = "{:." + str(ratio_round) + "f}"
+            format_string = "{:.0f}"
+            if ratio_round is not None :
+                format_string = "{:." + str(ratio_round) + "f}"
             if post_text is not None :
                 format_string = format_string + post_text
             
@@ -655,11 +656,15 @@ class CrossTabs(pd.DataFrame):
                 sub_title: Optional[str] = None,
                 with_table: Optional[bool] = False,
                 table_type: Optional[Literal['single', 'rating', 'rank', 'multiple', 'number', 'text']] = None,
-                prompt: Optional[str] = None,):
+                prompt: Optional[str] = None,
+                lang: Optional[Literal['korean', 'english']] = 'korean'):
         
         if model not in ['gpt-4o', 'gpt-4o-mini', 'llama3', 'llama3.1'] :
             raise ValueError('model must be gpt-4o, gpt-4o-mini, llama3, llama3.1')
         
+        if lang not in ['korean', 'english'] :
+            raise ValueError('lang must be korean or english')
+
         llm = None
         if model in ['llama3', 'llama3.1'] :
             llm = ChatOllama(
@@ -672,19 +677,41 @@ class CrossTabs(pd.DataFrame):
                     model='gpt-4o-mini')
         
         post_text = '%'
-        default_prompt = """
-아래 크로스탭 결과를 확인해서 분석 및 요약을 진행하시오.
-분석할 때 크로스탭의 Total 응답수에 대한 내용은 제외하고 작성하고, 각 컬럼별로 행에 대한 분석을 진행하시오.
-각 데이터 셀별로 눈에 띄는 부분, 트랜드 등을 집중적으로 분석하시오.
-만약, 크로스탭의 행에 mean, min, max 등 기초 통계량이 있다면 이에 대해서도 분석하시오.
-답변은 한글로 진행하시오."""
+        default_prompt = F"""
+User Persona: "Professional Data Analyst"
+User Goal: "Analyze and summarize cross-tabulation results"
+User Task: "Provide detailed analysis and insights excluding total response counts, focusing on trends and notable points, including basic statistics if present"
+Report Language: "{lang.upper()}"
+
+Prompt:
+You are a professional data analyst. Your task is to analyze and summarize the given cross-tabulation results. Follow these steps:
+
+Exclude any analysis on the total response count.
+Focus on analyzing each row within each column of the cross-tabulation.
+Identify and highlight any noticeable trends or significant points within each data cell.
+If the cross-tabulation includes basic statistics like mean, min, and max, provide an analysis of these as well.
+Based on your analysis, derive comprehensive insights and summarize them.
+The final report should be written in {lang.upper()}.
+"""
         
         if (isinstance(table_type, str) and table_type in ['number', 'text']) or (isinstance(table_type, list) and any(t in ['number', 'text'] for t in table_type)) :
             post_text = None
-            default_prompt = """아래 크로스탭 결과를 확인해서 분석 및 요약을 진행하시오.
-분석할 때 크로스탭의 Total 응답수에 대한 내용은 제외하고 작성하고, 
-각 컬럼별로 계산된 기초 통계량에 대해 분석하시오.
-답변은 한글로 진행하고, 문장 형태로만 작성하시오.
+            default_prompt = f"""
+User Persona: "Professional Data Analyst"
+User Goal: "Analyze and summarize cross-tabulation results"
+User Task: "Provide detailed analysis and insights excluding total response counts, focusing on calculated basic statistics per column, and deliver the final report in {lang.upper()}"
+Report Language: "{lang.upper()}"
+
+Prompt:
+You are a professional data analyst. Your task is to analyze and summarize the given cross-tabulation results. Follow these steps:
+
+Exclude any analysis on the total response count.
+Focus on analyzing the calculated basic statistics (e.g., mean, min, max) for each column.
+Identify and highlight any significant points or trends within the data.
+Based on your analysis, derive comprehensive insights and summarize them.
+The final report should be written in {lang.upper()} and in complete sentences.
+
+Take a deep breath and let's work this out in a step by step way to be sure we have the right answer.
 """
 
         if prompt is None :

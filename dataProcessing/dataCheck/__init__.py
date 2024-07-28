@@ -335,7 +335,7 @@ class ErrorDataFrame:
         return ''
 
 class DataCheck(pd.DataFrame):
-    _metadata = ['_keyid', '_css', '_meta_origin', '_meta', '_title', '_default_top', '_default_bottom', '_default_medium', '_default_with_value']
+    _metadata = ['_keyid', '_css', '_meta_origin', '_meta', '_title', '_default_top', '_default_bottom', '_default_medium', '_default_with_value', '_default_chat_lang']
     def __init__(self, *args, **kwargs):
         self._keyid = kwargs.pop('keyid', None)
         self._css = kwargs.pop('css', None)
@@ -345,6 +345,7 @@ class DataCheck(pd.DataFrame):
         self._default_bottom = kwargs.pop('default_bottom', None)
         self._default_medium = kwargs.pop('default_medium', None)
         self._default_with_value = kwargs.pop('default_with_value', None)
+        self._default_chat_lang = kwargs.pop('default_chat_lang', None)
         
         super().__init__(*args, **kwargs)
         if self._keyid is not None:
@@ -368,9 +369,11 @@ class DataCheck(pd.DataFrame):
         self.attrs['default_bottom'] = 2 if self._default_bottom is None else self._default_bottom
         self.attrs['default_medium'] = True if self._default_medium is None else self._default_medium
         self.attrs['default_with_value'] = False if self._default_with_value is None else self._default_with_value
+        self.attrs['chat_lang'] = 'korean' if self._default_chat_lang is None else self._default_chat_lang
         self.attrs['nets'] = {}
         self.attrs['banner'] = None
         self.attrs['proc_result'] = OrderedDict()
+
 
 
     @property
@@ -1725,7 +1728,7 @@ class DataCheck(pd.DataFrame):
                     if index[0] in titles.keys() :
                         qtype = titles[index[0]]['type']
 
-            index_meta = self.setting_meta(original_index_meta, index, not qtype in ['rank'])
+            index_meta = self.setting_meta(original_index_meta, index, not qtype in ['rank', 'ranksort', 'number', 'text'])
             if index_filter is not None :
                 if index_meta is not None :
                     index_meta_dict = {list(idx.keys())[0]:list(idx.values())[0] for idx in index_meta}
@@ -2121,7 +2124,7 @@ class DataCheck(pd.DataFrame):
         cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
         df = self[cond].copy()
 
-        
+        multi_col = []
         for idx in index :
             table = None
             if isinstance(idx, CrossTabs):
@@ -2138,7 +2141,7 @@ class DataCheck(pd.DataFrame):
             if isinstance(idx, list) :
                 index_name = idx[0]
             
-            sub_title = None
+            sub_title = ''
             titles = self.attrs['title']
             if titles :
                 if index_name in titles.keys() :
@@ -2152,8 +2155,8 @@ class DataCheck(pd.DataFrame):
                 else :
                     index_name = f'{idx[0]}-{idx[-1]}'
 
-            col_name = index_name if sub_title is None else f'[{index_name}] {sub_title}'
-            table = table.rename(columns={'Total': col_name})
+            multi_col.append((index_name, sub_title))
+            table = table.rename(columns={'Total': index_name})
             summary_df.append(table)
         
         qtypes = [x.attrs['type'] for x in summary_df]
@@ -2167,7 +2170,7 @@ class DataCheck(pd.DataFrame):
         summary.index = pd.MultiIndex.from_tuples([(summary_name, idx) for idx in summary.index])
         result = CrossTabs(summary)
         result.attrs['type'] = qtypes
-        result.columns = pd.MultiIndex.from_tuples([(f'Variable : {len(index)}', idx) for idx in summary.columns])
+        result.columns = pd.MultiIndex.from_tuples(multi_col)
         
 
         if base_desc is None :
@@ -2245,7 +2248,8 @@ class DataCheck(pd.DataFrame):
         if ai :
             chat_result = table.chat_ai(model=model, 
                                         prompt=prompt, 
-                                        with_table=False, 
+                                        with_table=False,
+                                        lang=self.attrs['chat_lang'],
                                         table_type=table_type,
                                         sub_title=table_desc)
 
@@ -2259,7 +2263,7 @@ class DataCheck(pd.DataFrame):
         if table_type in ['number', 'text'] :
             table_html = table.to_html(escape=False, index=True, border=0, classes='table table-striped table-hover')
         else :
-            table_html = table.ratio(heatmap=heatmap).to_html()
+            table_html = table.ratio(ratio_round=0, heatmap=heatmap).to_html()
 
         table_desc_html = f"""<div style="font-size: 0.8rem; padding: 7px; max-width: 600px; font-style: italic; margin-bottom: 7px;">
                 {table_desc}
@@ -2418,10 +2422,10 @@ class DataCheck(pd.DataFrame):
                 
                 if isinstance(resurt_type, list) :
                     if all(not x in ['number'] for x in resurt_type) :
-                        result = result.ratio(heatmap=False)
+                        result = result.ratio(ratio_round=None, heatmap=False)
                     
                 elif not resurt_type in ['number'] :
-                    result = result.ratio(heatmap=False)
+                    result = result.ratio(ratio_round=None, heatmap=False)
                 
 
             index_sheet.write(row, col + 2, qid_name, qid_format)
@@ -2606,7 +2610,8 @@ def DataProcessing(dataframe: pd.DataFrame,
                     'top': 2,
                     'medium': True,
                     'bottom': 2,
-                    'with_value': False
+                    'with_value': False,
+                    'chat_lang': 'korean'
                     }):
     module_path = os.path.dirname(__file__)
     css_path = os.path.join(os.path.dirname(module_path), 'dataCheck')
@@ -2627,11 +2632,13 @@ def DecipherDataProcessing(dataframe: pd.DataFrame,
                            map_json: Optional[str] = None,
                            meta_path: Optional[str] = None,
                            title_path: Optional[str] = None,
+                           chat_lang: Optional[Literal['korean', 'english']] = 'korean',
                            default_args: Optional[DefaultArgs] = {
                                'top': 2,
                                'medium': True,
                                'bottom': 2,
-                               'with_value': False
+                               'with_value': False,
+                               'chat_lang': 'korean'
                            }) :
     module_path = os.path.dirname(__file__)
     css_path = os.path.join(os.path.dirname(module_path), 'dataCheck')
