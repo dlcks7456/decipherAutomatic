@@ -2532,7 +2532,7 @@ class DataCheck(pd.DataFrame):
                                     'font_size': 9,
                                     'bg_color': bg_color
                                 }))
-                        if df_row_name in ['mean', 'min', 'max', 'std'] :
+                        if df_row_name in ['mean', 'min', 'max', 'std', '100 point conversion'] :
                             data_sheet.write(i, j, cell_value, float_format)
 
             last_row = i + 1

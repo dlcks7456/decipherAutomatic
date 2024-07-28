@@ -619,7 +619,7 @@ class CrossTabs(pd.DataFrame):
         result = self.astype(float)
         all_value = result.iloc[0]
 
-        mask_index = ['mean', 'man', 'min', 'max', 'std', 'Total']
+        mask_index = ['mean', 'man', 'min', 'max', 'std', '100 point conversion', 'Total']
         if isinstance(result.index, pd.MultiIndex) :
             mask = ~result.index.isin([idx for idx in result.index if idx[-1] in mask_index])
         else :
