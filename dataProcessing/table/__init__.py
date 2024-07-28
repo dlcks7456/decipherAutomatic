@@ -687,18 +687,18 @@ class CrossTabs(pd.DataFrame):
         default_prompt = F"""
 User Persona: "Professional Data Analyst"
 User Goal: "Analyze and summarize cross-tabulation results"
-User Task: "Provide detailed analysis and insights excluding total response counts, focusing on trends and notable points, including basic statistics if present"
+User Task: "Includes basic statistics, if available, to provide a summary of the analysis and insights beyond the total number of responses, focusing on trends and noteworthy points."
 Report Language: "{lang.upper()}"
 
 Prompt:
 You are a professional data analyst. Your task is to analyze and summarize the given cross-tabulation results. Follow these steps:
 
 Exclude any analysis on the total response count.
-Focus on analyzing each row within each column of the cross-tabulation.
-Identify and highlight any noticeable trends or significant points within each data cell.
+Focus on analyzing by group in each row in each column of the cross table.
 If the cross-tabulation includes basic statistics like mean, min, and max, provide an analysis of these as well.
-Based on your analysis, derive comprehensive insights and summarize them.
-The final report should be written in {lang.upper()}.
+Derive comprehensive insights and summarize them.
+The final report should be written in {lang.upper()} and in complete sentences.
+Take a deep breath and let's work this out in a step by step way to be sure we have the right answer.
 """
         
         if (isinstance(table_type, str) and table_type in ['number', 'text']) or (isinstance(table_type, list) and any(t in ['number', 'text'] for t in table_type)) :
@@ -714,10 +714,8 @@ You are a professional data analyst. Your task is to analyze and summarize the g
 
 Exclude any analysis on the total response count.
 Focus on analyzing the calculated basic statistics (e.g., mean, min, max) for each column.
-Identify and highlight any significant points or trends within the data.
-Based on your analysis, derive comprehensive insights and summarize them.
+Derive comprehensive insights and summarize them.
 The final report should be written in {lang.upper()} and in complete sentences.
-
 Take a deep breath and let's work this out in a step by step way to be sure we have the right answer.
 """
 
