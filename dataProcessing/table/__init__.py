@@ -17,6 +17,13 @@ from decipherAutomatic.getFiles import *
 from decipherAutomatic.utils import *
 from pandas.io.formats import excel
 import zipfile
+from matplotlib.colors import LinearSegmentedColormap
+from langchain.chat_models import ChatOllama
+from langchain_openai import ChatOpenAI
+from langchain_experimental.llms.ollama_functions import OllamaFunctions
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.schema.runnable import RunnablePassthrough
+
 
 def custom_calc(df: pd.DataFrame, 
                 index: str, 
@@ -597,7 +604,7 @@ class CrossTabs(pd.DataFrame):
         # result = result.round(0)
         return super()._repr_html_()
     
-    def ratio(self, ratio_round: int = 0) -> pd.DataFrame:
+    def ratio(self, ratio_round: int = 0, heatmap: bool = True, post_text:Optional[str] = None) -> pd.DataFrame:
         if not isinstance(ratio_round, int) :
             raise TypeError('ratio_round must be int')
 
@@ -607,14 +614,113 @@ class CrossTabs(pd.DataFrame):
         result = self.astype(float)
         all_value = result.iloc[0]
 
+        mask_index = ['mean', 'man', 'min', 'max', 'std', 'Total']
         if isinstance(result.index, pd.MultiIndex) :
-            mask = ~result.index.isin([idx for idx in result.index if idx[-1] in ['mean', 'man', 'min', 'std', 'Total']])
-            result.loc[mask, :] = (result.loc[mask, :].div(all_value)) * 100
-            result.loc[mask, :] = result.loc[mask].round(ratio_round)
+            mask = ~result.index.isin([idx for idx in result.index if idx[-1] in mask_index])
+        else :
+            mask = ~result.index.isin(mask_index)
+        
+        result.loc[mask, :] = (result.loc[mask, :].div(all_value)) * 100
+        result.loc[mask, :] = result.loc[mask].round(ratio_round)
+
+        if heatmap :
+            cmap = LinearSegmentedColormap.from_list("custom_blue", ["#ffffff", "#2d6df6"])
+            styled_result = result.style.map(
+                lambda val: 'background-color: #ffffff' if np.isnan(val) else '', 
+                subset=pd.IndexSlice[~mask, :]
+            ).background_gradient(
+                cmap=cmap,
+                subset=pd.IndexSlice[mask, :],
+                vmin=0, vmax=100
+            )
+
+            format_string = "{:." + str(ratio_round) + "f}"
+            if post_text is not None :
+                format_string = format_string + post_text
+            
+            include_total_index = []
+            with_total = [i for i in mask_index if not i in ['Total']]
+            if isinstance(result.index, pd.MultiIndex) :
+                include_total_index = ~result.index.isin([idx for idx in result.index if idx[-1] in with_total])
+            else :
+                include_total_index = ~result.index.isin(with_total)
+            
+            styled_result = styled_result.format(format_string, subset=pd.IndexSlice[include_total_index, :])
+            return styled_result
 
         return result
     
-    
+    def chat_ai(self, 
+                model: Literal['gpt-4o', 'gpt-4o-mini', 'llama3', 'llama3.1'] = 'gpt-4o-mini',
+                sub_title: Optional[str] = None,
+                with_table: Optional[bool] = False,
+                table_type: Optional[Literal['single', 'rating', 'rank', 'multiple', 'number', 'text']] = None,
+                prompt: Optional[str] = None,):
+        
+        if model not in ['gpt-4o', 'gpt-4o-mini', 'llama3', 'llama3.1'] :
+            raise ValueError('model must be gpt-4o, gpt-4o-mini, llama3, llama3.1')
+        
+        llm = None
+        if model in ['llama3', 'llama3.1'] :
+            llm = ChatOllama(
+                model=model,
+                temperature=0.1)
+        
+        if model in ['gpt-4o', 'gpt-4o-mini'] :
+            llm = ChatOpenAI(
+                    temperature=0.1,
+                    model='gpt-4o-mini')
+        
+        post_text = '%'
+        default_prompt = """
+아래 크로스탭 결과를 확인해서 분석 및 요약을 진행하시오.
+분석할 때 크로스탭의 Total 응답수에 대한 내용은 제외하고 작성하고, 각 컬럼별로 행에 대한 분석을 진행하시오.
+각 데이터 셀별로 눈에 띄는 부분, 트랜드 등을 집중적으로 분석하시오.
+만약, 크로스탭의 행에 mean, min, max 등 기초 통계량이 있다면 이에 대해서도 분석하시오.
+답변은 한글로 진행하시오."""
+        
+        if (isinstance(table_type, str) and table_type in ['number', 'text']) or (isinstance(table_type, list) and any(t in ['number', 'text'] for t in table_type)) :
+            post_text = None
+            default_prompt = """아래 크로스탭 결과를 확인해서 분석 및 요약을 진행하시오.
+분석할 때 크로스탭의 Total 응답수에 대한 내용은 제외하고 작성하고, 
+각 컬럼별로 계산된 기초 통계량에 대해 분석하시오.
+답변은 한글로 진행하고, 문장 형태로만 작성하시오.
+"""
+
+        if prompt is None :
+            prompt = default_prompt
+        
+        crosstab = self.ratio(ratio_round=2, heatmap=False, post_text=post_text)
+        crosstab = crosstab.to_markdown()
+
+        prompt_template = ChatPromptTemplate.from_template(
+"""
+{prompt}
+===
+{sub_title}
+{crosstab}
+"""
+)
+        try :
+            chain = prompt_template | llm
+            chat_content = chain.invoke({
+                            'prompt': prompt,
+                            'crosstab': crosstab,
+                            'sub_title': f'[`{sub_title}` CROSSTAB Result]' if sub_title is not None else '[CROSSTAB]',
+                        })
+        except Exception as e :
+            print(e)
+            return None
+        
+        chat_result = chat_content.content
+
+        if with_table :
+            ratio_table = self.ratio(ratio_round=0)
+            display(HTML(ratio_table.to_html()))
+        
+        return chat_result
+        
+
 
 def clean_text(text):
     if text is None :

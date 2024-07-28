@@ -21,6 +21,8 @@ from decipherAutomatic.utils import *
 from decipherAutomatic.dataProcessing.table import *
 from pandas.io.formats import excel
 import zipfile
+from matplotlib.colors import to_hex
+from matplotlib.colors import LinearSegmentedColormap
 from pprint import pprint
 
 VarWithHeader = Tuple[str, Union[str, List[str]]]
@@ -265,6 +267,11 @@ def lambda_ma_to_list(row, qids) :
             return rp
     
     return [return_int_or_str(x) for x in qids if not (pd.isna(row[x]) or row[x] == 0)]
+
+def calculate_bg_color(value):
+    cmap = LinearSegmentedColormap.from_list("custom_blue", ["#ffffff", "#2d6df6"])
+    normalized_value = value / 100  # Normalize the value between 0 and 1
+    return to_hex(cmap(normalized_value))
 
 def check_duplicate_meta(input_list: List[Dict[str, str]]) -> List[Dict[str, str]]:
     value_counts = {}
@@ -2121,17 +2128,29 @@ class DataCheck(pd.DataFrame):
                 table = self.table(idx, cond=cond, **kwargs)
 
             index_name = idx
+            col_name = idx
             if isinstance(idx, tuple) :
                 idx = self.ma_return(idx)
                 if not self.col_name_check(*idx) : return
 
             if isinstance(idx, list) :
+                index_name = idx[0]
+            
+            sub_title = None
+            titles = self.attrs['title']
+            if titles :
+                if index_name in titles.keys() :
+                    sub_title = titles[index_name]['sub_title']
+                    if sub_title is None :
+                        sub_title = titles[index_name]['title']
+            
+            if isinstance(idx, list) :
                 if len(idx) == 1 :
                     index_name = idx[0]
                 else :
                     index_name = f'{idx[0]}-{idx[-1]}'
-            
-            col_name = index_name
+
+            col_name = index_name if sub_title is None else f'[{index_name}] {sub_title}'
             table = table.rename(columns={'Total': col_name})
             summary_df.append(table)
         
@@ -2186,7 +2205,13 @@ class DataCheck(pd.DataFrame):
             return qid
 
 
-    def proc_append(self, table_id: Union[str, tuple], table: Union[pd.DataFrame, CrossTabs]) :
+    def proc_append(self, 
+                    table_id: Union[str, tuple], 
+                    table: Union[pd.DataFrame, CrossTabs],
+                    ai: bool = False,
+                    model: Literal['gpt-4o', 'gpt-4o-mini', 'llama3', 'llama3.1'] = 'gpt-4o-mini',
+                    prompt: Optional[str] = None,
+                    heatmap: Optional[bool] = True,) :
         if not isinstance(table_id, (str, tuple)) :
             raise ValueError(f'table_id must be str or tuple')
         
@@ -2212,13 +2237,43 @@ class DataCheck(pd.DataFrame):
         if table_name in proc_result.keys() :
             print(f'⚠️ result title already exists : {table_name}')
         
-        proc_result[table_name] = {'desc': table_desc, 'table': table}
+        chat_result = None
+        
+        table_type = table.attrs['type']
+        if ai :
+            chat_result = table.chat_ai(model=model, 
+                                        prompt=prompt, 
+                                        with_table=False, 
+                                        table_type=table_type,
+                                        sub_title=table_desc)
 
-        table_html = table.to_html(escape=False, index=True, border=0, classes='table table-striped table-hover')
+        proc_result[table_name] = {
+            'desc': table_desc, 
+            'table': table,
+            'ai': chat_result
+        }
+
+        table_html = None
+        if table_type in ['number', 'text'] :
+            table_html = table.to_html(escape=False, index=True, border=0, classes='table table-striped table-hover')
+        else :
+            table_html = table.ratio(heatmap=heatmap).to_html()
+
+        table_desc_html = f"""<div style="font-size: 0.8rem; padding: 7px; max-width: 600px; font-style: italic; margin-bottom: 7px;">
+                {table_desc}
+        </div>"""
+        
+        table_analysis_html = f"""<div style="font-weight: bold; font-size: 0.8rem; padding: 7px; max-width: 700px; margin-bottom: 7px;border: 1px solid #2d6df6; border-radius: 5px;">
+                {chat_result}
+        </div>
+        """
+
         table_id_html = f"""
-            <div style="width: fit-content;padding: 7px; font-size:1rem;font-weight:bold; background-color: #2d6df6; border-radius: 5px; color:white; margin-bottom: 7px;">
+            <div style="width:fit-content;padding: 7px; font-size:1rem;font-weight:bold; background-color: #2d6df6; border-radius: 5px; color:white; margin-bottom: 7px;">
                 {table_name}
             </div>
+            {table_desc_html if table_desc is not None else ''}
+            {table_analysis_html if chat_result is not None else ''}
             <div>
                 {table_html}
             </div>
@@ -2226,7 +2281,7 @@ class DataCheck(pd.DataFrame):
         display(HTML(table_id_html))
     
     
-    def proc_export_excel(self, file_name: str) :
+    def proc_export_excel(self, file_name: str, heatmap: bool = False) :
         total_label = 'Total'
         proc_result = self.attrs['proc_result']
         if not proc_result : 
@@ -2318,7 +2373,7 @@ class DataCheck(pd.DataFrame):
         for key, table_attrs in proc_result.items():
             result = table_attrs['table']
             desc = table_attrs['desc']
-
+            ai = table_attrs['ai']
 
             new_group_name = {
                 'index': '',
@@ -2361,10 +2416,10 @@ class DataCheck(pd.DataFrame):
                 
                 if isinstance(resurt_type, list) :
                     if all(not x in ['number'] for x in resurt_type) :
-                        result = result.ratio()
+                        result = result.ratio(heatmap=False)
                     
                 elif not resurt_type in ['number'] :
-                    result = result.ratio()
+                    result = result.ratio(heatmap=False)
                 
 
             index_sheet.write(row, col + 2, qid_name, qid_format)
@@ -2443,6 +2498,7 @@ class DataCheck(pd.DataFrame):
             if len(set_group) == 1 :
                 data_sheet.write(data_start_row, 2, None, table_head)
 
+            last_row = None
             for df_row, i in enumerate(range(format_start, format_start+len(result))) :
                 for df_col, j in enumerate(range(2, len(result.columns)+2)) :
                     cell_value = result.iloc[df_row, df_col]
@@ -2458,10 +2514,30 @@ class DataCheck(pd.DataFrame):
                         data_sheet.write(i, j, cell_value, total_format)
                     else :
                         data_sheet.write(i, j, cell_value, zero_float_format)
-
+                        if heatmap :
+                            if cell_value != '-' :
+                                bg_color = calculate_bg_color(float(cell_value))
+                                data_sheet.write(i, j, cell_value, workbook.add_format({
+                                    'num_format': '0',
+                                    'align': 'center',
+                                    'border': 1,
+                                    'font_size': 9,
+                                    'bg_color': bg_color
+                                }))
                         if df_row_name in ['mean', 'min', 'max', 'std'] :
                             data_sheet.write(i, j, cell_value, float_format)
-                            
+
+            last_row = i + 1
+
+            if ai is not None :
+                ai_result_format = workbook.add_format({
+                    'font_size': 9,
+                    'text_wrap': True,  # 자동 줄바꿈 설정
+                    'valign': 'top',
+                    'align': 'left',
+                })
+                data_sheet.merge_range(last_row, col+2, last_row, col+12, ai, ai_result_format)
+                data_sheet.set_row(last_row, 150)
 
             data_start_row += len(result) + 6  # 3행 간격
 
