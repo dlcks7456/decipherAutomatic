@@ -111,7 +111,8 @@ def create_crosstab(df: pd.DataFrame,
                     reverse_rating: Optional[bool]=False,
                     total_label: str = 'Total',
                     all_label: str = 'Total',
-                    count_label: str = 'Count',) -> pd.DataFrame:
+                    count_label: str = 'Count',
+                    conversion: bool = True) -> pd.DataFrame:
     """
     Creates a crosstab from the provided DataFrame with optional metadata for reordering and relabeling indices and columns, and with options to include top/bottom summaries and index sorting.
     
@@ -559,7 +560,13 @@ def create_crosstab(df: pd.DataFrame,
     if calc is not None :
         crosstab_result = pd.concat([crosstab_result, calc])
         # crosstab_result.iloc[0] = crosstab_result.iloc[0].apply(lambda x: str(int(float(x))))
-    
+
+        if conversion :
+            if qtype == 'rating' and 'mean' in crosstab_result.index.to_list() :
+                conversion_index = '100 point conversion'
+                crosstab_result.loc[conversion_index, :] = [0 if i == 0 else ((i-1)/(score-1))*100 for i in crosstab_result.loc['mean', :].values]
+                back_index.append(conversion_index)
+
     # Process index metadata
     if index_meta :
         index_order, index_labels = extract_order_and_labels(index_meta, [all_label], back_index)
