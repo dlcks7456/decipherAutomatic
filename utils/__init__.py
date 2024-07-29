@@ -3,6 +3,7 @@ import decipherAutomatic.utils.system_variables  as sys
 import itertools
 import random
 import pandas as pd
+import os
 
 sys_vars = [i for i in sys.variables.split('\n') if not i == '']
 key_vars = [i for i in key.variables.split('\n') if not i == '']
@@ -59,3 +60,23 @@ def create_maxdiff(num_versions, num_tasks, item_list, num_attributes):
     df = pd.DataFrame(data, columns=columns)
 
     return df
+
+
+def get_versioned_filename(base_name):
+    # 파일 이름과 확장자를 분리
+    base, ext = os.path.splitext(base_name)
+    
+    # 현재 디렉토리의 파일 목록 가져오기
+    files = os.listdir()
+    
+    # base_name 파일이 존재하는지 확인
+    if base_name not in files:
+        return base_name
+    
+    version = 2
+    while True:
+        # 새로운 버전 파일 이름 생성
+        versioned_name = f"{base}_v{version}{ext}"
+        if versioned_name not in files:
+            return versioned_name
+        version += 1

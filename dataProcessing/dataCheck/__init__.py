@@ -28,6 +28,8 @@ from pprint import pprint
 VarWithHeader = Tuple[str, Union[str, List[str]]]
 ColumnsWithHeader = List[VarWithHeader]
 IndexWithTypes = Union[str, List[str], Tuple[str]]
+Qtypes = Literal['single', 'rating', 'rank', 'ranksort', 'multiple', 'number', 'float', 'text']
+
 
 def check_print(variables: Union[List[str], Tuple[str, ...], str], 
                 error_type: Literal['SA', 'MA', 'LOGIC', 'MASA', 'MAMA', 'MARK', 'RATERANK', 'DUP'], 
@@ -1646,7 +1648,7 @@ class DataCheck(pd.DataFrame):
                     index_sort: Optional[Literal['asc', 'desc']]=None,
                     columns_sort: Optional[Literal['asc', 'desc']]=None,
                     fill: bool = True,
-                    qtype: Optional[Literal['single', 'rating', 'rank', 'multiple', 'number', 'text']] = None,
+                    qtype: Optional[Qtypes] = None,
                     score: Optional[int] = None,
                     conversion: bool = True,
                     top: Optional[int] = None,
@@ -1729,7 +1731,7 @@ class DataCheck(pd.DataFrame):
                     if index[0] in titles.keys() :
                         qtype = titles[index[0]]['type']
 
-            index_meta = self.setting_meta(original_index_meta, index, not qtype in ['rank', 'ranksort', 'number', 'text'])
+            index_meta = self.setting_meta(original_index_meta, index, not qtype in ['rank', 'ranksort', 'number', 'float', 'text'])
             if index_filter is not None :
                 if index_meta is not None :
                     index_meta_dict = {list(idx.keys())[0]:list(idx.values())[0] for idx in index_meta}
@@ -1768,7 +1770,7 @@ class DataCheck(pd.DataFrame):
 
  
             # Number Type
-            if qtype == 'number' :
+            if qtype in ['number', 'float'] :
                 if not isinstance(index, str) :
                     raise TypeError("index must be str")
                 
@@ -2262,7 +2264,7 @@ class DataCheck(pd.DataFrame):
         }
 
         table_html = None
-        if table_type in ['number', 'text'] :
+        if table_type in ['number', 'float', 'text'] :
             table_html = table.to_html(escape=False, index=True, border=0, classes='table table-striped table-hover')
         else :
             table_html = table.ratio(ratio_round=0, heatmap=heatmap).to_html()
@@ -2308,7 +2310,8 @@ class DataCheck(pd.DataFrame):
         }
 
         # 엑셀 파일 생성
-        file_name = f'{file_name}.xlsx'
+        file_name = get_versioned_filename(f'{file_name}.xlsx')
+
         writer = pd.ExcelWriter(file_name, engine='xlsxwriter')
         workbook = writer.book
 
@@ -2423,10 +2426,10 @@ class DataCheck(pd.DataFrame):
                 resurt_type = result.attrs['type']
                 
                 if isinstance(resurt_type, list) :
-                    if all(not x in ['number'] for x in resurt_type) :
+                    if all(not x in ['number', 'float'] for x in resurt_type) :
                         result = result.ratio(ratio_round=None, heatmap=False)
                     
-                elif not resurt_type in ['number'] :
+                elif not resurt_type in ['number', 'float'] :
                     result = result.ratio(ratio_round=None, heatmap=False)
                 
 
@@ -2563,6 +2566,149 @@ class DataCheck(pd.DataFrame):
 
 
         wb.save(file_name)
+    
+    def meta(self, qid: Union[str, list]) :
+        if not isinstance(qid, (str,  list)) :
+            raise ValueError("qid must be str or list")
+
+        meta = self.attrs['meta']
+
+        if not meta :
+            raise ValueError("There is no meta data")
+        
+        
+        if isinstance(qid, str) :
+            if not qid in meta.keys() :
+                raise ValueError(f"There is no meta data for {qid}")
+            return meta[qid]
+        elif isinstance(qid, list) :
+            qid_chk = [x for x in qid if not x in meta.keys()]
+
+            if qid_chk :
+                raise ValueError(f"There is no meta data for {qid_chk}")
+            
+            return {x: meta[x] for x in qid}
+
+    def title(self, qid: Union[str, list]) :
+        if not isinstance(qid, (str,  list)) :
+            raise ValueError("qid must be str or list")
+
+        title = self.attrs['title']
+
+        if not title :
+            raise ValueError("There is no title data")
+
+        if isinstance(qid, str) :
+            if not qid in title.keys() :
+                raise ValueError(f"There is no title data for {qid}")
+            return title[qid]
+        elif isinstance(qid, list) :
+            qid_chk = [x for x in qid if not x in title.keys()]
+
+            if qid_chk :
+                raise ValueError(f"There is no title data for {qid_chk}")
+            
+            return {x: title[x] for x in qid}
+    
+    def meta_validation(self, meta_data: List[Union[Dict, Tuple]]) :
+        if not isinstance(meta_data, list) :
+            raise ValueError("meta_data must be list")
+        else :
+            type_check = [not isinstance(x, (dict, tuple)) for x in meta_data]
+            if any(type_check) :
+                raise ValueError("meta_data must be list of dict or list of tuple")
+            
+            if all(isinstance(x, tuple) for x in meta_data) :
+                tuple_len_check = [len(x)!= 2 for x in meta_data]
+                if any(tuple_len_check) :
+                    raise ValueError("meta_data must be list of tuple with two values")
+
+                meta_data = [{x[0]: x[1]} for x in meta_data]
+            else :
+                dict_len_check = [len(x)!= 1 for x in meta_data]
+                if any(dict_len_check) :
+                    raise ValueError("meta_data must be list of dict with one key")
+        
+        to_str_meta = [{str(list(x.keys())[0]): list(x.values())[0]} for x in meta_data]
+
+        return to_str_meta
+
+    def set_meta(self, qid: str, meta_data: List[Union[Dict, Tuple]]) :
+        if not isinstance(qid, str) :
+            raise ValueError("qid must be str")
+        
+        meta = self.attrs['meta']
+
+        if qid in meta.keys() :
+            raise ValueError(f"qid already exists")
+
+        self.attrs['meta'][qid] = self.meta_validation(meta_data)
+
+    
+    def update_meta(self, qid: str, meta_data: List[Dict]) :
+        if not isinstance(qid, str) :
+            raise ValueError("qid must be str")
+        
+        meta = self.attrs['meta']
+
+        if not qid in meta.keys() :
+            raise ValueError(f"qid does not exist")
+
+        self.attrs['meta'][qid] = self.meta_validation(meta_data)
+
+
+    def title_validation(self, qtype: Qtypes, title: str, sub_title: Optional[str] = None, vgroup: Optional[str] = None) :
+        title_meta = self.attrs['title']
+
+        if not isinstance(title, str) :
+            raise ValueError("title must be str")
+
+        if not qtype in ['single', 'rating', 'rank', 'ranksort', 'multiple', 'number', 'float', 'text'] :
+            raise ValueError("qtype must be one of'single', 'rating', 'rank', 'ranksort','multiple', 'number', 'float', 'text'")
+        
+        if sub_title is not None :
+            if not isinstance(sub_title, str) :
+                raise ValueError("sub_title must be str")
+        
+        if vgroup is not None :
+            if not isinstance(vgroup, str) :
+                raise ValueError("vgroup must be str")
+            
+            if not vgroup in title_meta.keys() :
+                raise ValueError(f"vgroup does not exist in title meta (vgroup={vgroup})")
+        
+        return {
+            'type': qtype,
+            'title': title,
+            'sub_title': sub_title,
+            'vgroup': vgroup
+        }
+
+    def set_title(self, qid: str, qtype: Qtypes, title: str, sub_title: Optional[str] = None, vgroup: Optional[str] = None) :
+        if not isinstance(qid, str) :
+            raise ValueError("qid must be str")
+        
+        title_meta = self.attrs['title']
+
+        if qid in title_meta.keys() :
+            raise ValueError(f"qid already exists")
+
+        
+        self.attrs['title'][qid] = self.title_validation(qtype, title, sub_title, vgroup)
+
+
+    def update_title(self, qid: str, qtype: Qtypes, title: str, sub_title: Optional[str] = None, vgroup: Optional[str] = None) :
+        if not isinstance(qid, str) :
+            raise ValueError("qid must be str")
+        
+        title_meta = self.attrs['title']
+
+        if not qid in title_meta.keys() :
+            raise ValueError(f"qid already exists")
+
+        
+        self.attrs['title'][qid] = self.title_validation(qtype, title, sub_title, vgroup)
+
 
 
 def get_css(path: os.path) -> str:
@@ -2789,6 +2935,43 @@ def colon_split(txt: str, num: int) -> Optional[str]:
         return re_chk[num].strip()
     return None
 
+
+def download_decipher_data(pid: str, file_format: Literal['excel', 'spss', 'both'] = 'excel', folder: Optional[Union[str, List[str]]]=None, cond:Optional[str]=None):
+    delivery_cond = 'qualified' if cond == None else f'qualified and {cond}'
+    data_path = os.getcwd()
+
+    if not file_format in ['excel','spss', 'both'] :
+        raise ValueError('The file_format must be either excel, spss or both')
+    
+    
+    if folder is not None :
+        if not isinstance(folder, (str, list)) :
+            raise ValueError('The folder must be either str or list')
+
+        if isinstance(folder, str) :
+            data_path = os.path.join(data_path, folder)
+        else :
+            data_path = os.path.join(data_path, *folder)
+        
+        if not os.path.exists(data_path) :
+            os.makedirs(data_path)
+        
+        
+    if file_format in ['excel', 'both'] :
+        csv_data = get_decipher_data(pid, data_format='csv', cond=delivery_cond)
+        csv_binary = f'binary_{pid}.csv'
+        ensure_directory_exists(data_path)
+        create_binary_file(data_path, csv_binary, csv_data)
+        create_ascii_file(data_path, csv_binary, f'{pid}.csv')
+    
+    if file_format in ['spss', 'both'] :
+        sav_data = get_decipher_data(pid, data_format='spss16', cond=delivery_cond)
+        sav_zip = f'{pid}_sav.zip'
+        create_binary_file(data_path, sav_zip, sav_data)
+        unzip_and_delete(os.path.join(data_path, sav_zip), data_path)
+
+    print("✅ Download Complete")
+
 def DecipherSetting(pid: str, 
             cond: Optional[str] = None,
             use_variable: bool = False,
@@ -2798,7 +2981,8 @@ def DecipherSetting(pid: str,
             data_layout: bool = False, 
             base_layout: str = 'DoNotDelete',
             mkdir: bool = False,
-            dir_name: Optional[str] = None) -> None:
+            dir_name: Optional[str] = None,
+            mode: Literal['datacheck', 'processing'] = 'datacheck') -> None:
 
     """
     데이터 체크 노트북 파일 및 데이터 세팅
@@ -2892,18 +3076,8 @@ def DecipherSetting(pid: str,
         print('❌ Error : Decipher api login failed')
         return
 
-    csv_data = get_decipher_data(pid, data_format='csv', cond=delivery_cond)
-    sav_data = get_decipher_data(pid, data_format='spss16', cond=delivery_cond)
-
-    csv_binary = f'binary_{pid}.csv'
     data_path = os.path.join(parent_path, 'data')
-    ensure_directory_exists(data_path)
-    create_binary_file(data_path, csv_binary, csv_data)
-    create_ascii_file(data_path, csv_binary, f'{pid}.csv')
-    
-    sav_zip = f'{pid}_sav.zip'
-    create_binary_file(data_path, sav_zip, sav_data)
-    unzip_and_delete(os.path.join(data_path, sav_zip), data_path)
+    download_decipher_data(pid=pid, file_format='both', folder='data', cond=delivery_cond)
     #----
 
     # DATA CHECK SETTING
@@ -3053,60 +3227,157 @@ def DecipherSetting(pid: str,
                     qel.append(el)
                     qids[na_el][eltxt] = qel
 
-    # DATACHECK NOTEBOOK
-    nb = nbf.v4.new_notebook()
-    ipynb_file_name = f'DataCheck_{pid}.ipynb'
-    order_qid = list(qids.items())
+    if mode == 'datacheck' :
+        # DATACHECK NOTEBOOK
+        nb = nbf.v4.new_notebook()
+        ipynb_file_name = f'DataCheck_{pid}.ipynb'
+        order_qid = list(qids.items())
 
-    ipynb_cell = []
+        ipynb_cell = []
 
-    # set_file_name = 'pd.read_excel(file_name)' if mode == 'file' else 'pd.read_csv(file_name, low_memory=False)'
+        # set_file_name = 'pd.read_excel(file_name)' if mode == 'file' else 'pd.read_csv(file_name, low_memory=False)'
 
-    excel_meta = f'''DecipherDataProcessing(df, map_json=f"meta/map_{{pid}}.json")''' if meta else '''DecipherDataProcessing(df)'''
+        excel_meta = f'''DecipherDataProcessing(df, map_json=f"meta/map_{{pid}}.json")''' if meta else '''DecipherDataProcessing(df)'''
 
-    default = f'''import pandas as pd
-import pyreadstat
-import numpy as np
-from meta.variables_{pid} import * 
-from decipherAutomatic.dataProcessing.dataCheck import *
+        default = f'''import pandas as pd
+    import pyreadstat
+    import numpy as np
+    from meta.variables_{pid} import * 
+    from decipherAutomatic.dataProcessing.dataCheck import *
 
-pid = "{pid}"
+    pid = "{pid}"
 
-# Use SPSS
-# file_name = f"data/{{pid}}.sav"
-# df, meta = pyreadstat.read_sav(file_name)
-# df = DecipherDataProcessing(df)
+    # Use SPSS
+    # file_name = f"data/{{pid}}.sav"
+    # df, meta = pyreadstat.read_sav(file_name)
+    # df = DecipherDataProcessing(df)
 
-# Use Excel
-file_name = f"data/{{pid}}.xlsx"
-df = pd.read_excel(file_name, engine="openpyxl")
-df = {excel_meta}
-'''
-    
-    ipynb_cell.append(nbf.v4.new_code_cell(default))
-    ipynb_cell.append(nbf.v4.new_code_cell("""# df.display_msg = 'error'"""))
+    # Use Excel
+    file_name = f"data/{{pid}}.xlsx"
+    df = pd.read_excel(file_name, engine="openpyxl")
+    df = {excel_meta}
+    '''
+        
+        ipynb_cell.append(nbf.v4.new_code_cell(default))
+        ipynb_cell.append(nbf.v4.new_code_cell("""# df.display_msg = 'error'"""))
 
-    for idx, attrs in enumerate(order_qid) :
-        qid = attrs[0]
-        els = attrs[1]
-        if not qid in all_diff :
-            qels = els['element']
-            qtype = els['type']
-            qval = els['value']
-            qtitle = els['title']
-            val_label = els['value_label']
-            el_label = els['element_label']
+        for idx, attrs in enumerate(order_qid) :
+            qid = attrs[0]
+            els = attrs[1]
+            if not qid in all_diff :
+                qels = els['element']
+                qtype = els['type']
+                qval = els['value']
+                qtitle = els['title']
+                val_label = els['value_label']
+                el_label = els['element_label']
 
-            cell_texts = []
-            cell_texts.append(f'# {qid} : {qtype}')
-            # sa check #
-            if qtype == 'SA' or (qtype == 'MA' and len(qels) == 1):
-                if qtype == 'SA' :
+                cell_texts = []
+                cell_texts.append(f'# {qid} : {qtype}')
+                # sa check #
+                if qtype == 'SA' or (qtype == 'MA' and len(qels) == 1):
+                    if qtype == 'SA' :
+                        if qval :
+                            val_chk = f"# value : {qval}"
+                            cell_texts.append(val_chk)
+
+                        if len(qels) >= 2 :
+                            diff_na = [q for q in qels if not na in q]
+
+                        for qel in qels :
+                            if na in qel :
+                                cell_texts.append(f'# The {qid} contains {qel}')
+                            else :
+                                safreq = f"df.safreq('{qel}')"
+                                if use_variable : safreq = f"df.safreq({qel})"
+
+                                cell_texts.append(safreq)
+
+                        if val_label :
+                            values = [v for v in val_label.keys() if not int(v) == 0]
+
+                        # rank check
+                        if len(qels) >= 2 :
+                            labels = list(el_label.values())
+                            rk = []
+                            for rk_txt in rank_chk :
+                                for label in labels :
+                                    mu_rk = rk_txt.strip().replace(' ','').upper()
+                                    mu_label = label.strip().replace(' ','').upper()
+                                    if mu_rk in mu_label :
+                                        rk.append(label)
+                            if len(rk) >= 2 :
+                                dup_diff_na = [q for q in qels if not na in q]
+                                set_qid = f"('{dup_diff_na[0]}', '{dup_diff_na[-1]}')"
+
+                                dupchk = f"df.dupchk({set_qid})"
+                                if use_variable : dupchk = f"df.dupchk({qid})"
+
+                                cell_texts.append(dupchk)
+                    else :
+                        if qval :
+                            val_chk = f"# value : {qval}"
+                            
+                            cell_texts.append(val_chk)
+                            safreq = f"df.safreq('{qels[0]}')"
+                            if use_variable : safreq = f"df.safreq({qels[0]})"
+                            cell_texts.append(safreq)
+                ### sa end ###
+
+                # ma check #
+                elif qtype == 'MA' :
+                    if len(qels) > 1 :
+                        diff_na = [q for q in qels if not na in q]
+                        if not diff_na :
+                            continue
+                        nas = [q for q in qels if na in q]
+                        first_el = diff_na[0]
+                        last_el = diff_na[-1]
+                        set_qid = f"('{first_el}', '{last_el}')"
+
+
+                        if val_label :
+                            values = [v for v in val_label.keys() if not int(v) == 0]
+
+                        mafreq = f"df.mafreq({set_qid})"
+                        if use_variable : mafreq = f"df.mafreq({qid})"
+
+                        cell_texts.append(mafreq)
+
+                        if nas :
+                            cell_texts.append(f'# The {qid} contains {nas}')
+                ### ma end ###
+
+
+                # num check #
+                elif qtype == 'NUM' :
+                    range_set = None
+
+                    if len(qels) >=2 :
+                        diff_na = [q for q in qels if not na in q]
+
                     if qval :
-                        val_chk = f"# value : {qval}"
-                        cell_texts.append(val_chk)
+                        values = qval.split('-')
+                        range_set = f"only=range({values[0]}, {values[1]})"
 
-                    if len(qels) >= 2 :
+                    for qel in qels :
+                        if na in qel :
+                            cell_texts.append(f'# The {qid} contains {qel}')
+                        else :
+                            if range_set :
+                                safreq = f"df.safreq('{qel}', {range_set})"
+                                if use_variable : safreq = f"df.safreq({qel}, {range_set})"
+                            else :
+                                safreq = f"df.safreq('{qel}')"
+                                if use_variable : safreq = f"df.safreq({qel})"
+
+                            cell_texts.append(safreq)
+
+                ### num end ###
+
+                # text check #
+                elif qtype == 'OE' :
+                    if len(qels) >=2 :
                         diff_na = [q for q in qels if not na in q]
 
                     for qel in qels :
@@ -3117,131 +3388,34 @@ df = {excel_meta}
                             if use_variable : safreq = f"df.safreq({qel})"
 
                             cell_texts.append(safreq)
+                ### text end ###
 
-                    if val_label :
-                        values = [v for v in val_label.keys() if not int(v) == 0]
-
-                    # rank check
-                    if len(qels) >= 2 :
-                        labels = list(el_label.values())
-                        rk = []
-                        for rk_txt in rank_chk :
-                            for label in labels :
-                                mu_rk = rk_txt.strip().replace(' ','').upper()
-                                mu_label = label.strip().replace(' ','').upper()
-                                if mu_rk in mu_label :
-                                    rk.append(label)
-                        if len(rk) >= 2 :
-                            dup_diff_na = [q for q in qels if not na in q]
-                            set_qid = f"('{dup_diff_na[0]}', '{dup_diff_na[-1]}')"
-
-                            dupchk = f"df.dupchk({set_qid})"
-                            if use_variable : dupchk = f"df.dupchk({qid})"
-
-                            cell_texts.append(dupchk)
-                else :
-                    if qval :
-                        val_chk = f"# value : {qval}"
-                        
-                        cell_texts.append(val_chk)
-                        safreq = f"df.safreq('{qels[0]}')"
-                        if use_variable : safreq = f"df.safreq({qels[0]})"
-                        cell_texts.append(safreq)
-            ### sa end ###
-
-            # ma check #
-            elif qtype == 'MA' :
-                if len(qels) > 1 :
-                    diff_na = [q for q in qels if not na in q]
-                    if not diff_na :
-                        continue
-                    nas = [q for q in qels if na in q]
-                    first_el = diff_na[0]
-                    last_el = diff_na[-1]
-                    set_qid = f"('{first_el}', '{last_el}')"
-
-
-                    if val_label :
-                        values = [v for v in val_label.keys() if not int(v) == 0]
-
-                    mafreq = f"df.mafreq({set_qid})"
-                    if use_variable : mafreq = f"df.mafreq({qid})"
-
-                    cell_texts.append(mafreq)
-
-                    if nas :
-                        cell_texts.append(f'# The {qid} contains {nas}')
-            ### ma end ###
-
-
-            # num check #
-            elif qtype == 'NUM' :
-                range_set = None
-
-                if len(qels) >=2 :
-                    diff_na = [q for q in qels if not na in q]
-
-                if qval :
-                    values = qval.split('-')
-                    range_set = f"only=range({values[0]}, {values[1]})"
-
-                for qel in qels :
-                    if na in qel :
-                        cell_texts.append(f'# The {qid} contains {qel}')
-                    else :
-                        if range_set :
-                            safreq = f"df.safreq('{qel}', {range_set})"
-                            if use_variable : safreq = f"df.safreq({qel}, {range_set})"
-                        else :
-                            safreq = f"df.safreq('{qel}')"
-                            if use_variable : safreq = f"df.safreq({qel})"
-
-                        cell_texts.append(safreq)
-
-            ### num end ###
-
-            # text check #
-            elif qtype == 'OE' :
-                if len(qels) >=2 :
-                    diff_na = [q for q in qels if not na in q]
-
-                for qel in qels :
-                    if na in qel :
-                        cell_texts.append(f'# The {qid} contains {qel}')
-                    else :
+                # other open check #
+                elif qtype == 'OTHER_OE' :
+                    for qel in qels :
                         safreq = f"df.safreq('{qel}')"
                         if use_variable : safreq = f"df.safreq({qel})"
 
                         cell_texts.append(safreq)
-            ### text end ###
-
-            # other open check #
-            elif qtype == 'OTHER_OE' :
-                for qel in qels :
-                    safreq = f"df.safreq('{qel}')"
-                    if use_variable : safreq = f"df.safreq({qel})"
-
-                    cell_texts.append(safreq)
-            ### other open end ###
+                ### other open end ###
 
 
-            if cell_texts :
-                cell = '\n'.join(cell_texts)
-                ipynb_cell.append(nbf.v4.new_code_cell(cell))
-            else :
-                mark = f'The {qid} not cotains elements'
-                ipynb_cell.append(nbf.v4.new_markdown_cell(mark))
+                if cell_texts :
+                    cell = '\n'.join(cell_texts)
+                    ipynb_cell.append(nbf.v4.new_code_cell(cell))
+                else :
+                    mark = f'The {qid} not cotains elements'
+                    ipynb_cell.append(nbf.v4.new_markdown_cell(mark))
 
-    #ipynb_cell
-    nb['cells'] = ipynb_cell
-    #print(nb)
-    ipynb_file_path = os.path.join(parent_path, ipynb_file_name)
-    if not os.path.isfile(ipynb_file_path) :
-        with open(ipynb_file_path, 'w') as f:
-            nbf.write(nb, f)
-    else :
-        print('❗ The DataCheck ipynb file already exists')
-
+        #ipynb_cell
+        nb['cells'] = ipynb_cell
+        #print(nb)
+        ipynb_file_path = os.path.join(parent_path, ipynb_file_name)
+        if not os.path.isfile(ipynb_file_path) :
+            with open(ipynb_file_path, 'w') as f:
+                nbf.write(nb, f)
+        else :
+            print('❗ The DataCheck ipynb file already exists')
     #----
 
     # LAYOUT
@@ -3259,5 +3433,178 @@ df = {excel_meta}
             f.write(oe_layout)
     #----
 
-    #---    
+    #---
+    if mode == 'processing' :
+        processing_ipynb = f'DataProcessing_{pid}.ipynb'
+        nb = nbf.v4.new_notebook()
+
+        ipynb_cell = []
+
+        guide_cell = f"""##### 📌 DecipherDataProcessing Default_args  
+```python  
+default_args = {{  
+    'top': 2,  
+    'medium': True,  
+    'bottom': 2,  
+    'with_value': False,  
+    'chat_lang': 'korean'  
+}}  
+    
+# If you want to change the default_args, you can do it like this  
+# (If you want to change the top, medium, and bottom default options,)  
+df = DecipherDataProcessing([Raw DataFrame], map_json='[Map JSON Path]', default_args = {{  
+    'top': [3, 2],  
+    'medium' : False, # or 3 or [3, 4, 5], etc ...  
+    'bottom': [2, 3],  
+}})  
+```  
+
+##### 📌 Banner Netting example
+```python
+banners = [
+    [
+        ('BAG1', '성별'),
+        [
+            ('#1', '남', df.Q2==1),
+            ('#2', '여', df.Q2==2),
+        ]
+    ],
+    [
+        ('BAG2', '연령'),
+        [
+            ('#3', '10대', df.Q4.isin([1, 2])),
+            ('#4', '20대', df.Q4.isin([3, 4])),
+            ('#5', '30대', df.Q4.isin([5, 6])),
+            ('#6', '40대', df.Q4.isin([7, 8])),
+            ('#7', '50대 이상', df.Q4.isin([9, 10, 11])),
+        ]
+    ],
+]
+```  """
+
+        ipynb_cell.append(nbf.v4.new_markdown_cell(guide_cell))
+
+
+        # Python Code
+        default = f"""import pandas as pd
+import numpy as np
+from meta.variables_{pid} import *
+from decipherAutomatic.dataProcessing.dataCheck import DecipherDataProcessing, download_decipher_data
+# import pyreadstat
+
+pid = '{pid}'
+# download_decipher_data(pid=pid, file_format='excel', folder='data', cond='qualified')
+
+raw_df = pd.read_excel(f'data/{{pid}}.xlsx')
+df = DecipherDataProcessing(raw_df, map_json=f'meta/map_{{pid}}.json')
+"""
+        ipynb_cell.append(nbf.v4.new_code_cell(default))
+
+        banner_cell = f"""banner = [
+    [
+        ('BAG1', 'Banner Group 1 Title'),
+        [
+            (),
+            (),
+        ],
+    ],
+]
+
+df.netting(banner)
+df.set_banner(df.net())"""
+        ipynb_cell.append(nbf.v4.new_code_cell(banner_cell))
+
+        for idx, var in enumerate(map_py, 1) :
+            qid = var['qlabel']
+            variables = var['variables']
+            if qid in all_diff or qid in ['RespStats']:
+                continue
+
+            qtype = var['type']
+            if qtype in ['text', 'other_open'] :
+                continue
+            
+            meta = var['meta']
+            title = var['title']
+            title = title.replace('\n', ' ')
+            title = title.replace('"', '\"')
+            title = title.replace("\'", "\'")
+            title = title.split('?')[0]
+
+            table_id = f"Table_T{idx}"
+            cell_text = ""
+            cell_text += f"# {qid} ({qtype})\n"
+    
+            if not variables :
+                if meta and qtype in ['number', 'float', 'text', 'rating'] :
+                    if len(meta) == 1 :
+                        var_name = list(meta[0].keys())[0]
+                        cell_text += f"""# {qid} = '{var_name}'"""
+
+            elif len(variables) == 1 :
+                var_name = list(variables[0].keys())[0]
+                if var_name != qid :
+                    qid = var_name
+                
+                cell_text += f"""# {qid} = '{var_name}'"""
+            
+            elif len(variables) >= 2 :
+                var_list = [list(v.keys())[0] for v in variables]
+                var_list = ', '.join([f"'{v}'" for v in var_list])
+                cell_text += f"# {qid} = [{var_list}]"
+
+
+            cell_text += "\n"
+            if isinstance(variables, list) and len(variables) >= 2 :
+                if qtype in ['number', 'float', 'rating', 'single'] :
+                    cell_text += f"""for idx, qid in enumerate({qid}, 1) :\n"""
+                    cell_text += f"""\tsub_title = df.title(qid)['sub_title']\n"""
+                    cell_text += f"""\tsub_title = qid if sub_title is None else sub_title\n"""
+                    cell_text += f"""\ttable = df.proc(qid)\n"""
+                    cell_text += f"""\tdf.proc_append(\n\t\t(f'{table_id}_{{idx}}', sub_title), \n\t\ttable, \n\t\tai=False\n\t)"""
+                    ipynb_cell.append(nbf.v4.new_code_cell(cell_text))
+                
+                if qtype in ['rank'] :
+                    # 1 to max rank
+                    max_rank = len(variables)
+                    for i in range(1, max_rank) :
+                        rank_cnt = '1' if i == 1 else f"1-{i}"
+                        rank_cell_text = f"# {qid} ({qtype}) : Rank {rank_cnt}\n"
+
+                        filt_var = variables[:i]
+                        filt_var = [list(v.keys())[0] for v in filt_var]
+                        # join_qid = ', '.join([f"'{v}'" for v in filt_var])
+                        join_qid = ', '.join(filt_var)
+                        # Need Append Cell
+                        rank_cell_text += f"""table = df.proc([{join_qid}])\n"""
+                        rank_cell_text += f"""df.proc_append(\n\t('{table_id}_{i}', '[Rank {rank_cnt}] {title}'), \n\ttable, \n\tai=False\n)"""
+                        ipynb_cell.append(nbf.v4.new_code_cell(rank_cell_text))
+                
+                if qtype in ['multiple'] :
+                    cell_text += f"""table = df.proc({qid})\n"""
+                    cell_text += f"""df.proc_append(\n\t('{table_id}', '{title}'), \n\ttable, \n\tai=False\n)"""
+                    ipynb_cell.append(nbf.v4.new_code_cell(cell_text))
+            
+            else :
+                cell_text += f"""table = df.proc({qid})\n"""
+                cell_text += f"""df.proc_append(\n\t('{table_id}', '{title}'), \n\ttable, \n\tai=False\n)"""
+
+                ipynb_cell.append(nbf.v4.new_code_cell(cell_text))
+
+
+        export_cell = f"""df.proc_export_excel(f'{pid}_table_result', heatmap=True)"""
+        ipynb_cell.append(nbf.v4.new_code_cell(export_cell))
+        
+        nb['cells'] = ipynb_cell
+
+        ipynb_file_path = os.path.join(parent_path, processing_ipynb)
+        if not os.path.isfile(ipynb_file_path) :
+            with open(ipynb_file_path, 'w') as f:
+                nbf.write(nb, f)
+        else :
+            print('❗ The Processing ipynb file already exists')
+
+
     print("✅ Setting Complete")
+
+

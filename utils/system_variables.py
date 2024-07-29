@@ -471,4 +471,6 @@ ctComp
 mlQual
 dsmcpKEY
 dskey
+conditions
+noanswer
 '''

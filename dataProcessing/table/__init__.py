@@ -276,7 +276,7 @@ def create_crosstab(df: pd.DataFrame,
 
     # Create the appropriate crosstab
     # Number Only Mean/Min/Max
-    if qtype == 'number' :
+    if qtype in ['number', 'float'] :
         num_index = pd.Index(index) if isinstance(index, list) else pd.Index([index])
         if columns is None :
             crosstab_result = pd.DataFrame(index=num_index, columns=[total_label])
@@ -505,7 +505,7 @@ def create_crosstab(df: pd.DataFrame,
     crosstab_result = crosstab_result.reindex(index_order)
     crosstab_result = crosstab_result[column_order]
 
-    if not qtype in ['number'] :
+    if not qtype in ['number', 'float'] :
         crosstab_result = crosstab_result.astype(int)
 
     # if not qtype in ['number'] :
@@ -580,7 +580,7 @@ def create_crosstab(df: pd.DataFrame,
         crosstab_result = reorder_and_relabel(crosstab_result, columns_order, columns_labels, axis=1, name=None)
     
 
-    if qtype in ['number'] : 
+    if qtype in ['number', 'float'] : 
         crosstab_result = crosstab_result.loc[[all_label, *aggfunc], :]
         # if index_name is not None and index_name is not False :
         #     crosstab_result.index.name = index_name
@@ -701,7 +701,7 @@ The final report should be written in {lang.upper()} and in complete sentences.
 Take a deep breath and let's work this out in a step by step way to be sure we have the right answer.
 """
         
-        if (isinstance(table_type, str) and table_type in ['number', 'text']) or (isinstance(table_type, list) and any(t in ['number', 'text'] for t in table_type)) :
+        if (isinstance(table_type, str) and table_type in ['number', 'float', 'text']) or (isinstance(table_type, list) and any(t in ['number', 'float', 'text'] for t in table_type)) :
             post_text = None
             default_prompt = f"""
 User Persona: "Professional Data Analyst"
@@ -799,7 +799,7 @@ def decipher_meta(pid: Union[str, int]) :
             title = v['title'].split('-')[0].strip()
             metadata[label] = title
         
-        if qtype in ['number', 'text'] :
+        if qtype in ['number', 'float', 'text'] :
             title = v['title']
             metadata[label] = title
 
@@ -875,7 +875,7 @@ def decipher_map(pid: Union[str, int]) :
                             'grouping': grouping, \
                             'meta': [{v['label']: v['title']}],\
                             } for v in variables if v['type']=='text']
-            label_list = [{v['label']: {'vgroup': v['vgroup'], 'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle'])}} for v in variables if v['type'] in ['single', 'multiple', 'number']]
+            label_list = [{v['label']: {'vgroup': v['vgroup'], 'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle'])}} for v in variables if v['type'] in ['single', 'multiple', 'number', 'float']]
 
         if 'values' in q.keys():
             values = q['values']
