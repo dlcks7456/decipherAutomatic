@@ -3247,23 +3247,23 @@ def DecipherSetting(pid: str,
         excel_meta = f'''DecipherDataProcessing(df, map_json=f"meta/map_{{pid}}.json")''' if meta else '''DecipherDataProcessing(df)'''
 
         default = f'''import pandas as pd
-    import pyreadstat
-    import numpy as np
-    from meta.variables_{pid} import * 
-    from decipherAutomatic.dataProcessing.dataCheck import *
+import pyreadstat
+import numpy as np
+from meta.variables_{pid} import * 
+from decipherAutomatic.dataProcessing.dataCheck import *
 
-    pid = "{pid}"
+pid = "{pid}"
 
-    # Use SPSS
-    # file_name = f"data/{{pid}}.sav"
-    # df, meta = pyreadstat.read_sav(file_name)
-    # df = DecipherDataProcessing(df)
+# Use SPSS
+# file_name = f"data/{{pid}}.sav"
+# df, meta = pyreadstat.read_sav(file_name)
+# df = DecipherDataProcessing(df)
 
-    # Use Excel
-    file_name = f"data/{{pid}}.xlsx"
-    df = pd.read_excel(file_name, engine="openpyxl")
-    df = {excel_meta}
-    '''
+# Use Excel
+file_name = f"data/{{pid}}.xlsx"
+df = pd.read_excel(file_name, engine="openpyxl")
+df = {excel_meta}
+'''
         
         ipynb_cell.append(nbf.v4.new_code_cell(default))
         ipynb_cell.append(nbf.v4.new_code_cell("""# df.display_msg = 'error'"""))
