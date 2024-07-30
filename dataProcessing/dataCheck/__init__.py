@@ -2382,175 +2382,182 @@ class DataCheck(pd.DataFrame):
         data_sheet.set_column('C:C', 7)
 
         for key, table_attrs in proc_result.items():
-            result = table_attrs['table']
-            desc = table_attrs['desc']
-            ai = table_attrs['ai']
+            try :
+                result = table_attrs['table']
+                desc = table_attrs['desc']
+                ai = table_attrs['ai']
 
-            new_group_name = {
-                'index': '',
-                'columns': key
-            }
-            for item, gr_name in new_group_name.items() :
-                base = getattr(result, item)
-                if not isinstance(base, pd.MultiIndex) :
-                    setattr(result, item, pd.MultiIndex.from_tuples([('' if b == total_label else gr_name, b) for b in base]))
+                new_group_name = {
+                    'index': '',
+                    'columns': key
+                }
+                for item, gr_name in new_group_name.items() :
+                    base = getattr(result, item)
+                    if not isinstance(base, pd.MultiIndex) :
+                        setattr(result, item, pd.MultiIndex.from_tuples([('' if b == total_label else gr_name, b) for b in base]))
 
-                else :
-                    group_lenth = base.nlevels
-                    if group_lenth > 2 :
-                        setattr(result, item, pd.MultiIndex.from_tuples([('' if b[-1]==total_label else b[-2], b[-1]) for b in base]))
-
-            index_header = None
-            if all(i is None for i in result.index.names) :
-                if total_label in result.index.get_level_values(-1) and total_label in result.columns.get_level_values(-1) :
-                    all_count = result.loc[('', total_label), ('', total_label)]
-                    sample_count = len(self)
-                    if sample_count == all_count :
-                        index_header = 'All Base'
                     else :
-                        sample_ratio = round(all_count/sample_count, 2) * 100
-                        index_header = f'Not All Base ({sample_ratio:.0f}%)'
+                        group_lenth = base.nlevels
+                        if group_lenth > 2 :
+                            setattr(result, item, pd.MultiIndex.from_tuples([('' if b[-1]==total_label else b[-2], b[-1]) for b in base]))
+
+                index_header = None
+                if all(i is None for i in result.index.names) :
+                    if total_label in result.index.get_level_values(-1) and total_label in result.columns.get_level_values(-1) :
+                        all_count = result.loc[('', total_label), ('', total_label)]
+                        sample_count = len(self)
+                        if sample_count == all_count :
+                            index_header = 'All Base'
+                        else :
+                            sample_ratio = round(all_count/sample_count, 2) * 100
+                            index_header = f'Not All Base ({sample_ratio:.0f}%)'
+                        
+                        result.index.names = pd.Index(['', index_header])
+
+                index_sheet.write_url(row, col, f'internal:Table!A{data_start_row+1}', string=key, cell_format=index_format)
+                index_sheet.write(row, col + 1, desc, desc_format)
+
+                base_desc = None
+                qid_name = None
+
+                if isinstance(result, CrossTabs) :
+                    qid_name = result.index.names[0]
+                    base_desc = result.index.names[-1]
                     
-                    result.index.names = pd.Index(['', index_header])
-
-            index_sheet.write_url(row, col, f'internal:Table!A{data_start_row+1}', string=key, cell_format=index_format)
-            index_sheet.write(row, col + 1, desc, desc_format)
-
-            base_desc = None
-            qid_name = None
-
-            if isinstance(result, CrossTabs) :
-                qid_name = result.index.names[0]
-                base_desc = result.index.names[-1]
-                
-                resurt_type = result.attrs['type']
-                
-                if isinstance(resurt_type, list) :
-                    if all(not x in ['number', 'float'] for x in resurt_type) :
+                    resurt_type = result.attrs['type']
+                    
+                    if isinstance(resurt_type, list) :
+                        if all(not x in ['number', 'float'] for x in resurt_type) :
+                            result = result.ratio(ratio_round=None, heatmap=False)
+                        
+                    elif not resurt_type in ['number', 'float'] :
                         result = result.ratio(ratio_round=None, heatmap=False)
                     
-                elif not resurt_type in ['number', 'float'] :
-                    result = result.ratio(ratio_round=None, heatmap=False)
+
+                index_sheet.write(row, col + 2, qid_name, qid_format)
+                index_sheet.write(row, col + 3, base_desc, qid_format)
+
+                row += 1
+
+                result.to_excel(writer, 
+                                sheet_name='Table', 
+                                startrow=data_start_row, 
+                                startcol=0, engine='openpyxl')
+
+                data_sheet.merge_range(data_start_row, col, data_start_row, col+1, key, table_head)
+                data_sheet.merge_range(data_start_row+1, col, data_start_row+1, col+1, desc, table_head)
                 
-
-            index_sheet.write(row, col + 2, qid_name, qid_format)
-            index_sheet.write(row, col + 3, base_desc, qid_format)
-
-            row += 1
-
-            result.to_excel(writer, 
-                            sheet_name='Table', 
-                            startrow=data_start_row, 
-                            startcol=0, engine='openpyxl')
-
-            data_sheet.merge_range(data_start_row, col, data_start_row, col+1, key, table_head)
-            data_sheet.merge_range(data_start_row+1, col, data_start_row+1, col+1, desc, table_head)
-            
-            
-            zero_float_format = workbook.add_format({
-                'num_format': '0',
-                'align': 'center',
-                'border': 1,
-                'font_size': 9,
-            })
-
-            float_format = workbook.add_format({
-                'num_format': '0.00',
-                'align': 'center',
-                'border': 1,
-                'font_size': 9,
-            })
-
-            default_format = workbook.add_format({
-                'align': 'center',
-                'border': 1,
-                'font_size': 9,
-            })
-            
-            total_format = workbook.add_format({
-                'num_format': '0',
-                'align': 'center',
-                'border': 1,
-                'font_size': 9,
-                'bold': True,
-            })
-
-            head_row = data_start_row + 1
-            blank_row = data_start_row + 2
-            format_start = data_start_row+3
-
-
-
-            set_group = []
-            for col_idx, col_name in enumerate(result.columns) :
-                set_col = col_idx+2
-                group_col_name = col_name[0]
-                set_col_name = col_name[-1]
-                if col_idx == 0 and set_col_name == 'Total' :
-                    data_sheet.write(data_start_row, set_col, None, table_head)
-                    data_sheet.write(head_row, set_col, None, table_head)
-                    data_sheet.write(blank_row, set_col, set_col_name, table_head)
-                else :
-                    data_sheet.write(blank_row, set_col, set_col_name, table_head)
-                    
-                    if not group_col_name in set_group :
-                        if group_col_name != '' and group_col_name is not None :
-                            set_group.append(group_col_name)
-                            merge_col_count = len([x for x in result.columns if x[0] == group_col_name]) - 1
-                            end_col = set_col+merge_col_count
-                            for m in range(set_col, end_col+1) :
-                                data_sheet.write(data_start_row, m, f'#{len(set_group)}', table_head)
-                            
-                            if merge_col_count > 0 :
-                                data_sheet.merge_range(head_row, set_col, head_row, set_col+merge_col_count, group_col_name, table_head)
-                            else :
-                                data_sheet.write(head_row, set_col, group_col_name, table_head)
-            
-            if len(set_group) == 1 :
-                data_sheet.write(data_start_row, 2, None, table_head)
-
-            last_row = None
-            for df_row, i in enumerate(range(format_start, format_start+len(result))) :
-                for df_col, j in enumerate(range(2, len(result.columns)+2)) :
-                    cell_value = result.iloc[df_row, df_col]
-                    if pd.isna(cell_value) :
-                        cell_value = '-'
-
-                    df_row_name = result.index[df_row]
-
-                    if isinstance(result.index, pd.MultiIndex) :
-                        df_row_name = result.index[df_row][-1]
-
-                    if df_row_name == 'Total' :
-                        data_sheet.write(i, j, cell_value, total_format)
-                    else :
-                        data_sheet.write(i, j, cell_value, zero_float_format)
-                        if heatmap :
-                            if cell_value != '-' :
-                                bg_color = calculate_bg_color(float(cell_value))
-                                data_sheet.write(i, j, cell_value, workbook.add_format({
-                                    'num_format': '0',
-                                    'align': 'center',
-                                    'border': 1,
-                                    'font_size': 9,
-                                    'bg_color': bg_color
-                                }))
-                        if df_row_name in ['mean', 'min', 'max', 'std', '100 point conversion'] :
-                            data_sheet.write(i, j, cell_value, float_format)
-
-            last_row = i + 1
-
-            if ai is not None :
-                ai_result_format = workbook.add_format({
+                
+                zero_float_format = workbook.add_format({
+                    'num_format': '0',
+                    'align': 'center',
+                    'border': 1,
                     'font_size': 9,
-                    'text_wrap': True,  # 자동 줄바꿈 설정
-                    'valign': 'top',
-                    'align': 'left',
                 })
-                data_sheet.merge_range(last_row, col+2, last_row, col+12, ai, ai_result_format)
-                data_sheet.set_row(last_row, 150)
 
-            data_start_row += len(result) + 6  # 3행 간격
+                float_format = workbook.add_format({
+                    'num_format': '0.00',
+                    'align': 'center',
+                    'border': 1,
+                    'font_size': 9,
+                })
+
+                default_format = workbook.add_format({
+                    'align': 'center',
+                    'border': 1,
+                    'font_size': 9,
+                })
+                
+                total_format = workbook.add_format({
+                    'num_format': '0',
+                    'align': 'center',
+                    'border': 1,
+                    'font_size': 9,
+                    'bold': True,
+                })
+
+                head_row = data_start_row + 1
+                blank_row = data_start_row + 2
+                format_start = data_start_row+3
+
+
+
+                set_group = []
+                for col_idx, col_name in enumerate(result.columns) :
+                    set_col = col_idx+2
+                    group_col_name = col_name[0]
+                    set_col_name = col_name[-1]
+                    if col_idx == 0 and set_col_name == 'Total' :
+                        data_sheet.write(data_start_row, set_col, None, table_head)
+                        data_sheet.write(head_row, set_col, None, table_head)
+                        data_sheet.write(blank_row, set_col, set_col_name, table_head)
+                    else :
+                        data_sheet.write(blank_row, set_col, set_col_name, table_head)
+                        
+                        if not group_col_name in set_group :
+                            if group_col_name != '' and group_col_name is not None :
+                                set_group.append(group_col_name)
+                                merge_col_count = len([x for x in result.columns if x[0] == group_col_name]) - 1
+                                end_col = set_col+merge_col_count
+                                for m in range(set_col, end_col+1) :
+                                    data_sheet.write(data_start_row, m, f'#{len(set_group)}', table_head)
+                                
+                                if merge_col_count > 0 :
+                                    data_sheet.merge_range(head_row, set_col, head_row, set_col+merge_col_count, group_col_name, table_head)
+                                else :
+                                    data_sheet.write(head_row, set_col, group_col_name, table_head)
+                
+                if len(set_group) == 1 :
+                    data_sheet.write(data_start_row, 2, None, table_head)
+
+                last_row = None
+                for df_row, i in enumerate(range(format_start, format_start+len(result))) :
+                    for df_col, j in enumerate(range(2, len(result.columns)+2)) :
+                        cell_value = result.iloc[df_row, df_col]
+                        if pd.isna(cell_value) :
+                            cell_value = '-'
+
+                        df_row_name = result.index[df_row]
+
+                        if isinstance(result.index, pd.MultiIndex) :
+                            df_row_name = result.index[df_row][-1]
+
+                        if df_row_name == 'Total' :
+                            data_sheet.write(i, j, cell_value, total_format)
+                        else :
+                            if pd.isna(cell_value) :
+                                data_sheet.write(i, j, cell_value, default_format)
+                            else :
+                                data_sheet.write(i, j, cell_value, zero_float_format)
+                                if heatmap :
+                                    if cell_value != '-' :
+                                        bg_color = calculate_bg_color(float(cell_value))
+                                        data_sheet.write(i, j, cell_value, workbook.add_format({
+                                            'num_format': '0',
+                                            'align': 'center',
+                                            'border': 1,
+                                            'font_size': 9,
+                                            'bg_color': bg_color
+                                        }))
+                                if df_row_name in ['mean', 'min', 'max', 'std', '100 point conversion'] :
+                                    data_sheet.write(i, j, cell_value, float_format)
+
+                last_row = i + 1
+
+                if ai is not None :
+                    ai_result_format = workbook.add_format({
+                        'font_size': 9,
+                        'text_wrap': True,  # 자동 줄바꿈 설정
+                        'valign': 'top',
+                        'align': 'left',
+                    })
+                    data_sheet.merge_range(last_row, col+2, last_row, col+12, ai, ai_result_format)
+                    data_sheet.set_row(last_row, 150)
+
+                data_start_row += len(result) + 6  # 3행 간격
+            
+            except :
+                print(f"⚠️ Error in {key}")
 
             
         writer.close()
