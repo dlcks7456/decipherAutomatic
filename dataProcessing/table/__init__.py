@@ -260,7 +260,9 @@ def create_crosstab(df: pd.DataFrame,
                 raise ValueError("columns_col must be either a string or a list of strings.")
         
         return crosstab_result
-    
+
+    start_time = time.time()
+    print(f"CrossTab Start : {start_time}")
 
     # Determine if we are working with single or multiple columns for index
     if isinstance(index, str):
@@ -312,7 +314,8 @@ def create_crosstab(df: pd.DataFrame,
                     index=df[index],
                     columns=df[columns],
                 )
-        
+    
+    print(f"Default Crosstab : {time.time() - start_time}")
         
     base_index = crosstab_result.index
     base_columns = crosstab_result.columns
@@ -365,6 +368,8 @@ def create_crosstab(df: pd.DataFrame,
             crosstab_result.loc[:, total_label] = pd.Series({idx: ((~df[idx].isna()) & (df[idx]!=0)).sum() for idx in base_index})
             crosstab_result.loc[all_label, :] = pd.Series({col: ((~df[col].isna()) & (df[col]!=0) & ((df[index]!=0).any(axis=1)) & ((~df[index].isna()).any(axis=1))).sum() for col in base_columns})
             crosstab_result.loc[all_label, total_label] = (((df[index]!=0).any(axis=1)) &( (~df[index].isna()).any(axis=1)) &( (df[columns]!=0).any(axis=1)) & ((~df[columns].isna()).any(axis=1))).sum()
+
+    print(f"Total Setting : {time.time() - start_time}")
 
     # ALL/TOTAL ORDER SETTING
     # crosstab_result.index = [all_label] + original_index_order
@@ -498,6 +503,7 @@ def create_crosstab(df: pd.DataFrame,
 
         crosstab_result = pd.concat([crosstab_result, net_result])
 
+    print(f"Top/Bot Setting : {time.time() - start_time}")
     
     index_order = [all_label] + [i for i in crosstab_result.index.to_list() if not i == all_label]
     column_order = [total_label] + [i for i in crosstab_result.columns.to_list() if not i == total_label]
@@ -557,6 +563,8 @@ def create_crosstab(df: pd.DataFrame,
         calc.index = calc.index.map(str)
         calc.columns = calc.columns.map(str)
 
+    print(f"Calc Setting : {time.time() - start_time}")
+
     if calc is not None :
         crosstab_result = pd.concat([crosstab_result, calc])
         # crosstab_result.iloc[0] = crosstab_result.iloc[0].apply(lambda x: str(int(float(x))))
@@ -579,6 +587,7 @@ def create_crosstab(df: pd.DataFrame,
         crosstab_result = add_missing_indices(crosstab_result.T, columns_order).T
         crosstab_result = reorder_and_relabel(crosstab_result, columns_order, columns_labels, axis=1, name=None)
     
+    print(f"Meta Setting : {time.time() - start_time}")
 
     if qtype in ['number', 'float'] : 
         crosstab_result = crosstab_result.loc[[all_label, *aggfunc], :]
