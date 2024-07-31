@@ -1885,7 +1885,7 @@ class DataCheck(pd.DataFrame):
             
             if base_desc is None :
                 sample_count = len(self)
-                all_count = int(result.iloc[0, 0])
+                all_count = result.iloc[0, 0]
                 
                 if sample_count == all_count :
                     base_desc = 'All Base'

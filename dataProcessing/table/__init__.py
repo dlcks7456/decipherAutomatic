@@ -202,6 +202,32 @@ def create_crosstab(df: pd.DataFrame,
                 df.columns = pd.Index(labels)
         return df
 
+    def pd_crosstab_check(df, x_name, y_name) :
+        tabs = pd.crosstab(
+            index=df[x_name],
+            columns=df[y_name],
+            margins=True,
+            margins_name=total_label
+        )
+
+        if (len(tabs.index) > 0) and (len(tabs.columns) > 0) :
+            if 0 in tabs.columns :
+                tabs.drop(0, axis=1, inplace=True)
+            tabs.columns = [y_name, total_label]
+            return tabs
+        else :
+            return None
+
+    def binary_crosstab(df, x_name, y_name_list) :
+        crosstab_combined = pd.concat(
+            [pd_crosstab_check(df, x_name, col) for col in y_name_list if pd_crosstab_check(df, x_name, col) is not None],
+            axis=1
+        )
+
+        crosstab_combined = crosstab_combined.loc[:,~crosstab_combined.columns.duplicated()]
+        
+        return crosstab_combined
+
     def create_binary_crosstab(df, index_cols, columns_col=None):
         """
         Creates a crosstab for binary columns in the provided DataFrame.
@@ -214,9 +240,7 @@ def create_crosstab(df: pd.DataFrame,
         Returns:
             pd.DataFrame: The resulting binary crosstab.
         """
-        def count_binary_values(idx, col):
-            return (((df[idx] != 0) & (df[col] != 0) & (df[idx].notna()) & (df[col].notna()))).sum()
-
+    
         def count_values_mixed(sa, ma_index, ma_cols) :
             return ((df[sa] != 0) & (df[ma_cols] == ma_index) & df[sa].notna()).sum()
     
@@ -228,24 +252,11 @@ def create_crosstab(df: pd.DataFrame,
                 crosstab_result.loc[idx, count_label] = cnt
         else:
             if isinstance(index_cols, str) and isinstance(columns_col, list) :
-                # Extract unique values from the single column
-                unique_cols = df[columns_col].dropna().unique()
-                # Create a crosstab with the unique columns
-                crosstab_result = pd.DataFrame(index=index_cols, columns=unique_cols)
-                for idx in index_cols:
-                    for col in unique_cols:
-                        cnt = count_values_mixed(col, idx, index_cols)
-                        crosstab_result.loc[idx, col] = cnt
+                crosstab_result = binary_crosstab(df, index_cols[0], columns_col)
+                print(f'binary_crosstab complete : {time.time()}')
 
             if isinstance(index_cols, list) and isinstance(columns_col, str) :
-                # Extract unique values from the single column
-                unique_cols = df[columns_col].dropna().unique()
-                # Create a crosstab with the unique columns
-                crosstab_result = pd.DataFrame(index=index_cols, columns=unique_cols)
-                for idx in index_cols:
-                    for col in unique_cols:
-                        cnt = count_values_mixed(idx, col, columns_col)
-                        crosstab_result.loc[idx, col] = cnt
+                crosstab_result = binary_crosstab(df, columns_col, index_cols[0])
                             
             elif isinstance(index_cols, list) and isinstance(columns_col, list):
                 # Create a DataFrame to hold the crosstab result
@@ -262,7 +273,7 @@ def create_crosstab(df: pd.DataFrame,
         return crosstab_result
 
     start_time = time.time()
-    print(f"CrossTab Start : {start_time}")
+    # print(f"CrossTab Start : {start_time}")
 
     # Determine if we are working with single or multiple columns for index
     if isinstance(index, str):
@@ -272,19 +283,16 @@ def create_crosstab(df: pd.DataFrame,
     else:
         raise ValueError("Index must be either a string or a list of strings.")
     
-
-    # if not mode in ["count", "ratio", "both"]:
-    #     raise ValueError("Mode must be either 'count', 'ratio', or 'both'")
-
     # Create the appropriate crosstab
     # Number Only Mean/Min/Max
     if qtype in ['number', 'float'] :
         num_index = pd.Index(index) if isinstance(index, list) else pd.Index([index])
         if columns is None :
-            crosstab_result = pd.DataFrame(index=num_index, columns=[total_label])
+            # crosstab_result = pd.DataFrame(index=num_index, columns=[total_label])
+            crosstab_result = pd.DataFrame(df[index].describe()).T[aggfunc].rename(columns={'count': total_label})
         else :
             crosstab_result = pd.DataFrame(index=num_index, 
-                                           columns=columns if isinstance(columns, list) else [columns])
+                                           columns=[total_label] + columns if isinstance(columns, list) else [total_label, columns])
     else :
         if columns is None:
             if index_is_binary:
@@ -294,7 +302,11 @@ def create_crosstab(df: pd.DataFrame,
                     crosstab_result.loc[idx, total_label] = ((df[idx]!=0) & (~df[idx].isna())).sum()
 
             else:
-                crosstab_result = df[index].value_counts().to_frame(name=total_label)
+                value_counts = df[index].value_counts().to_frame(name='Total')
+
+                total = value_counts['Total'].sum()
+                total_df = pd.DataFrame({'col1': ['Total'], 'Total': [total]}).set_index('col1')
+                crosstab_result = pd.concat([value_counts, total_df])
         else:
             if isinstance(columns, str):
                 columns_is_binary = False
@@ -302,21 +314,27 @@ def create_crosstab(df: pd.DataFrame,
                 columns_is_binary = True
             else:
                 raise ValueError("Columns must be either a string or a list of strings.")
+
+            if index_is_binary and columns_is_binary :
+                crosstab_result = create_binary_crosstab(df, index, columns)
             
-            if index_is_binary and columns_is_binary:
-                crosstab_result = create_binary_crosstab(df, index, columns)
-            elif index_is_binary:
-                crosstab_result = create_binary_crosstab(df, index, columns)
-            elif columns_is_binary:
-                crosstab_result = create_binary_crosstab(df, columns, index).T
-            else:
+            if not index_is_binary and columns_is_binary:
+                crosstab_result = binary_crosstab(df, index, columns)
+
+            if index_is_binary and not columns_is_binary:
+                crosstab_result = binary_crosstab(df, columns, index).T
+
+            if not index_is_binary and not columns_is_binary :
                 crosstab_result = pd.crosstab(
                     index=df[index],
                     columns=df[columns],
+                    margins=True,
+                    margins_name=total_label,
                 )
     
-    print(f"Default Crosstab : {time.time() - start_time}")
-        
+    crosstab_result = crosstab_result[[total_label] + [col for col in crosstab_result.columns if col!= total_label]]
+    # print(f"Default Crosstab : {time.time() - start_time}")
+    
     base_index = crosstab_result.index
     base_columns = crosstab_result.columns
 
@@ -337,44 +355,15 @@ def create_crosstab(df: pd.DataFrame,
             if idx not in base_index :
                 crosstab_result.loc[idx] = 0
 
-        crosstab_result = crosstab_result.sort_index(ascending=reverse_rating)
-        base_index = crosstab_result.index.to_list()
-
-    # Total Setting
-    if isinstance(index, str) :
-        if columns is None :
-            crosstab_result.loc[all_label, total_label] = (~df[index].isna()).sum()
-
-        if isinstance(columns, str) :
-            crosstab_result.loc[all_label, :] = pd.Series({col: ((df[columns]==col) & (~df[index].isna())).sum() for col in base_columns})
-            crosstab_result.loc[:, total_label] = pd.Series({idx: (df[index]==idx).sum() for idx in base_index})
-            crosstab_result.loc[all_label, total_label] = ((~df[index].isna()) & (~df[columns].isna())).sum()
-            
-        if isinstance(columns, list) :
-            crosstab_result.loc[all_label, :] = pd.Series({col: ((~df[index].isna()) & (~df[col].isna()) & (df[col]!=0)).sum() for col in base_columns})
-            crosstab_result.loc[:, total_label] = pd.Series({idx: (df[index]==idx).sum() for idx in base_index})
-            crosstab_result.loc[all_label, total_label] = ((~df[index].isna()) & ((df[columns]!=0).any(axis=1)) & ((~df[columns].isna()).any(axis=1))).sum()
+        score_result = crosstab_result.loc[scores, :]
+        score_result.sort_index(ascending=reverse_rating, inplace=True)
+        base_index = score_result.index.to_list()
         
-    if isinstance(index, list) :
-        if columns is None :
-            crosstab_result.loc[all_label, total_label] = (((df[index]!=0).any(axis=1)) & ((~df[index].isna()).any(axis=1))).sum()
+        total_df = pd.DataFrame(crosstab_result.loc[total_label, :]).T
+        crosstab_result = pd.concat([total_df, score_result])
         
-        if isinstance(columns, str) :
-            crosstab_result.loc[:, total_label] = pd.Series({idx: ((~df[idx].isna()) & (df[idx]!=0) & (~df[columns].isna())).sum() for idx in base_index})
-            crosstab_result.loc[all_label, :] = pd.Series({col: ((df[columns]==col) & (df[index]!=0).any(axis=1) & (~df[index].isna()).any(axis=1)).sum() for col in base_columns})
-            crosstab_result.loc[all_label, total_label] = ((~df[columns].isna()) & ((df[index]!=0).any(axis=1)) & ((~df[index].isna()).any(axis=1))).sum()
-    
-        if isinstance(columns, list) :
-            crosstab_result.loc[:, total_label] = pd.Series({idx: ((~df[idx].isna()) & (df[idx]!=0)).sum() for idx in base_index})
-            crosstab_result.loc[all_label, :] = pd.Series({col: ((~df[col].isna()) & (df[col]!=0) & ((df[index]!=0).any(axis=1)) & ((~df[index].isna()).any(axis=1))).sum() for col in base_columns})
-            crosstab_result.loc[all_label, total_label] = (((df[index]!=0).any(axis=1)) &( (~df[index].isna()).any(axis=1)) &( (df[columns]!=0).any(axis=1)) & ((~df[columns].isna()).any(axis=1))).sum()
-
-    print(f"Total Setting : {time.time() - start_time}")
-
-    # ALL/TOTAL ORDER SETTING
-    # crosstab_result.index = [all_label] + original_index_order
-    # crosstab_result.columns = [total_label] + original_columns_order
-    
+        
+    # print(f"Total Setting : {time.time() - start_time}")
 
     medium_auto_flag = False
     if all([n is not None for n in [top, bottom]]) and (medium is not False) :
@@ -503,7 +492,7 @@ def create_crosstab(df: pd.DataFrame,
 
         crosstab_result = pd.concat([crosstab_result, net_result])
 
-    print(f"Top/Bot Setting : {time.time() - start_time}")
+    # print(f"Top/Bot Setting : {time.time() - start_time}")
     
     index_order = [all_label] + [i for i in crosstab_result.index.to_list() if not i == all_label]
     column_order = [total_label] + [i for i in crosstab_result.columns.to_list() if not i == total_label]
@@ -512,44 +501,8 @@ def create_crosstab(df: pd.DataFrame,
     crosstab_result = crosstab_result[column_order]
 
     if not qtype in ['number', 'float'] :
+        crosstab_result.fillna(0, inplace=True)
         crosstab_result = crosstab_result.astype(int)
-
-    # if not qtype in ['number'] :
-    #     if mode in ['count'] :
-    #         crosstab_result = crosstab_result.astype(int)
-            
-    #     elif mode in ['ratio'] :
-    #         crosstab_result = crosstab_result.astype(float)
-    #         all_value = crosstab_result.iloc[0]
-    #         crosstab_result.iloc[1:, :] = (crosstab_result.iloc[1:, :].div(all_value))*100
-    #         crosstab_result = crosstab_result.round(ratio_round)
-    #         crosstab_result = crosstab_result.map(lambda x: f"{x:.{ratio_round}f}")
-    #         crosstab_result = crosstab_result.astype(str)
-    #         crosstab_result.iloc[0] = crosstab_result.iloc[0].apply(lambda x: str(int(float(x))))
-    #         if ratio_round == 0 :
-    #             crosstab_result = crosstab_result.map(lambda x: int(x.replace('.0', '')) if not x == 'nan' else 0)
-            
-    #     elif mode in ['both'] :
-    #         crosstab_result = crosstab_result.astype(float)
-    #         all_value = crosstab_result.iloc[0]
-
-    #         def transform_value(x, col):
-    #             if x == 0:
-    #                 return '0'
-    #             if ratio_round == 0:
-    #                 calc = round(x / all_value[col] * 100, ratio_round)
-    #                 calc = f"{calc:.{ratio_round}f}"
-    #                 calc = str(calc).replace('.0', '')
-    #                 return f'{int(x)} ({calc}%)'
-    #             else:
-    #                 calc = round(x / all_value[col] * 100, ratio_round)
-    #                 calc = f"{calc:.{ratio_round}f}"
-    #                 return f'{int(x)} ({calc}%)'
-
-    #         # crosstab_result의 나머지 부분을 문자열로 변환합니다
-    #         crosstab_result = crosstab_result.astype(str)
-    #         crosstab_result.iloc[0] = crosstab_result.iloc[0].apply(lambda x: str(int(float(x))))
-    #         crosstab_result.iloc[1:, :] = crosstab_result.iloc[1:, :].apply(lambda col: col.apply(lambda x: transform_value(float(x), col.name)))
 
     # Calc
     calc = None
@@ -563,7 +516,7 @@ def create_crosstab(df: pd.DataFrame,
         calc.index = calc.index.map(str)
         calc.columns = calc.columns.map(str)
 
-    print(f"Calc Setting : {time.time() - start_time}")
+    # print(f"Calc Setting : {time.time() - start_time}")
 
     if calc is not None :
         crosstab_result = pd.concat([crosstab_result, calc])
@@ -587,14 +540,10 @@ def create_crosstab(df: pd.DataFrame,
         crosstab_result = add_missing_indices(crosstab_result.T, columns_order).T
         crosstab_result = reorder_and_relabel(crosstab_result, columns_order, columns_labels, axis=1, name=None)
     
-    print(f"Meta Setting : {time.time() - start_time}")
+    # print(f"Meta Setting : {time.time() - start_time}")
 
     if qtype in ['number', 'float'] : 
         crosstab_result = crosstab_result.loc[[all_label, *aggfunc], :]
-        # if index_name is not None and index_name is not False :
-        #     crosstab_result.index.name = index_name
-
-    # crosstab_result = crosstab_result.fillna(0).infer_objects(copy=False)
 
     if not fill :
         crosstab_result = crosstab_result.loc[(crosstab_result != 0).any(axis=1), (crosstab_result != 0).any(axis=0)]
