@@ -1684,16 +1684,22 @@ class DataCheck(pd.DataFrame):
 
             # Table Header
             varable_text = []
+            index_cond = None
+            column_cond = None
             if isinstance(index, list) :
                 varable_text.append(f'{index[0]}-{index[-1]}')
+                index_cond = ((~df[index].isna()).any(axis=1)) & ((df[index] != 0).any(axis=1))
             else :
                 varable_text.append(index)
+                index_cond = ~df[index].isna()
 
             if isinstance(columns, list) :
                 varable_text.append(f'{columns[0]}-{columns[-1]}')
+                column_cond = ((~df[columns].isna()).any(axis=1)) & ((df[columns] != 0).any(axis=1))
             else :
                 if columns is not None :
                     varable_text.append(columns)
+                    column_cond = ~df[columns].isna()
 
             # Index
             if isinstance(index, (list)) :
@@ -1714,7 +1720,10 @@ class DataCheck(pd.DataFrame):
 
             filt_variables = list(set(filt_variables))
 
-            df = df[filt_variables].copy()
+            if column_cond is None :
+                df = df[index_cond][filt_variables].copy()
+            else :
+                df = df[(index_cond) & (column_cond)][filt_variables].copy()
 
             original_index_meta = index_meta
             original_columns_meta = columns_meta
@@ -2070,6 +2079,7 @@ class DataCheck(pd.DataFrame):
                 index_name = f'{index[0]}-{index[-1]}'
 
         tables = []
+
         for col_head, col in columns :
             header = col_head
             if col_head in titles.keys() :

@@ -25,77 +25,6 @@ from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.schema.runnable import RunnablePassthrough
 
 
-def custom_calc(df: pd.DataFrame, 
-                index: str, 
-                columns: Optional[Union[str, List[str]]]=None,
-                total_label: str = 'Total',
-                aggfunc: Union[str, List[str]] = ['mean']) -> pd.DataFrame:
-    """
-    Calculates descriptive statistics for the specified index column based on the values of the columns parameter.
-
-    Parameters:
-    df (pd.DataFrame): The input DataFrame.
-    index (str): The column name to group by and calculate statistics for.
-    columns (Union[str, List[str]]): The column name(s) to use for grouping.
-    aggfunc (Union[str, List[str]]): The aggregation function(s) to apply. Default is 'mean'.
-    agg_round (int): Number of decimal places to round the results to. Default is 2.
-
-    Returns:
-    pd.DataFrame: A DataFrame containing the calculated statistics.
-    """
-    
-    # Validate index parameter
-    if not isinstance(index, str):
-        raise ValueError("Index parameter must be a string representing a column name.")
-    
-    # Ensure aggfunc is a list
-    if isinstance(aggfunc, str):
-        aggfunc = [aggfunc]
-
-    # Initialize an empty DataFrame for the results
-    ndf = pd.DataFrame()
-    
-    # Check if columns is a string or a list
-    def set_value(value) :
-        if value is None :
-            return np.nan
-        else :
-            return value
-
-    if columns is not None :
-        if isinstance(columns, str):
-            # Single column case
-            values = df[columns].value_counts().index.to_list()
-
-            for v in values:
-                desc = df[df[columns] == v][index].describe().to_dict()
-                for af in aggfunc:
-                    ndf.loc[af, str(v)] = set_value(desc[af])
-            
-            # Total
-            desc = df[~df[columns].isna()][index].describe().to_dict()
-            for af in aggfunc:
-                ndf.loc[af, total_label] = set_value(desc[af])
-            
-        elif isinstance(columns, list):
-            # Binary data case
-            for col in columns:
-                desc = df[(~df[col].isna()) & (df[col] != 0)][index].describe().to_dict()
-                for af in aggfunc:
-                    ndf.loc[af, col] = set_value(desc[af])
-            
-            # Total
-            desc = df[((~df[columns].isna()).any(axis=1)) & ((df[columns] != 0).any(axis=1))][index].describe().to_dict()
-            for af in aggfunc:
-                ndf.loc[af, total_label] = set_value(desc[af])
-    else :
-        desc = df[index].describe().to_dict()
-        for af in aggfunc:
-            ndf.loc[af, total_label] = set_value(desc[af])
-            
-    return ndf
-
-
 def create_crosstab(df: pd.DataFrame,
                     index: Union[str, List[str]],
                     columns: Optional[Union[str, List[str]]] = None,
@@ -202,18 +131,18 @@ def create_crosstab(df: pd.DataFrame,
                 df.columns = pd.Index(labels)
         return df
 
+
     def pd_crosstab_check(df, x_name, y_name) :
         tabs = pd.crosstab(
             index=df[x_name],
             columns=df[y_name],
-            margins=True,
-            margins_name=total_label
         )
 
         if (len(tabs.index) > 0) and (len(tabs.columns) > 0) :
             if 0 in tabs.columns :
                 tabs.drop(0, axis=1, inplace=True)
-            tabs.columns = [y_name, total_label]
+            if tabs.columns.to_list() :
+                tabs.columns = [y_name]
             return tabs
         else :
             return None
@@ -228,115 +157,201 @@ def create_crosstab(df: pd.DataFrame,
         
         return crosstab_combined
 
-    def create_binary_crosstab(df, index_cols, columns_col=None):
-        """
-        Creates a crosstab for binary columns in the provided DataFrame.
-
-        Parameters:
-            df (pd.DataFrame): The input DataFrame.
-            index_cols (list): The list of column names to use for the crosstab index.
-            columns_col (str or list, optional): The column name or list of column names to use for the crosstab columns.
-
-        Returns:
-            pd.DataFrame: The resulting binary crosstab.
-        """
-    
-        def count_values_mixed(sa, ma_index, ma_cols) :
-            return ((df[sa] != 0) & (df[ma_cols] == ma_index) & df[sa].notna()).sum()
-    
-        if columns_col is None:
-            # Create a crosstab with a single "Count" column if no columns_col is provided
-            crosstab_result = pd.DataFrame(index=index_cols, columns=[count_label])
-            for idx in index_cols:
-                cnt = ((df[idx] != 0) & (df[idx].notna())).sum()
-                crosstab_result.loc[idx, count_label] = cnt
-        else:
-            if isinstance(index_cols, str) and isinstance(columns_col, list) :
-                crosstab_result = binary_crosstab(df, index_cols[0], columns_col)
-                print(f'binary_crosstab complete : {time.time()}')
-
-            if isinstance(index_cols, list) and isinstance(columns_col, str) :
-                crosstab_result = binary_crosstab(df, columns_col, index_cols[0])
-                            
-            elif isinstance(index_cols, list) and isinstance(columns_col, list):
-                # Create a DataFrame to hold the crosstab result
-                crosstab_result = pd.DataFrame(index=index_cols, columns=columns_col)
-                
-                for idx in index_cols:
-                    for col in columns_col:
-                        cnt = ((df[idx] != 0) & (df[col] != 0) & (df[idx].notna()) & (df[col].notna())).sum()
-                        crosstab_result.loc[idx, col] = cnt
-
-            else:
-                raise ValueError("columns_col must be either a string or a list of strings.")
+    def index_signle_total(index) :
+        sa = pd.crosstab(
+                df[index],
+                columns='count',
+                margins=True,
+                margins_name=total_label,
+            )
         
-        return crosstab_result
+        return sa.loc[:, total_label].to_frame()
+
+    def index_binary_total(index) :
+        tabs = []
+        for row in index :
+            ma = pd.crosstab(
+                df[row],
+                columns='count',
+                margins=True,
+                margins_name=total_label
+            )
+
+            if 0 in ma.index :
+                x = ma.drop(0)
+            chk = [i for i in x.index.to_list() if i != total_label]
+            if chk :
+                rename_dict = {}
+                rename_dict[chk[0]] = row
+                x.rename(index=rename_dict, inplace=True)
+                tabs.append(x)
+            else :
+                zero_row = pd.DataFrame([0], index=[row], columns=[total_label])
+                tabs.append(zero_row)
+
+        ma_table = pd.concat(tabs)
+        return ma_table.loc[~ma_table.index.duplicated(), :]
+
+
+    def calc_number(index, default_calc) :
+        default_number = df[index].describe().to_frame()
+        default_number.rename(index={'count': total_label}, inplace=True)
+
+        set_index = default_calc
+        if aggfunc is not None :
+            set_index = aggfunc
+        
+        set_index = [total_label] + set_index
+        default_number = default_number.loc[set_index]
+        default_number.columns = pd.Index([total_label])
+
+        return default_number
+
+    # ==== 
 
     start_time = time.time()
     # print(f"CrossTab Start : {start_time}")
 
     # Determine if we are working with single or multiple columns for index
-    if isinstance(index, str):
-        index_is_binary = False
-    elif isinstance(index, list):
-        index_is_binary = True
-    else:
+    if not isinstance(index, (str, list)):
         raise ValueError("Index must be either a string or a list of strings.")
     
+
     # Create the appropriate crosstab
     # Number Only Mean/Min/Max
     if qtype in ['number', 'float'] :
-        num_index = pd.Index(index) if isinstance(index, list) else pd.Index([index])
-        if columns is None :
-            # crosstab_result = pd.DataFrame(index=num_index, columns=[total_label])
-            crosstab_result = pd.DataFrame(df[index].describe()).T[aggfunc].rename(columns={'count': total_label})
+        if isinstance(index, list) :
+            raise ValueError("Index must be a string for number type.")
+
+    default_calc = ['mean', 'min', 'max']
+    agg = {}
+
+    if columns is not None :
+        if not isinstance(columns, (str, list)):
+            raise ValueError("Columns must be either a string or a list of strings.")
+
+
+        if qtype in ['number', 'float'] :
+            crosstab_result = calc_number(index, default_calc)
+            agg[index] = default_calc + ['count']
+
+            if isinstance(columns, list) :
+                tabs = []
+                for col in columns :
+                    x = pd.pivot_table(
+                        df,
+                        columns=col,
+                        values=index,
+                        aggfunc=agg
+                    )
+
+                    if 0 in x.columns :
+                        x = x.drop(0, axis=1)
+                    
+                    x.rename(index={'count': total_label}, inplace=True)
+                    if x.columns.to_list() :
+                        x.columns = [col]
+                    
+                        for idx in x.index :
+                            crosstab_result.loc[idx, col] = x.loc[idx, col]
+
         else :
-            crosstab_result = pd.DataFrame(index=num_index, 
-                                           columns=[total_label] + columns if isinstance(columns, list) else [total_label, columns])
-    else :
-        if columns is None:
-            if index_is_binary:
-                # Create frequency table for binary columns
-                crosstab_result = pd.DataFrame(index=index, columns=[total_label])
-                for idx in index:
-                    crosstab_result.loc[idx, total_label] = ((df[idx]!=0) & (~df[idx].isna())).sum()
+            # Nomar CrossTab
+            if isinstance(index, str) and isinstance(columns, list) :
+                index_total = index_signle_total(index)
+                columns_total = index_binary_total(columns).T
 
-            else:
-                value_counts = df[index].value_counts().to_frame(name='Total')
-
-                total = value_counts['Total'].sum()
-                total_df = pd.DataFrame({'col1': ['Total'], 'Total': [total]}).set_index('col1')
-                crosstab_result = pd.concat([value_counts, total_df])
-        else:
-            if isinstance(columns, str):
-                columns_is_binary = False
-            elif isinstance(columns, list):
-                columns_is_binary = True
-            else:
-                raise ValueError("Columns must be either a string or a list of strings.")
-
-            if index_is_binary and columns_is_binary :
-                crosstab_result = create_binary_crosstab(df, index, columns)
-            
-            if not index_is_binary and columns_is_binary:
                 crosstab_result = binary_crosstab(df, index, columns)
+                for col in columns_total.columns :
+                    crosstab_result.loc[total_label, col] = columns_total.loc[total_label, col]
 
-            if index_is_binary and not columns_is_binary:
+                for idx in index_total.index :
+                    crosstab_result.loc[idx, total_label] = index_total.loc[idx, total_label]
+
+            if isinstance(index, list) and isinstance(columns, str) :
+                index_total =  index_binary_total(index)
+                columns_total = index_signle_total(columns)
                 crosstab_result = binary_crosstab(df, columns, index).T
 
-            if not index_is_binary and not columns_is_binary :
+                for idx in index_total.columns :
+                    crosstab_result.loc[idx, total_label] = index_total.loc[total_label, idx]
+
+                for col in columns_total.index :
+                    crosstab_result.loc[col, total_label] = columns_total.loc[col, total_label]
+
+            if isinstance(index, list) and isinstance(columns, list) :
+                index_total =  index_binary_total(index)
+                columns_total = index_binary_total(columns).T
+                
+                finale_table = []
+                for col in columns :
+                    tabs = []
+                    for row in index :
+                        x = pd.crosstab(
+                            index=df[row],
+                            columns=df[col],
+                        )
+
+                        if 0 in x.index :
+                            x = x.drop(0)
+                        
+                        if 0 in x.columns :
+                            x = x.drop(0, axis=1)
+                        
+                        idx_list = x.index.to_list()
+                        col_list = x.columns.to_list()
+                        if idx_list and col_list :
+                            rename_index = {}
+                            rename_index[idx_list[0]] = row
+                            rename_columns = {}
+                            rename_columns[col_list[0]] = col
+                            x.rename(index=rename_index, columns=rename_columns, inplace=True)
+                            tabs.append(x)
+                        else :
+                            zero_row = pd.DataFrame([0], index=[row], columns=[col])
+                            tabs.append(zero_row)
+
+                    ma_table = pd.concat(tabs)
+                    if 0 in ma_table.columns :
+                        ma_table = ma_table.drop(0, axis=1)
+                    
+                    if ma_table.columns.to_list() :
+                        finale_table.append(ma_table.loc[~ma_table.index.duplicated(), :])
+
+                crosstab_result = pd.concat(finale_table, axis=1)
+                crosstab_result = crosstab_result.loc[:, ~crosstab_result.columns.duplicated()]
+                
+                for col in columns_total.columns :
+                    crosstab_result.loc[total_label, col] = columns_total.loc[total_label, col]
+                
+                crosstab_result.fillna(0, inplace=True)
+
+                for idx in index_total.index :
+                    crosstab_result.loc[idx, total_label] = index_total.loc[idx, total_label]
+                
+
+    else :
+        if qtype in ['number', 'float'] :
+            crosstab_result = calc_number(index, default_calc)
+            return crosstab_result
+        else :
+            if isinstance(index, list) :
+                crosstab_result = index_binary_total(index)
+
+            else :
                 crosstab_result = pd.crosstab(
-                    index=df[index],
-                    columns=df[columns],
-                    margins=True,
-                    margins_name=total_label,
-                )
+                                    df[index],
+                                    columns='count',
+                                    margins=True,
+                                    margins_name=total_label,
+                                )
+
+        crosstab_result = crosstab_result.loc[:, total_label].to_frame()
     
     crosstab_result = crosstab_result[[total_label] + [col for col in crosstab_result.columns if col!= total_label]]
     # print(f"Default Crosstab : {time.time() - start_time}")
     
     base_index = crosstab_result.index
-    base_columns = crosstab_result.columns
 
     # Original Order
     back_index = [] # crosstab result back variables 
@@ -362,7 +377,7 @@ def create_crosstab(df: pd.DataFrame,
         total_df = pd.DataFrame(crosstab_result.loc[total_label, :]).T
         crosstab_result = pd.concat([total_df, score_result])
         
-        
+    
     # print(f"Total Setting : {time.time() - start_time}")
 
     medium_auto_flag = False
@@ -504,32 +519,38 @@ def create_crosstab(df: pd.DataFrame,
         crosstab_result.fillna(0, inplace=True)
         crosstab_result = crosstab_result.astype(int)
 
-    # Calc
-    calc = None
-    if aggfunc is not None :
-        back_index += aggfunc
-        calc = custom_calc(df, 
-                           index=index, 
-                           columns=columns, 
-                           aggfunc=aggfunc, 
-                           total_label=total_label)
-        calc.index = calc.index.map(str)
-        calc.columns = calc.columns.map(str)
+    # # Calc
+    # if not qtype in ['number', 'float'] and aggfunc is not None :
+    #     calc_result = calc_number(index, aggfunc)
+    #     calc_result = calc_result.loc[aggfunc]    
+    #     if columns is not None :
+    #         agg[index] = default_calc + ['count']
+    #         cross_calc = pd.pivot_table(
+    #                                 df,
+    #                                 columns=columns,
+    #                                 values=index,
+    #                                 aggfunc=agg
+    #                             )
+    #         if isinstance(columns, list) :
+    #             filt_columns = filt_var(cross_calc.columns)
+    #             cross_calc = cross_calc.loc[:, filt_columns]
+                
+    #             cross_calc.columns = set_var(cross_calc.columns)
+    #             cross_calc = cross_calc.loc[aggfunc]
+            
+    #         for idx in calc_result.index :
+    #             cross_calc.loc[idx, total_label] = calc_result.loc[idx, total_label]
 
-    # print(f"Calc Setting : {time.time() - start_time}")
-
-    if calc is not None :
-        crosstab_result = pd.concat([crosstab_result, calc])
-        # crosstab_result.iloc[0] = crosstab_result.iloc[0].apply(lambda x: str(int(float(x))))
-
-        if conversion :
-            if qtype == 'rating' and 'mean' in crosstab_result.index.to_list() :
-                conversion_index = '100 point conversion'
-                crosstab_result.loc[conversion_index, :] = [0 if i == 0 else ((i-1)/(score-1))*100 for i in crosstab_result.loc['mean', :].values]
-                back_index.append(conversion_index)
+    #         calc_result = cross_calc
+        
+    #     crosstab_result = pd.concat([crosstab_result, calc_result])
+            
 
     # Process index metadata
     if index_meta :
+        if aggfunc is not None :
+            back_index = back_index + aggfunc
+        
         index_order, index_labels = extract_order_and_labels(index_meta, [all_label], back_index)
         crosstab_result = add_missing_indices(crosstab_result, index_order)
         crosstab_result = reorder_and_relabel(crosstab_result, index_order, index_labels, axis=0, name=None)
