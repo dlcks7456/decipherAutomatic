@@ -2026,31 +2026,39 @@ class DataCheck(pd.DataFrame):
 
                 # Rating Type
                 default_index = [idx for idx in result.index.to_list() if idx != total_label]
+                
                 if qtype in ['rating'] :
+                    score_min = min(default_index)
                     if score is None :
-                        score = max([int(list(x.keys())[0]) for x in index_meta])
+                        score_meta = [int(list(x.keys())[0]) for x in index_meta]
+                        score = max(score_meta)
+                        score_min = max(score_meta)
                     
-                    scores = [i for i in range(1, score+1)]
+                    
+                    scores = [i for i in range(score_min, score+1)]
+                    
                     result = rating_netting(result, 
                                             scores, 
                                             reverse_rating=reverse_rating, 
                                             top=top, 
                                             bottom=top, 
                                             medium=medium)
-                    
-                    if aggfunc is not None :
-                        calc_result = None 
-                        if columns is not None :
-                            calc_result = number_with_columns(df, index, columns, aggfunc)
-                        else :
-                            calc_result = number_total(df, index, aggfunc)
+                
+                if aggfunc is not None : 
+                    calc_result = None 
+                    if columns is not None :
+                        calc_result = number_with_columns(df, index, columns, aggfunc)
+                    else :
+                        calc_result = number_total(df, index, aggfunc)
 
-                        if calc_result is not None :
+                    if calc_result is not None : 
+                        if qtype in ['rating'] and (score is not None) and (score >= 4) :
                             if 'mean' in calc_result.index and conversion :
                                 conversion_index = '100 point conversion'
                                 calc_result.loc[conversion_index, :] = [0 if i == 0 else ((i-1)/(score-1))*100 for i in calc_result.loc['mean', :].values]
-                            
-                        result = pd.concat([result, calc_result])
+                    
+                    
+                    result = pd.concat([result, calc_result])
 
             result = CrossTabs(result)
             result.attrs['type'] = qtype
@@ -2060,7 +2068,8 @@ class DataCheck(pd.DataFrame):
                 index_order = [total_label] + [i for i in result.index.to_list() if not i == total_label]
                 result = result.reindex(index_order)
                 
-                    # Process index metadata
+                
+                # Process index metadata
                 if index_meta :
                     result.index = result.index.map(str)
                     
