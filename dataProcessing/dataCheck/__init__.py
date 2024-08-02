@@ -298,6 +298,81 @@ def check_duplicate_meta(input_list: List[Dict[str, str]]) -> List[Dict[str, str
 
     return output_list
 
+
+def extract_order_and_labels(metadata: Union[list, dict], front_variable: Optional[list] = None, back_variable: Optional[list] = None):
+    """
+    Extracts the order and labels from the provided metadata.
+    
+    Parameters:
+        metadata (list of dict): The metadata to extract order and labels from.
+        front_variable, back_variable : All / Total
+    
+    Returns:
+        order (list): The extracted order of keys.
+        labels (list): The extracted labels for the keys.
+    """
+    order = [list(d.keys())[0] for d in metadata]
+    if front_variable is not None :
+        order = front_variable + order
+    
+    if back_variable is not None :
+        order = order + back_variable
+    
+    labels = [list(d.values())[0] for d in metadata]
+    if front_variable is not None :
+        labels = front_variable + labels
+    
+    if back_variable is not None :
+        labels = labels + back_variable
+    
+    return order, labels
+
+def add_missing_indices(df, order):
+    """
+    Adds missing indices with zero values to the DataFrame.
+    
+    Parameters:
+        df (pd.DataFrame): The DataFrame to add missing indices to.
+        order (list): The list of indices to ensure exist in the DataFrame.
+    
+    Returns:
+        pd.DataFrame: The DataFrame with missing indices added.
+    """
+    
+    for idx in order:
+        if idx not in df.index :
+            df.loc[idx] = 0
+    return df
+
+def reorder_and_relabel(df, order, labels, axis, name):
+    """
+    Reorders and relabels the DataFrame based on the provided order and labels.
+    
+    Parameters:
+        df (pd.DataFrame): The DataFrame to reorder and relabel.
+        order (list): The order to apply.
+        labels (list): The labels to apply.
+        axis (int): The axis to apply the reorder and relabel (0 for index, 1 for columns).
+        name (str): The name to assign to the index or columns.
+    
+    Returns:
+        pd.DataFrame: The DataFrame with reordered and relabeled indices/columns.
+    """
+    if axis == 0:
+        df = df.loc[order]
+        if name is not None and name is not False :
+            df.index = pd.Index(labels, name=name)
+        else :
+            df.index = pd.Index(labels)
+    else:
+        df = df[order]
+        if name is not None and name is not False :
+            df.columns = pd.Index(labels, name=name)
+        else :
+            df.columns = pd.Index(labels)
+    return df
+
+
 @dataclass
 class PrintDataFrame:
     show_cols: List[str]
@@ -1784,7 +1859,7 @@ class DataCheck(pd.DataFrame):
                     raise TypeError("index must be str")
                 
                 if aggfunc is None :
-                    aggfunc = ['mean', 'min', 'max']
+                    aggfunc = ['count', 'mean', 'max', 'median', 'min']
 
             # Rating Type
             if qtype == 'rating' :
@@ -1806,57 +1881,7 @@ class DataCheck(pd.DataFrame):
             if qtype == 'rank' :
                 if not isinstance(index, list) :
                     raise TypeError("index must be list")
-                
-                answers = []
-                
-                index_meta = None
-                if titles :
-                    vgroup = list(set([titles[i]['vgroup'] for i in index if i in titles.keys()]))
-                    if vgroup :
-                        if len(vgroup) != 1 :
-                            raise ValueError("The elements in the index must be in the same vgroup")
-                                                
-                        if vgroup[0] in metas.keys() :
-                            index_meta = metas[vgroup[0]]
-                
-                if index_meta is None :
-                    for idx in index :
-                        if not isinstance(idx, str) :
-                            raise TypeError("The elements in the index must be strings")
 
-                        answer = df[idx].value_counts().index.to_list()
-                        answers += answer
-                    
-                    answers = list(set(answers))
-                else :
-                    answers = [int(list(idx.keys())[0]) for idx in index_meta]
-                
-                rank_df = df.copy()
-
-                # Grid Sinlge Rank to Multi Variable
-                rank_index = []
-                rank_index_meta = []
-                
-                for ans in answers :
-                    set_var = f'#C{ans}'
-                    rank_df.loc[:, set_var] = 0
-                    rank_df.loc[(rank_df[index]==ans).any(axis=1), set_var] = 1
-
-                    rank_index.append(set_var)
-                    if index_meta is None :
-                        if original_index_meta is not None :
-                            set_label = [list(i.values())[0] for i in original_index_meta if list(i.keys())[0] == ans]
-                            if set_label :
-                                rank_index_meta.append({set_var: set_label[0]})
-                        else :
-                            rank_index_meta.append({set_var: ans})
-                    else :
-                        meta_dict = {list(idx.keys())[0]: list(idx.values())[0] for idx in index_meta}
-                        rank_index_meta.append({set_var: meta_dict[str(ans)]})
-                
-                index = rank_index
-                index_meta = rank_index_meta
-                df = rank_df
 
             
             # With Value
@@ -1875,23 +1900,77 @@ class DataCheck(pd.DataFrame):
             result = create_crosstab(df,
                                     index=index,
                                     columns=columns,
-                                    index_meta=index_meta,
-                                    columns_meta=columns_meta,
                                     qtype=qtype,
-                                    score=score,
-                                    fill=fill,
-                                    top=top,
-                                    conversion=conversion,
-                                    medium=medium,
-                                    bottom=bottom,
                                     aggfunc=aggfunc,
-                                    reverse_rating=reverse_rating, 
                                     total_label=total_label)
+
+            # Add top and bottom summaries if needed
+            if (qtype == 'rating') and (not index_meta) and (score is None) :
+                raise ValueError("If qtype is 'rating', score or index_meta must be provided.")
+
             
+            # Rating Type
+            default_index = [idx for idx in result.index.to_list() if idx != total_label]
+            if qtype == 'rating' :
+                if score is None :
+                    score = max([int(list(x.keys())[0]) for x in index_meta])
+                
+                scores = [i for i in range(1, score+1)]
+                result = rating_netting(result, 
+                                        scores, 
+                                        reverse_rating=reverse_rating, 
+                                        top=top, 
+                                        bottom=top, 
+                                        medium=medium)
+                
+                if aggfunc is not None :
+                    calc_result = None 
+                    if columns is not None :
+                        calc_result = number_with_columns(df, index, columns, aggfunc)
+                    else :
+                        calc_result = number_total(df, index, aggfunc)
+
+                    if calc_result is not None :
+                        if 'mean' in calc_result.index and conversion :
+                            conversion_index = '100 point conversion'
+                            calc_result.loc[conversion_index, :] = [0 if i == 0 else ((i-1)/(score-1))*100 for i in calc_result.loc['mean', :].values]
+                        
+                        result = pd.concat([result, calc_result])
+                            
+
             result = CrossTabs(result)
             result.attrs['type'] = qtype
 
+            index_order = [total_label] + [i for i in result.index.to_list() if not i == total_label]
+            column_order = [total_label] + [i for i in result.columns.to_list() if not i == total_label]
             
+            result = result.reindex(index_order)
+            result = result[column_order]
+
+            
+            # Process index metadata
+            if index_meta :
+                result.index = result.index.map(str)
+                
+                with_default = [str(idx) for idx in [total_label] + default_index]
+                back_index = [idx for idx in result.index if not idx in with_default]
+                
+                index_order, index_labels = extract_order_and_labels(index_meta, [total_label], back_index)
+                result = add_missing_indices(result, index_order)
+                result = reorder_and_relabel(result, index_order, index_labels, axis=0, name=None)
+
+            # Process columns metadata
+            if columns_meta:
+                result.columns = result.columns.map(str)
+
+                columns_order, columns_labels = extract_order_and_labels(columns_meta, [total_label])
+                result = add_missing_indices(result.T, columns_order).T
+                result = reorder_and_relabel(result, columns_order, columns_labels, axis=1, name=None)
+
+            if not fill :
+                result.fillna(0, inplace=True)
+                result = result.loc[(result != 0).any(axis=1), (result != 0).any(axis=0)]
+
             if base_desc is None :
                 sample_count = len(self)
                 all_count = result.iloc[0, 0]
@@ -1904,6 +1983,8 @@ class DataCheck(pd.DataFrame):
 
             result.index = pd.MultiIndex.from_tuples([('' if group_name is None else group_name, i) for i in result.index])
             result.index.names = pd.Index(['/'.join(varable_text), base_desc])
+
+
 
             return result
 
@@ -2000,30 +2081,6 @@ class DataCheck(pd.DataFrame):
         # 리스트를 DataFrame으로 변환
         df = pd.DataFrame(data, columns=["Group Variable", "Group Title", "Variable", "Title", "Sample"])
         return df
-
-#         show_nets = f"""<table>
-#     <thead>
-#         <th>Group Varialbe</th>
-#         <th>Group Title</th>
-#         <th>Variable</th>
-#         <th>Title</th>
-#         <th>Sample</th>
-#     </thead>
-# """
-#         for key, value in nets.items():
-#             if isinstance(value, str):
-#                 meta = self.attrs['meta'][value]
-#                 sample = (self[value]==1).sum()
-#                 show_nets += f"""<tr><td></td><td></td><td>{value}</td><td>{meta}</td><td>{sample}'s</td></tr>"""
-#             if isinstance(value, list):
-#                 for v in value :
-#                     meta = self.attrs['meta'][v]
-#                     sample = (self[v]==1).sum()
-#                     title = self.attrs['meta'][key]
-#                     show_nets += f"""<tr><td>{key}</td><td>{title}</td><td>{v}</td><td>{meta}</td><td>{sample}'s</td></tr>"""
-#         show_nets += """</table>"""
-
-#         display(HTML(show_nets))
 
 
     def net(self, key: Optional[str] = None) :
