@@ -1644,7 +1644,7 @@ class DataCheck(pd.DataFrame):
         return filt
 
     # DataProcessing
-    def setting_meta(self, meta, variable, dup_chk=True) :
+    def setting_meta(self, meta, variable, dup_chk=True, check_title=True) :
         if variable is None :
             return None
 
@@ -1654,13 +1654,50 @@ class DataCheck(pd.DataFrame):
         return_meta = None
         if meta is None :
             meta_attr = self.attrs['meta']
+            titles = self.attrs['title']
             if meta_attr :
                 if isinstance(variable, str) :
                     if variable in meta_attr.keys() :
                         return_meta = meta_attr[variable]
                 
                 if isinstance(variable, list) :
-                    return_meta = [{v: meta_attr[v]} if v in meta_attr.keys() else {v: v} for v in variable]
+                    if titles and check_title :
+                        qtype = []
+                        vgroup = []
+
+                        for var in variable :
+                            if var in titles.keys() :
+                                vg = titles[var]['vgroup']
+                                qt = titles[var]['type']
+                                
+                                if vg is None :
+                                    raise ValueError(f"vgroup must be provided for each index ({var}).")
+                                else :
+                                    vgroup.append(vg)
+                                
+                                if qt is None :
+                                    raise ValueError(f"qtype must be provided for each index ({var}).")
+                                else :
+                                    qtype.append(qt)
+                        
+                        qtype = list(set(qtype))
+                        vgroup = list(set(vgroup))
+                        
+                        if not len(qtype) == 1 :
+                            raise ValueError("qtype must be the same for all indexes.")
+                        else :
+                            qtype = qtype[0]
+
+                        if not len(vgroup) == 1 :
+                            raise ValueError("vgroup must be the same for all indexes.")
+                        else :
+                            vgroup = vgroup[0]
+                            if (not qtype in ['multiple']) and (vgroup in meta_attr.keys()) :
+                                return_meta = meta_attr[vgroup]
+                            else :
+                                return_meta = [{v: meta_attr[v]} if v in meta_attr.keys() else {v: v} for v in variable]
+                    else :
+                        return_meta = [{v: meta_attr[v]} if v in meta_attr.keys() else {v: v} for v in variable]
             else :
                 return None
         else :
@@ -1735,18 +1772,34 @@ class DataCheck(pd.DataFrame):
                     group_name: Optional[str] = None,
                     base_desc: Optional[str] = None) -> pd.DataFrame :
 
+            titles = self.attrs['title']
+            metas = self.attrs['meta']
+
+            if qtype is None :
+                if isinstance(index, str) :
+                    if index in titles.keys() :
+                        qtype = titles[index]['type']
+
+                if isinstance(index, list) :
+                    # if index[0] in titles.keys() :
+                    #     qtype = titles[index[0]]['type']
+                    if all(idx in titles.keys() for idx in index) :
+                        chk_type = list(set([titles[idx]['type'] for idx in index]))
+                        if len(chk_type) >= 2 :
+                            raise ValueError('index type is not same')
+                        else :
+                            qtype = chk_type[0]
+
+            if qtype is None :
+                raise ValueError('qtype is not defined')
+
+
             cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
             df = self[cond].copy()
 
             with_value = self.attrs['default_with_value'] if with_value is None else with_value
 
             filt_variables = []
-
-            # if isinstance(index, tuple) :
-            #     raise NotImplementedError('tuple index is not supported')
-            
-            # if isinstance(columns, tuple) :
-            #     raise NotImplementedError('tuple columns is not supported')
 
             if isinstance(index, tuple) :
                 index = self.ma_return(index)
@@ -1763,18 +1816,21 @@ class DataCheck(pd.DataFrame):
             column_cond = None
             if isinstance(index, list) :
                 varable_text.append(f'{index[0]}-{index[-1]}')
-                index_cond = ((~df[index].isna()).any(axis=1)) & ((df[index] != 0).any(axis=1))
+                if qtype == 'multiple' :
+                    index_cond = ((~df[index].isna()).any(axis=1)) & ((df[index] != 0).any(axis=1))
+                else :
+                    index_cond = (~df[index].isna()).any(axis=1)
             else :
                 varable_text.append(index)
                 index_cond = ~df[index].isna()
 
             if isinstance(columns, list) :
                 varable_text.append(f'{columns[0]}-{columns[-1]}')
-                column_cond = ((~df[columns].isna()).any(axis=1)) & ((df[columns] != 0).any(axis=1))
+                # column_cond = ((~df[columns].isna()).any(axis=1)) & ((df[columns] != 0).any(axis=1))
             else :
                 if columns is not None :
                     varable_text.append(columns)
-                    column_cond = ~df[columns].isna()
+                    #column_cond = ~df[columns].isna()
 
             # Index
             if isinstance(index, (list)) :
@@ -1795,27 +1851,15 @@ class DataCheck(pd.DataFrame):
 
             filt_variables = list(set(filt_variables))
 
-            if column_cond is None :
-                df = df[index_cond][filt_variables].copy()
-            else :
-                df = df[(index_cond) & (column_cond)][filt_variables].copy()
+            
+            df = df[index_cond][filt_variables].copy()
 
             original_index_meta = index_meta
             original_columns_meta = columns_meta
 
-            titles = self.attrs['title']
-            metas = self.attrs['meta']
 
-            if qtype is None :
-                if isinstance(index, str) :
-                    if index in titles.keys() :
-                        qtype = titles[index]['type']
 
-                if isinstance(index, list) :
-                    if index[0] in titles.keys() :
-                        qtype = titles[index[0]]['type']
-
-            index_meta = self.setting_meta(original_index_meta, index, not qtype in ['rank', 'ranksort', 'number', 'float', 'text'])
+            index_meta = self.setting_meta(original_index_meta, index, not qtype in ['number', 'float', 'text'])
             if index_filter is not None :
                 if index_meta is not None :
                     index_meta_dict = {list(idx.keys())[0]:list(idx.values())[0] for idx in index_meta}
@@ -1833,7 +1877,7 @@ class DataCheck(pd.DataFrame):
                 if index_sort == 'desc' :
                     index_meta = sorted(index_meta, key=lambda d: list(d.keys())[0], reverse=True)
 
-            columns_meta = self.setting_meta(original_columns_meta, columns, dup_chk=False)
+            columns_meta = self.setting_meta(original_columns_meta, columns, dup_chk=False, check_title=False)
             if columns_filter is not None :
                 if columns_meta is not None :
                     columns_meta_dict = {list(col.keys())[0]:list(col.values())[0] for col in columns_meta}
@@ -1855,9 +1899,6 @@ class DataCheck(pd.DataFrame):
  
             # Number Type
             if qtype in ['number', 'float'] :
-                if not isinstance(index, str) :
-                    raise TypeError("index must be str")
-                
                 if aggfunc is None :
                     aggfunc = ['count', 'mean', 'max', 'median', 'min']
 
@@ -1876,14 +1917,7 @@ class DataCheck(pd.DataFrame):
                 if score is None :
                     answers = max(df[index].value_counts().index.tolist())
                     score = answers
-            
-            # Rank Type (Grid Rank)
-            if qtype == 'rank' :
-                if not isinstance(index, list) :
-                    raise TypeError("index must be list")
-
-
-            
+                        
             # With Value
             if index_meta is not None and with_value :
                 new_index_meta = []
@@ -1895,69 +1929,150 @@ class DataCheck(pd.DataFrame):
                 
                 index_meta = new_index_meta
             
-            total_label ='Total'
-            
-            result = create_crosstab(df,
-                                    index=index,
-                                    columns=columns,
-                                    qtype=qtype,
-                                    aggfunc=aggfunc,
-                                    total_label=total_label)
 
             # Add top and bottom summaries if needed
             if (qtype == 'rating') and (not index_meta) and (score is None) :
                 raise ValueError("If qtype is 'rating', score or index_meta must be provided.")
 
-            
-            # Rating Type
-            default_index = [idx for idx in result.index.to_list() if idx != total_label]
-            if qtype == 'rating' :
-                if score is None :
-                    score = max([int(list(x.keys())[0]) for x in index_meta])
-                
-                scores = [i for i in range(1, score+1)]
-                result = rating_netting(result, 
-                                        scores, 
-                                        reverse_rating=reverse_rating, 
-                                        top=top, 
-                                        bottom=top, 
-                                        medium=medium)
-                
-                if aggfunc is not None :
-                    calc_result = None 
-                    if columns is not None :
-                        calc_result = number_with_columns(df, index, columns, aggfunc)
-                    else :
-                        calc_result = number_total(df, index, aggfunc)
+            num_qtype_chk = qtype in ['number', 'float']
 
-                    if calc_result is not None :
-                        if 'mean' in calc_result.index and conversion :
-                            conversion_index = '100 point conversion'
-                            calc_result.loc[conversion_index, :] = [0 if i == 0 else ((i-1)/(score-1))*100 for i in calc_result.loc['mean', :].values]
+            total_label ='Total'
+
+            # CrossTab Result
+            result = None 
+            
+
+            if num_qtype_chk :
+                if aggfunc is not None :
+                    if not isinstance(aggfunc, list) :
+                        raise ValueError("Aggfunc must be a list of strings.")
+                else :
+                    aggfunc = []
+
+                if not 'count' in aggfunc :
+                    aggfunc = ['count'] + aggfunc
+                
+                # Number / Float Type Only
+                def number_single_table(qid, columns, aggfunc) :
+                    if columns is not None :
+                        return number_with_columns(df, qid, columns, aggfunc)
+                    else :
+                        return number_total(df, qid, aggfunc)
+                
+                if isinstance(index, list) :
+                    number_tables = pd.DataFrame()
+                    for idx in index :
+                        each = number_single_table(idx, columns, aggfunc)
+                        for i in each.index :
+                            for c in each.columns :
+                                number_tables.loc[f'{idx}_{i}', c] = each.loc[i, c]
                         
-                        result = pd.concat([result, calc_result])
+                    group_index = []
+                    for idx in number_tables.index :
+                        qid, agg = idx.split('_')
+                        set_title = None
+                        if qid in titles.keys() :
+                            set_title = titles[qid]['sub_title']
+                        
+                        group_index.append((qid if set_title is None else set_title, agg))
+                        
+                    number_tables.index = pd.MultiIndex.from_tuples(group_index)
+                    result = number_tables
+                    
+                else :
+                    result = number_single_table(index, columns, aggfunc)
+                
+            else :
+                # MA/SA Only
+
+                if isinstance(index, list) and qtype in ['single', 'rank'] :
+                    sa_sum_table = []
+                    for idx in index :
+                        sa_table = create_crosstab(df,
+                                                   index=idx,
+                                                   columns=columns,
+                                                   total_label=total_label)
+                        
+                        sa_sum_table.append(sa_table)
+
+                    result = sum(sa_sum_table)
+                    result.fillna(0, inplace=True)
+                    result.loc[total_label, total_label] = len(df)
+
+                    if isinstance(columns, str) :
+                        for col in result.columns :
+                            if col == total_label :
+                                continue
+                            sample_count = len(df[df[columns]==col].index)
+                            result.loc[total_label, col] = sample_count
+                    
+                    if isinstance(columns, list) :
+                        for col in result.columns :
+                            if col == total_label :
+                                continue
                             
+                            sample_count = len(df[(df[col]!=0) & (~df[col].isna())].index)
+                            
+                            result.loc[total_label, col] = sample_count
+                    
+                else :
+                    result = create_crosstab(df,
+                                            index=index,
+                                            columns=columns,
+                                            total_label=total_label)
+                
+                result.fillna(0, inplace=True)
+                result = result.astype(int)
+
+                # Rating Type
+                default_index = [idx for idx in result.index.to_list() if idx != total_label]
+                if qtype in ['rating'] :
+                    if score is None :
+                        score = max([int(list(x.keys())[0]) for x in index_meta])
+                    
+                    scores = [i for i in range(1, score+1)]
+                    result = rating_netting(result, 
+                                            scores, 
+                                            reverse_rating=reverse_rating, 
+                                            top=top, 
+                                            bottom=top, 
+                                            medium=medium)
+                    
+                    if aggfunc is not None :
+                        calc_result = None 
+                        if columns is not None :
+                            calc_result = number_with_columns(df, index, columns, aggfunc)
+                        else :
+                            calc_result = number_total(df, index, aggfunc)
+
+                        if calc_result is not None :
+                            if 'mean' in calc_result.index and conversion :
+                                conversion_index = '100 point conversion'
+                                calc_result.loc[conversion_index, :] = [0 if i == 0 else ((i-1)/(score-1))*100 for i in calc_result.loc['mean', :].values]
+                            
+                        result = pd.concat([result, calc_result])
 
             result = CrossTabs(result)
             result.attrs['type'] = qtype
 
-            index_order = [total_label] + [i for i in result.index.to_list() if not i == total_label]
-            column_order = [total_label] + [i for i in result.columns.to_list() if not i == total_label]
             
-            result = result.reindex(index_order)
-            result = result[column_order]
+            if not num_qtype_chk :
+                index_order = [total_label] + [i for i in result.index.to_list() if not i == total_label]
+                result = result.reindex(index_order)
+                
+                    # Process index metadata
+                if index_meta :
+                    result.index = result.index.map(str)
+                    
+                    with_default = [str(idx) for idx in [total_label] + default_index]
+                    back_index = [idx for idx in result.index if not idx in with_default]
+                    
+                    index_order, index_labels = extract_order_and_labels(index_meta, [total_label], back_index)
+                    result = add_missing_indices(result, index_order)
+                    result = reorder_and_relabel(result, index_order, index_labels, axis=0, name=None)
 
-            
-            # Process index metadata
-            if index_meta :
-                result.index = result.index.map(str)
-                
-                with_default = [str(idx) for idx in [total_label] + default_index]
-                back_index = [idx for idx in result.index if not idx in with_default]
-                
-                index_order, index_labels = extract_order_and_labels(index_meta, [total_label], back_index)
-                result = add_missing_indices(result, index_order)
-                result = reorder_and_relabel(result, index_order, index_labels, axis=0, name=None)
+            column_order = [total_label] + [i for i in result.columns.to_list() if not i == total_label]
+            result = result[column_order]
 
             # Process columns metadata
             if columns_meta:
@@ -1980,11 +2095,10 @@ class DataCheck(pd.DataFrame):
                 else :
                     sample_ratio = round(all_count/sample_count, 2) * 100
                     base_desc = f'Not All Base ({sample_ratio:.0f}%)'
-
-            result.index = pd.MultiIndex.from_tuples([('' if group_name is None else group_name, i) for i in result.index])
-            result.index.names = pd.Index(['/'.join(varable_text), base_desc])
-
-
+            
+            if not isinstance(result.index, pd.MultiIndex) :
+                result.index = pd.MultiIndex.from_tuples([('' if group_name is None else group_name, i) for i in result.index])
+                result.index.names = pd.Index(['/'.join(varable_text), base_desc])
 
             return result
 
@@ -2193,7 +2307,6 @@ class DataCheck(pd.DataFrame):
 
         summary_df = []
         cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
-        df = self[cond].copy()
 
         multi_col = []
         for idx in index :
@@ -2259,8 +2372,7 @@ class DataCheck(pd.DataFrame):
                     base_desc = f'Not All Base ({sample_ratio:.0f}%)'
 
         var_names = [f'{i[0]}-{i[-1]}' if isinstance(i, list) else i for i in index]
-        var_names = '/'.join(var_names)
-
+        var_names = f'{var_names[0]} to {var_names[-1]}' # '/'.join(var_names)
 
         result.index.names = pd.Index([var_names, base_desc])
         return result
@@ -2606,7 +2718,7 @@ class DataCheck(pd.DataFrame):
                                             'font_size': 9,
                                             'bg_color': bg_color
                                         }))
-                                if df_row_name in ['mean', 'min', 'max', 'std', '100 point conversion'] :
+                                if df_row_name in ['mean', 'min', 'max', 'std', 'median', '100 point conversion'] :
                                     data_sheet.write(i, j, cell_value, float_format)
 
                 last_row = i + 1
@@ -3630,6 +3742,16 @@ df.set_banner(df.net())"""
 
             cell_text += "\n"
             if isinstance(variables, list) and len(variables) >= 2 :
+                if qtype in ['rating'] :
+                    rating_text = cell_text
+                    rating_text += f"# {qid} Grid summary\n"
+
+                    grid_var = [list(v.keys())[0] for v in variables]
+                    grid_var = ', '.join(grid_var)
+                    rating_text += f"table = df.grid_summary([{grid_var}])\n"
+                    rating_text += f"df.proc_append(\n\t\t(f'{table_id}_sumamry', '{qid} Grid Summary'), \n\t\ttable, \n\t\tai=False\n\t)"
+                    ipynb_cell.append(nbf.v4.new_code_cell(rating_text))
+
                 if qtype in ['number', 'float', 'rating', 'single'] :
                     cell_text += f"""for idx, qid in enumerate({qid}, 1) :\n"""
                     cell_text += f"""\tsub_title = df.title(qid)['sub_title']\n"""

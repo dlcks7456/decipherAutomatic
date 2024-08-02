@@ -55,16 +55,20 @@ def multiple_total(data, base, total_label='Total') :
             )
 
             if 0 in ma.index :
-                x = ma.drop(0)
-            chk = [i for i in x.index.to_list() if i != total_label]
-            if chk :
-                rename_dict = {}
-                rename_dict[chk[0]] = row
-                x.rename(index=rename_dict, inplace=True)
-                tabs.append(x[[total_label]])
-            else :
-                zero_row = pd.DataFrame([0], index=[row], columns=[total_label])
-                tabs.append(zero_row)
+                ma.drop(0, inplace=True)
+            
+            ma_index = ma.index.to_list()
+            if ma_index :
+                chk = [i for i in ma_index if i != total_label]
+                if chk :
+                    rename_dict = {}
+                    rename_dict[chk[0]] = row
+                    ma.rename(index=rename_dict, inplace=True)
+                    tabs.append(ma[[total_label]])
+                continue
+            
+            zero_row = pd.DataFrame([0], index=[row], columns=[total_label])
+            tabs.append(zero_row)
     
     ma_table = pd.concat(tabs)
     
@@ -124,8 +128,6 @@ def number_with_columns(df, index, columns, aggfunc, total_label='Total') :
 def create_crosstab(df: pd.DataFrame,
                     index: Union[str, List[str]],
                     columns: Optional[Union[str, List[str]]] = None,
-                    qtype: Optional[str] = None,
-                    aggfunc: Optional[list] = None,
                     total_label: str = 'Total') -> pd.DataFrame:
     """
     Creates a crosstab from the provided DataFrame with optional metadata for reordering and relabeling indices and columns, and with options to include top/bottom summaries and index sorting.
@@ -150,93 +152,66 @@ def create_crosstab(df: pd.DataFrame,
         return total_to_qid
 
     # ==== 
-
-    start_time = time.time()
     # print(f"CrossTab Start : {start_time}")
 
     # Determine if we are working with single or multiple columns for index
     if not isinstance(index, (str, list)):
         raise ValueError("Index must be either a string or a list of strings.")
     
-
-    # Create the appropriate crosstab
-    # Number Only Mean/Min/Max
-    if qtype in ['number', 'float'] :
-        if isinstance(index, list) :
-            raise ValueError("Index must be a string for number type.")
-        
-        if aggfunc is not None :
-            if not isinstance(aggfunc, list) :
-                raise ValueError("Aggfunc must be a list of strings.")
-
-            if not 'count' in aggfunc :
-                aggfunc = ['count'] + aggfunc
-
     if columns is not None :
         if not isinstance(columns, (str, list)):
             raise ValueError("Columns must be either a string or a list of strings.")
 
-        # Number Describe
-        if qtype in ['number', 'float'] :
-            # Number By MA or SA
-            crosstab_result = number_with_columns(df, index, columns, aggfunc)
-
-        else :
-            # Normal CrossTab
-            # SA BY MA 
+        # Normal CrossTab
+        # SA BY MA 
+        if (isinstance(index, str) and isinstance(columns, list)) or (isinstance(index, list) and isinstance(columns, str)):
+            base_row = index
+            base_col = columns
+            if (isinstance(index, list) and isinstance(columns, str)) :
+                base_row = columns
+                base_col = index
             
-            if (isinstance(index, str) and isinstance(columns, list)) or (isinstance(index, list) and isinstance(columns, str)):
-                base_row = index
-                base_col = columns
-                if (isinstance(index, list) and isinstance(columns, str)) :
-                    base_row = columns
-                    base_col = index
-                
-                index_total = signle_total(df, base_row)
-                sa_table = []
-                for col in base_col :
-                    cond = (df[col]!=0) & (~df[col].isna())
-                    sa = signle_total(df[cond], base_row)
-                    sa.rename(columns=rename_total_dict(col), inplace=True)
-                    sa_table.append(sa)
+            index_total = signle_total(df, base_row)
+            sa_table = []
+            for col in base_col :
+                cond = (df[col]!=0) & (~df[col].isna())
+                sa = signle_total(df[cond], base_row)
+                sa.rename(columns=rename_total_dict(col), inplace=True)
+                sa_table.append(sa)
 
-                crosstab_result = pd.concat([index_total, *sa_table], axis=1)
-                crosstab_result.fillna(0, inplace=True)
+            crosstab_result = pd.concat([index_total, *sa_table], axis=1)
+            crosstab_result.fillna(0, inplace=True)
 
-                if (isinstance(index, list) and isinstance(columns, str)) : 
-                    crosstab_result = crosstab_result.T
+            if (isinstance(index, list) and isinstance(columns, str)) : 
+                crosstab_result = crosstab_result.T
 
-            # MA AND MA
-            elif isinstance(index, list) and isinstance(columns, list) :
-                index_total =  multiple_total(df, index)
-                
-                ma_table = []
-                for col in columns :
-                    cond = (df[col]!=0) & (~df[col].isna())
-                    ma = multiple_total(df[cond], index)
-                    ma.rename(columns=rename_total_dict(col), inplace=True)
+        # MA AND MA
+        elif isinstance(index, list) and isinstance(columns, list) :
+            index_total =  multiple_total(df, index)
+            
+            ma_table = []
+            for col in columns :
+                cond = (df[col]!=0) & (~df[col].isna())
+                ma = multiple_total(df[cond], index)
+                ma.rename(columns=rename_total_dict(col), inplace=True)
 
-                    ma_table.append(ma)
-                
-                crosstab_result = pd.concat([index_total, *ma_table], axis=1)
-                crosstab_result.fillna(0, inplace=True)
-            else :
-                crosstab_result = pd.crosstab(
-                    df[index],
-                    df[columns],
-                    margins=True,
-                    margins_name=total_label,
-                )
+                ma_table.append(ma)
+            
+            crosstab_result = pd.concat([index_total, *ma_table], axis=1)
+            crosstab_result.fillna(0, inplace=True)
+        else :
+            crosstab_result = pd.crosstab(
+                df[index],
+                df[columns],
+                margins=True,
+                margins_name=total_label,
+            )
 
     else :
-        if qtype in ['number', 'float'] :            
-            crosstab_result = number_total(df, index, aggfunc)
-
+        if isinstance(index, list) :
+            crosstab_result = multiple_total(df, index)
         else :
-            if isinstance(index, list) :
-                crosstab_result = multiple_total(df, index)
-            else :
-                crosstab_result = signle_total(df, index)
+            crosstab_result = signle_total(df, index)
 
         crosstab_result = crosstab_result.loc[:, total_label].to_frame()
     
@@ -343,7 +318,7 @@ def rating_netting(rating_crosstab_result,
                    total_label='Total', 
                    top=None, 
                    bottom=None, 
-                   medium=False) :
+                   medium=True) :
     
     result = rating_crosstab_result.copy()
     for idx in scores :
@@ -391,7 +366,7 @@ def rating_netting(rating_crosstab_result,
     net_crosstab = []
     for n in net_list :
         net = eval(n)
-        if net is not None :
+        if net is not None and net:
             _func = eval(f'{n}_setting')
             net_result = _func(result, net)
             net_result.fillna(0, inplace=True)
@@ -432,7 +407,7 @@ class CrossTabs(pd.DataFrame):
         result = self.astype(float)
         all_value = result.iloc[0]
 
-        mask_index = ['mean', 'man', 'min', 'max', 'std', '100 point conversion', 'Total']
+        mask_index = ['mean', 'man', 'min', 'max', 'median', 'std', '100 point conversion', 'Total']
         if isinstance(result.index, pd.MultiIndex) :
             mask = ~result.index.isin([idx for idx in result.index if idx[-1] in mask_index])
         else :
@@ -444,6 +419,8 @@ class CrossTabs(pd.DataFrame):
 
         if heatmap :
             cmap = LinearSegmentedColormap.from_list("custom_blue", ["#ffffff", "#2d6df6"])
+            result.fillna(0, inplace=True)
+            
             styled_result = result.style.map(
                 lambda val: 'background-color: #ffffff' if np.isnan(val) else '', 
                 subset=pd.IndexSlice[~mask, :]
