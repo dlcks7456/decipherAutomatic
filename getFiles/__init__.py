@@ -15,21 +15,20 @@ def create_binary_file(path, file_name, file) :
     with open(file_path, 'wb') as f: 
         f.write(file)
 
-def create_ascii_file(path, binary_file, save_name) :
+def create_ascii_file(path, binary_file) :
     get_binary_file_path = os.path.join(path, binary_file)
-    if '.csv' in save_name :
+    if '.csv' in binary_file :
         csv = pd.read_csv(os.path.join(path, binary_file), low_memory=False)
-        csv_to_xlsx = save_name.replace('.csv', '.xlsx')
-        save_path = os.path.join(path, csv_to_xlsx)
-        csv.to_excel(save_path, index=False)
+        csv.to_csv(f'{path}/{binary_file}', index=False, encoding='utf-8-sig')
+
     else :
-        with open(f'{path}/{save_name}', 'w', encoding='utf-8-sig') as f :
+        with open(f'{path}/{binary_file}', 'w', encoding='utf-8-sig') as f :
             get_binary_file = open(get_binary_file_path, 'r', encoding='utf-8-sig')
             for line in get_binary_file.readlines() :
                 f.write(line)
             get_binary_file.close()
 
-    os.remove(get_binary_file_path)
+    # os.remove(get_binary_file_path)
 
 def project_files(
     pid,
@@ -227,9 +226,9 @@ def project_files(
 
             time.sleep(3)
 
-            binary_csv_name = f'{pid}_binary.csv'
+            binary_csv_name = f'OE.csv'
             create_binary_file(delivery_date_path, binary_csv_name, oe_data)
-            create_ascii_file(delivery_date_path, binary_csv_name, f'OE.csv')
+            create_ascii_file(delivery_date_path, binary_csv_name)
             
             print(' 🔔 The OE data download is done')
         except :
@@ -243,9 +242,9 @@ def project_files(
 
             time.sleep(3)
             
-            binary_excel_name = f'{pid}_excel_binary.csv'
+            binary_excel_name = f'ALL.csv'
             create_binary_file(delivery_date_path, binary_excel_name, excel_data)
-            create_ascii_file(delivery_date_path, binary_excel_name, f'excel.csv')
+            create_ascii_file(delivery_date_path, binary_excel_name)
 
             print(' 🔔 The excel data download is done')
         except :
@@ -278,17 +277,17 @@ def project_files(
         try :
             csv_data = api.get(f'{path}/data', format='csv', cond='everything')
 
-            binary_csv_name = f'{pid}_binary.csv'
+            binary_csv_name = f'{pid}.csv'
             create_binary_file(data_path, binary_csv_name, csv_data)
-            create_ascii_file(data_path, binary_csv_name, f'{pid}.csv')
+            create_ascii_file(data_path, binary_csv_name)
 
             time.sleep(3)
 
             tab_data = api.get(f'{path}/data', format='tab', cond='everything')
 
-            binary_txt_name = f'{pid}_binary.txt'
+            binary_txt_name = f'{pid}.txt'
             create_binary_file(data_path, binary_txt_name, tab_data)
-            create_ascii_file(data_path, binary_txt_name, f'{pid}.txt')
+            create_ascii_file(data_path, binary_txt_name)
 
             time.sleep(3)
             print(' 🔔 Data BackUp is done')

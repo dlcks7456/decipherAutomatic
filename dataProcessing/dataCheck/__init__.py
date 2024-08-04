@@ -3131,12 +3131,11 @@ def colon_split(txt: str, num: int) -> Optional[str]:
     return None
 
 
-def download_decipher_data(pid: str, file_format: Literal['excel', 'spss', 'both'] = 'excel', folder: Optional[Union[str, List[str]]]=None, cond:Optional[str]=None):
+def download_decipher_data(pid: str, data_path:str , file_format: Literal['csv', 'spss', 'both'] = 'csv', folder: Optional[Union[str, List[str]]]=None, cond:Optional[str]=None):
     delivery_cond = 'qualified' if cond == None else f'qualified and {cond}'
-    data_path = os.getcwd()
 
-    if not file_format in ['excel','spss', 'both'] :
-        raise ValueError('The file_format must be either excel, spss or both')
+    if not file_format in ['csv','spss', 'both'] :
+        raise ValueError('The file_format must be either csv, spss or both')
     
     
     if folder is not None :
@@ -3152,12 +3151,12 @@ def download_decipher_data(pid: str, file_format: Literal['excel', 'spss', 'both
             os.makedirs(data_path)
         
         
-    if file_format in ['excel', 'both'] :
+    if file_format in ['csv', 'both'] :
         csv_data = get_decipher_data(pid, data_format='csv', cond=delivery_cond)
-        csv_binary = f'binary_{pid}.csv'
+        csv_binary = f'{pid}.csv'
         ensure_directory_exists(data_path)
         create_binary_file(data_path, csv_binary, csv_data)
-        create_ascii_file(data_path, csv_binary, f'{pid}.csv')
+        create_ascii_file(data_path, csv_binary)
     
     if file_format in ['spss', 'both'] :
         sav_data = get_decipher_data(pid, data_format='spss16', cond=delivery_cond)
@@ -3272,7 +3271,8 @@ def DecipherSetting(pid: str,
         return
 
     data_path = os.path.join(parent_path, 'data')
-    download_decipher_data(pid=pid, file_format='both', folder='data', cond=delivery_cond)
+    ensure_directory_exists(data_path)
+    download_decipher_data(pid=pid, data_path=parent_path, file_format='both', folder='data', cond=delivery_cond)
     #----
 
     # DATA CHECK SETTING
@@ -3430,9 +3430,9 @@ def DecipherSetting(pid: str,
 
         ipynb_cell = []
 
-        # set_file_name = 'pd.read_excel(file_name)' if mode == 'file' else 'pd.read_csv(file_name, low_memory=False)'
+        # set_file_name = 'pd.read_csv(file_name)' if mode == 'file' else 'pd.read_csv(file_name, low_memory=False)'
 
-        excel_meta = f'''DecipherDataProcessing(df, map_json=f"meta/map_{{pid}}.json")''' if meta else '''DecipherDataProcessing(df)'''
+        csv_meta = f'''DecipherDataProcessing(df, map_json=f"meta/map_{{pid}}.json")''' if meta else '''DecipherDataProcessing(df)'''
 
         default = f'''import pandas as pd
 import pyreadstat
@@ -3447,11 +3447,10 @@ pid = "{pid}"
 # df, meta = pyreadstat.read_sav(file_name)
 # df = DecipherDataProcessing(df)
 
-# Use Excel
-file_name = f"data/{{pid}}.xlsx"
-df = pd.read_excel(file_name, engine="openpyxl")
-df = {excel_meta}
-'''
+# Use CSV
+file_name = f"data/{{pid}}.csv"
+df = pd.read_csv(file_name, low_memory=False)
+df = {csv_meta}'''
         
         ipynb_cell.append(nbf.v4.new_code_cell(default))
         ipynb_cell.append(nbf.v4.new_code_cell("""# df.display_msg = 'error'"""))
@@ -3684,15 +3683,16 @@ banners = [
         default = f"""import pandas as pd
 import numpy as np
 from meta.variables_{pid} import *
+import os
 from decipherAutomatic.dataProcessing.dataCheck import DecipherDataProcessing, download_decipher_data
 # import pyreadstat
 
 pid = '{pid}'
-# download_decipher_data(pid=pid, file_format='excel', folder='data', cond='qualified')
+# download_decipher_data(pid=pid, data_path=os.getcwd(), file_format='csv', folder='data', cond='qualified')
 
-raw_df = pd.read_excel(f'data/{{pid}}.xlsx')
-df = DecipherDataProcessing(raw_df, map_json=f'meta/map_{{pid}}.json')
-"""
+raw_df = pd.read_csv(f'data/{{pid}}.csv')
+df = DecipherDataProcessing(raw_df, map_json=f'meta/map_{{pid}}.json')"""
+        
         ipynb_cell.append(nbf.v4.new_code_cell(default))
 
         banner_cell = f"""banner = [
