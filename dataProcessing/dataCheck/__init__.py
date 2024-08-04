@@ -1896,7 +1896,6 @@ class DataCheck(pd.DataFrame):
                 if columns_sort == 'desc' :
                     columns_meta = sorted(columns_meta, key=lambda d: list(d.keys())[0], reverse=True)
 
- 
             # Number Type
             if qtype in ['number', 'float'] :
                 if aggfunc is None :
@@ -1929,7 +1928,24 @@ class DataCheck(pd.DataFrame):
                 
                 index_meta = new_index_meta
             
+            ####  Opened Ended Data Only ####
+            if qtype in ['text'] :
+                text_index = index
+                if isinstance(index, str) :
+                    text_index = [index]
+                
+                if isinstance(columns, str) :
+                    result = wordcloud_table(df, 
+                                             text_index, 
+                                             columns)
+                if not result :
+                    return 
+                
+                return result
+            #### ======================= ####
 
+
+            ####  Closed Ended Data Only ####
             # Add top and bottom summaries if needed
             if (qtype == 'rating') and (not index_meta) and (score is None) :
                 raise ValueError("If qtype is 'rating', score or index_meta must be provided.")
@@ -2060,9 +2076,6 @@ class DataCheck(pd.DataFrame):
                     
                     result = pd.concat([result, calc_result])
 
-            result = CrossTabs(result)
-            result.attrs['type'] = qtype
-
             
             if not num_qtype_chk :
                 index_order = [total_label] + [i for i in result.index.to_list() if not i == total_label]
@@ -2109,7 +2122,12 @@ class DataCheck(pd.DataFrame):
                 result.index = pd.MultiIndex.from_tuples([('' if group_name is None else group_name, i) for i in result.index])
                 result.index.names = pd.Index(['/'.join(varable_text), base_desc])
 
+
+            result = CrossTabs(result)
+            result.attrs['type'] = qtype
+
             return result
+            #### ======================= ####
 
     def netting(self, banner_list: List[Union[Tuple, List]]):
         # [ ('banner column name', 'banner title', banner condition) ]

@@ -8,7 +8,7 @@ import os
 import openpyxl
 import re
 import nbformat as nbf
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict, defaultdict, Counter
 import json
 from decipher.beacon import api
 import time
@@ -17,13 +17,17 @@ from decipherAutomatic.getFiles import *
 from decipherAutomatic.utils import *
 from pandas.io.formats import excel
 import zipfile
+import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from langchain.chat_models import ChatOllama
 from langchain_openai import ChatOpenAI
 from langchain_experimental.llms.ollama_functions import OllamaFunctions
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.schema.runnable import RunnablePassthrough
-
+from wordcloud import WordCloud
+import nltk
+from nltk.corpus import stopwords
+from konlpy.tag import Okt
 
 def signle_total(data, base, total_label='Total') :
     if len(data) == 0 :
@@ -380,6 +384,139 @@ def rating_netting(rating_crosstab_result,
         result = result.astype(int)
     
     return result
+
+def preprocess_text(text, language='korean'):
+
+    """
+    텍스트를 전처리하는 함수
+    - 특수문자 제거
+    - 불용어 제거
+    """
+    # 특수문자 제거
+    
+    if language == 'korean':
+        # 한글 불용어 리스트
+        korean_stopwords = set([
+    '의', '가', '이', '은', '는', '들', '을', '를', '에', '와', '과', 
+    '한', '하다', '있다', '되다', '수', '하다', '되다', '않다', '그', 
+    '이다', '다', '에서', '와', '또한', '더', '그것', '그리고', '하지만', 
+    '그러나', '어떤', '때문에', '대해', '것', '같다', '때문', '위해', 
+    '무엇', '이것', '저것', '해서', '더', '또', '이것', '저것', '모두', 
+    '아니', '오직', '대해', '후', '말', '만', '매우', '곧', '여기', '바로'
+])
+
+        # 형태소 분석기 초기화
+        okt = Okt()
+        # 불용어 제거 (한글)
+        words = okt.morphs(text)
+        filtered_words = [word for word in words if word not in korean_stopwords]
+    else:
+        text = re.sub(r'[^a-zA-Z\s]', '', text)
+        # 형태소 분석 및 불용어 제거 (영어)
+        # NLTK의 불용어 데이터를 다운로드
+        nltk.download('stopwords', quiet=True)
+        stop_words = set(stopwords.words('english'))
+        words = text.split()
+        filtered_words = [word for word in words if word.lower() not in stop_words]
+    
+    return ' '.join(filtered_words)
+
+def cloude_color_func(word, font_size, position, orientation, random_state=None, **kwargs):
+    """
+    빈도에 따라 색상이 진해지도록 설정하는 함수
+    """
+    # 빈도에 따라 색상을 조정
+    base_color = 0x2d6df6
+    r = (base_color >> 16) & 255
+    g = (base_color >> 8) & 255
+    b = base_color & 255
+    
+    # 폰트 사이즈에 따라 색상의 진하기를 조절
+    max_font_size  = 200
+    alpha = min(255, int(font_size / max_font_size * 255))
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
+def create_wordcloud(data, font_path='malgun.ttf', image_path=None, width=800, height=500):
+    """
+    주어진 데이터프레임의 특정 컬럼을 기준으로 워드클라우드를 생성하고 저장하는 함수
+    
+    Parameters:
+    dataframe (pd.DataFrame): 워드클라우드를 생성할 데이터프레임
+    column_name (str): 워드클라우드를 생성할 컬럼명
+    font_path (str): 한글이 가능한 폰트 경로, 기본값은 'malgun.ttf'
+    image_path (str): 이미지 저장 경로, 지정되지 않으면 저장하지 않음
+    
+    Returns:
+    WordCloud: 생성된 워드클라우드 객체
+    """
+    # 데이터프레임에서 해당 컬럼의 데이터 추출
+    text = ' '.join(data.astype(str).tolist())
+    text = preprocess_text(text)
+
+    # 워드클라우드 생성
+    wordcloud = WordCloud(
+            font_path=font_path, 
+            background_color='white', 
+            width=width, 
+            height=height, 
+            color_func=cloude_color_func
+        ).generate(text)
+    
+    # 워드클라우드 이미지 저장
+    if image_path:
+        plt.figure(figsize=(10, 8))
+        plt.imshow(wordcloud, interpolation='bilinear')
+        plt.axis('off')
+        plt.savefig(image_path, format='png')
+
+    return wordcloud
+
+
+def show_wordcloud(wordcloud, title=None):
+    if title is not None :
+        display(HTML(f"""<div style="font-size: 0.8rem; padding: 7px; max-width: 600px; font-style: italic; margin-bottom: 7px;">
+{title}
+</div>"""))
+    plt.figure(figsize=(10, 8))
+    plt.imshow(wordcloud, interpolation='bilinear')
+    plt.axis('off')
+    plt.show()
+
+
+def wordcloud_table(df, 
+                    index,
+                    columns, 
+                    font_path='malgun.ttf', 
+                    image_path=None, 
+                    width=800, 
+                    height=500) :
+    
+    if not isinstance(columns, str) :
+        raise ValueError("columns must be a string")
+
+    base_values = df[columns].value_counts().index.tolist()
+    result_list = []
+
+    for idx in index :
+        for base in base_values :
+            filt_df = df[df[columns]==base][idx]
+            result = create_wordcloud(filt_df, 
+                                      font_path=font_path, 
+                                      image_path=image_path, 
+                                      width=width, 
+                                      height=height)
+            result_list.append((base, result))
+    
+    return result_list
+
+class WorldCloudHandler:
+    def __init__(self, cloud_list):
+        self.cloud_list = cloud_list
+    
+    def show(self) :
+        for cloud in self.cloud_list :
+            show_wordcloud(cloud)
 
 
 
