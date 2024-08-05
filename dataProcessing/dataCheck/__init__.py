@@ -24,6 +24,7 @@ import zipfile
 from matplotlib.colors import to_hex
 from matplotlib.colors import LinearSegmentedColormap
 from pprint import pprint
+import tempfile
 
 VarWithHeader = Tuple[str, Union[str, List[str]]]
 ColumnsWithHeader = List[VarWithHeader]
@@ -1750,6 +1751,185 @@ class DataCheck(pd.DataFrame):
 
         return return_title
 
+    def wordcloud(self, index: str,
+                        columns: Optional[Union[str, List[str]]] = None,
+                        cond: Optional[pd.Series] = None,
+                        font_path='malgun.ttf', 
+                        image_path='WordCloud',
+                        width=800, 
+                        height=500,
+                        base_desc: Optional[str] = None) :
+
+        if isinstance(index, list) :
+            raise ValueError('index must be string')
+
+        titles = self.attrs['title']
+        metas = self.attrs['meta']
+
+        qtype = 'text'
+        if isinstance(index, str) :
+            if index in titles.keys() :
+                qtype = titles[index]['type']
+
+
+        if not qtype in ['text'] :
+            raise ValueError('index type is not text')
+
+
+        cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
+        df = self[cond].copy()
+
+        filt_variables = []
+
+        if isinstance(columns, tuple) :
+            columns = self.ma_return(columns)
+            if not self.col_name_check(*columns) : return
+
+        # Table Header
+        varable_text = []
+        index_cond = None
+
+        varable_text.append(index)
+        index_cond = ~df[index].isna()
+
+        if isinstance(columns, list) :
+            varable_text.append(f'{columns[0]}-{columns[-1]}')
+        else :
+            if columns is not None :
+                varable_text.append(columns)
+
+        # Index
+        filt_variables.append(index)
+
+        # Columns
+        if isinstance(columns, list) :
+            filt_variables += columns
+        else :
+            if columns is not None :
+                filt_variables.append(columns)
+
+        filt_variables = list(set(filt_variables))
+
+        
+        df = df[index_cond][filt_variables].copy()
+        
+        sample_count = len(self)
+        all_count = len(df)
+        
+        if base_desc is None :
+            if sample_count == all_count :
+                base_desc = 'All Base'
+            else :
+                sample_ratio = round(all_count/sample_count, 2) * 100
+                base_desc = f'Not All Base ({sample_ratio:.0f}%)'
+        
+        #### Save Folder ####
+        if not os.path.exists(image_path) :
+            os.makedirs(image_path)
+
+        ####  Opened Ended Data Only ####
+        result = None
+
+        question_title = index
+        if index in titles.keys() :
+            question_title = titles[index]['title']
+
+        if columns is None :
+                result = wordcloud_table(df, 
+                                         index, 
+                                         font_path=font_path,
+                                         image_path=image_path,
+                                         width=width,
+                                         height=height)
+
+        else :
+            # by_columns = f'{index}'
+            wc_path = os.path.join(image_path, index)
+            if not os.path.exists(wc_path) :
+                os.makedirs(wc_path)
+
+            meta_wc = []
+            only_index_result = wordcloud_table(df, 
+                                                index, 
+                                                font_path=font_path,
+                                                image_path=wc_path,
+                                                width=width,
+                                                height=height)
+
+            meta_wc.append(('Total', only_index_result))
+
+            result = wordcloud_table(df, 
+                                     index, 
+                                     columns,
+                                     font_path=font_path,
+                                     image_path=wc_path,
+                                     width=width,
+                                     height=height)
+
+            if result :
+                for r in result :
+                    base, wc = r
+                    col_title = base
+                    if isinstance(columns, list) :
+                        if base in metas.keys() :
+                            col_title = metas[base]
+
+                    if isinstance(columns, str) :
+                        if columns in metas.keys() :
+                            col_meta = [list(m.values())[0] for m in metas[columns] if list(m.keys())[0] == str(base)]
+                            if col_meta :
+                                col_title = col_meta[0]
+                    
+                    meta_wc.append((col_title, wc))
+                
+                result = meta_wc
+        
+        
+        return WordCloudHandler(question_title, result, index, base_desc, sample_size=all_count)
+        #### ======================= ####
+
+    def banner_wordcloud(self, 
+                         index: str,
+                         columns: Optional[Union[str, List[str]]] = None,
+                         cond: Optional[pd.Series] = None,
+                         base_desc: Optional[str] = None,
+                         **options) :
+
+            if columns is None :
+                banner = self.attrs['banner']
+                if banner is None :
+                    raise ValueError("banner is not set")
+                else :
+                    columns = banner
+            
+            titles = self.attrs['title']
+            clouds = []
+
+            total_flag = True
+            for col_head, col in columns :
+                header = col_head
+                if col_head in titles.keys() :
+                    header = titles[col_head]['title']
+                
+                cloud_list = self.wordcloud(index, col, cond=cond, **options)
+                title = cloud_list.title
+                _list = cloud_list.cloud_list
+                sample_size = cloud_list.sample_size
+                if base_desc is None :
+                    base_desc = cloud_list.base_desc
+                if total_flag :
+                    total_flag = False
+                    clouds.append(('', WordCloudHandler('Total', _list[:1], index, base_desc, sample_size))) # Total
+                    clouds.append((header, WordCloudHandler(title, _list[1:], index, base_desc, sample_size)))
+                else :
+                    cloud_list = _list[1:]
+                    clouds.append((header, WordCloudHandler(title, cloud_list, index, base_desc, sample_size)))
+
+            cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
+            df = self[cond].copy()
+
+            return BannerWordCloud(clouds, index, base_desc, sample_size=len(df))
+
     def table(self, index: Union[str, List[str]],
                     columns: Optional[Union[str, List[str]]] = None,
                     cond: Optional[pd.Series] = None,
@@ -1928,22 +2108,6 @@ class DataCheck(pd.DataFrame):
                 
                 index_meta = new_index_meta
             
-            ####  Opened Ended Data Only ####
-            if qtype in ['text'] :
-                text_index = index
-                if isinstance(index, str) :
-                    text_index = [index]
-                
-                if isinstance(columns, str) :
-                    result = wordcloud_table(df, 
-                                             text_index, 
-                                             columns)
-                if not result :
-                    return 
-                
-                return result
-            #### ======================= ####
-
 
             ####  Closed Ended Data Only ####
             # Add top and bottom summaries if needed
@@ -2432,6 +2596,7 @@ class DataCheck(pd.DataFrame):
         
         table_name = table_id
         table_desc = None
+        proc_result = self.attrs['proc_result']
 
         if isinstance(table_id, tuple) :
             if len(table_id) != 2 :
@@ -2441,60 +2606,71 @@ class DataCheck(pd.DataFrame):
                 table_desc = table_id[1]
                 
 
-        if not isinstance(table, (pd.DataFrame, CrossTabs)) :
-            raise ValueError(f'table must be pd.DataFrame or CrossTabs')
-        
-        if not isinstance(table, CrossTabs) :
-            table = CrossTabs(table)
-        
-        proc_result = self.attrs['proc_result']
-        
-        if table_name in proc_result.keys() :
-            print(f'⚠️ result title already exists : {table_name}')
-        
-        chat_result = None
-        
-        table_type = table.attrs['type']
-        if ai :
-            chat_result = table.chat_ai(model=model, 
-                                        prompt=prompt, 
-                                        with_table=False,
-                                        lang=self.attrs['chat_lang'],
-                                        table_type=table_type,
-                                        sub_title=table_desc)
+        if isinstance(table, (WordCloudHandler, BannerWordCloud)) : 
+            # WordCloud Append
+            proc_result[table_name] = {
+                'desc': table_desc, 
+                'table': table,
+                'ai': None
+            }
 
-        proc_result[table_name] = {
-            'desc': table_desc, 
-            'table': table,
-            'ai': chat_result
-        }
-
-        table_html = None
-        if table_type in ['number', 'float', 'text'] :
-            table_html = table.to_html(escape=False, index=True, border=0, classes='table table-striped table-hover')
+            table.show(desc=table_desc)
+        
         else :
-            table_html = table.ratio(ratio_round=0, heatmap=heatmap).to_html()
+            # CE Table Append
+            if not isinstance(table, (pd.DataFrame, CrossTabs)) :
+                raise ValueError(f'table must be pd.DataFrame or CrossTabs')
+            
+            if not isinstance(table, CrossTabs) :
+                table = CrossTabs(table)
+            
+            
+            if table_name in proc_result.keys() :
+                print(f'⚠️ result title already exists : {table_name}')
+            
+            chat_result = None
+            
+            table_type = table.attrs['type']
+            if ai :
+                chat_result = table.chat_ai(model=model, 
+                                            prompt=prompt, 
+                                            with_table=False,
+                                            lang=self.attrs['chat_lang'],
+                                            table_type=table_type,
+                                            sub_title=table_desc)
 
-        table_desc_html = f"""<div style="font-size: 0.8rem; padding: 7px; max-width: 600px; font-style: italic; margin-bottom: 7px;">
-                {table_desc}
-        </div>"""
-        
-        table_analysis_html = f"""<div style="font-weight: bold; font-size: 0.8rem; padding: 7px; max-width: 700px; margin-bottom: 7px;border: 1px solid #2d6df6; border-radius: 5px;">
-                {chat_result}
-        </div>
-        """
+            proc_result[table_name] = {
+                'desc': table_desc, 
+                'table': table,
+                'ai': chat_result
+            }
 
-        table_id_html = f"""
-            <div style="width:fit-content;padding: 7px; font-size:1rem;font-weight:bold; background-color: #2d6df6; border-radius: 5px; color:white; margin-bottom: 7px;">
-                {table_name}
+            table_html = None
+            if table_type in ['number', 'float', 'text'] :
+                table_html = table.to_html(escape=False, index=True, border=0, classes='table table-striped table-hover')
+            else :
+                table_html = table.ratio(ratio_round=0, heatmap=heatmap).to_html()
+
+            table_desc_html = f"""<div style="font-size: 0.8rem; padding: 7px; max-width: 600px; font-style: italic; margin-bottom: 7px;">
+                    {table_desc}
+            </div>"""
+            
+            table_analysis_html = f"""<div style="font-weight: bold; font-size: 0.8rem; padding: 7px; max-width: 700px; margin-bottom: 7px;border: 1px solid #2d6df6; border-radius: 5px;">
+                    {chat_result}
             </div>
-            {table_desc_html if table_desc is not None else ''}
-            {table_analysis_html if chat_result is not None else ''}
-            <div>
-                {table_html}
-            </div>
-        """
-        display(HTML(table_id_html))
+            """
+
+            table_id_html = f"""
+                <div style="width:fit-content;padding: 7px; font-size:1rem;font-weight:bold; background-color: #2d6df6; border-radius: 5px; color:white; margin-bottom: 7px;">
+                    {table_name}
+                </div>
+                {table_desc_html if table_desc is not None else ''}
+                {table_analysis_html if chat_result is not None else ''}
+                <div>
+                    {table_html}
+                </div>
+            """
+            display(HTML(table_id_html))
     
     
     def proc_export_excel(self, file_name: str, heatmap: bool = False) :
@@ -2558,18 +2734,71 @@ class DataCheck(pd.DataFrame):
             'bottom': 2,
             'bg_color': '#DCE6F1',
         })
+
+        image_cell = workbook.add_format({
+            'align': 'center',
+            'font_size': 9,
+            'bold': True,
+            'border': 1,
+            'top': 2,
+            'bottom': 2,
+            'left': 2,
+            'right': 2,
+        })
+
+        image_var_cell = workbook.add_format({
+            'align': 'center',
+            'font_size': 9,
+            'bold': True,
+            'border': 1,
+            'top': 2,
+            'bottom': 2,
+            'bg_color': '#DCE6F1',
+            'valign': 'top',
+        })
+
+        zero_float_format = workbook.add_format({
+            'num_format': '0',
+            'align': 'center',
+            'border': 1,
+            'font_size': 9,
+        })
+
+        float_format = workbook.add_format({
+            'num_format': '0.00',
+            'align': 'center',
+            'border': 1,
+            'font_size': 9,
+        })
+
+        default_format = workbook.add_format({
+            'align': 'center',
+            'border': 1,
+            'font_size': 9,
+        })
         
+        total_format = workbook.add_format({
+            'num_format': '0',
+            'align': 'center',
+            'border': 1,
+            'font_size': 9,
+            'bold': True,
+        })
+
 
         # 데이터프레임을 저장할 시트 추가
         data_sheet = workbook.add_worksheet('Table')
+        wc_sheet = workbook.add_worksheet('WordCloud')
 
         # B열 틀고정
         data_sheet.freeze_panes(0, 2)
+        wc_sheet.freeze_panes(0, 2)
 
         # 목차 시트에 하이퍼링크 추가
         row = 1
         col = 0
         data_start_row = 2
+        oe_start_row = 2
 
 
         index_sheet.write(0, 0, 'Table Index', head_format)
@@ -2593,174 +2822,241 @@ class DataCheck(pd.DataFrame):
                 desc = table_attrs['desc']
                 ai = table_attrs['ai']
 
-                new_group_name = {
-                    'index': '',
-                    'columns': key
-                }
-                for item, gr_name in new_group_name.items() :
-                    base = getattr(result, item)
-                    if not isinstance(base, pd.MultiIndex) :
-                        setattr(result, item, pd.MultiIndex.from_tuples([('' if b == total_label else gr_name, b) for b in base]))
+                if isinstance(result, WordCloudHandler) :
+                    # WordCloud
+                    index_sheet.write_url(row, col, f'internal:WordCloud!A{oe_start_row+1}', string=key, cell_format=index_format)
+                    index_sheet.write(row, col + 1, desc, desc_format)
+                    base_desc = result.base_desc
+                    qid_name = result.variable
+                    sample_size = result.sample_size
 
-                    else :
-                        group_lenth = base.nlevels
-                        if group_lenth > 2 :
-                            setattr(result, item, pd.MultiIndex.from_tuples([('' if b[-1]==total_label else b[-2], b[-1]) for b in base]))
+                    index_sheet.write(row, col + 2, qid_name, qid_format)
+                    index_sheet.write(row, col + 3, base_desc, qid_format)
 
-                index_header = None
-                if all(i is None for i in result.index.names) :
-                    if total_label in result.index.get_level_values(-1) and total_label in result.columns.get_level_values(-1) :
-                        all_count = result.loc[('', total_label), ('', total_label)]
-                        sample_count = len(self)
-                        if sample_count == all_count :
-                            index_header = 'All Base'
-                        else :
-                            sample_ratio = round(all_count/sample_count, 2) * 100
-                            index_header = f'Not All Base ({sample_ratio:.0f}%)'
+                    row += 1
+                    cl_col = 2
+                    cloud_list = result.cloud_list
+
+                    wc_sheet.merge_range(oe_start_row-1, col, oe_start_row-1, col+1, key, table_head)
+                    wc_sheet.merge_range(oe_start_row, col, oe_start_row, col+1, desc, table_head)
+                    
+                    if sample_size is not None :
+                        qid_name = f'{qid_name} ({sample_size}\'s)'
+                    wc_sheet.merge_range(oe_start_row+1, col, oe_start_row+9, col+1, qid_name, image_var_cell)
+
+                    if isinstance(cloud_list, WordCloud) :
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmpfile:
+                            cloud_list.to_file(tmpfile.name)
+                            image_path = tmpfile.name
                         
-                        result.index.names = pd.Index(['', index_header])
-
-                index_sheet.write_url(row, col, f'internal:Table!A{data_start_row+1}', string=key, cell_format=index_format)
-                index_sheet.write(row, col + 1, desc, desc_format)
-
-                base_desc = None
-                qid_name = None
-
-                if isinstance(result, CrossTabs) :
-                    qid_name = result.index.names[0]
-                    base_desc = result.index.names[-1]
+                        wc_sheet.insert_image(oe_start_row, cl_col, image_path, {'x_scale': 0.4, 'y_scale': 0.4})
+                        merge_row = oe_start_row-1
+                        wc_sheet.merge_range(merge_row, cl_col, merge_row, cl_col+4, 'Total', table_head)
                     
-                    resurt_type = result.attrs['type']
+                    if isinstance(cloud_list, list) :
+                        for cl in cloud_list :
+                            head = cl[0]
+                            wc = cl[1]
+
+                            with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmpfile:
+                                wc.to_file(tmpfile.name)
+                                image_path = tmpfile.name
+
+                            wc_sheet.insert_image(oe_start_row, cl_col, image_path, {'x_scale': 0.4, 'y_scale': 0.4})
+
+                            merge_row = oe_start_row-1
+                            wc_sheet.merge_range(merge_row, cl_col, merge_row, cl_col+4, head, table_head)
+                            cl_col += 5
+                            
+                    oe_start_row += 14
+
+                elif isinstance(result, BannerWordCloud) :
+                    # WordCloud
+                    index_sheet.write_url(row, col, f'internal:WordCloud!A{oe_start_row+1}', string=key, cell_format=index_format)
+                    index_sheet.write(row, col + 1, desc, desc_format)
+                    base_desc = result.base_desc
+                    qid_name = result.variable
+                    sample_size = result.sample_size
+
+                    index_sheet.write(row, col + 2, qid_name, qid_format)
+                    index_sheet.write(row, col + 3, base_desc, qid_format)
                     
-                    if isinstance(resurt_type, list) :
-                        if all(not x in ['number', 'float'] for x in resurt_type) :
+                    group_cloud_list = result.cloud_list
+
+                    row += 1
+                    cl_col = 2
+
+                    wc_sheet.merge_range(oe_start_row+1, col, oe_start_row+1, col+1, key, table_head)
+                    wc_sheet.merge_range(oe_start_row+2, col, oe_start_row+2, col+1, desc, table_head)
+                    
+                    if sample_size is not None :
+                        qid_name = f'{qid_name} ({sample_size}\'s)'
+
+                    wc_sheet.merge_range(oe_start_row+3, col, oe_start_row+12, col+1, qid_name, image_var_cell)
+
+                    for gcl in group_cloud_list :
+                        head = gcl[0]
+                        gwc = gcl[1]
+                        group_start_col = cl_col
+                        group_cl = cl_col
+                        for cl in gwc.cloud_list :
+                            col_name = cl[0]
+                            wc = cl[1]
+                            with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmpfile:
+                                wc.to_file(tmpfile.name)
+                                image_path = tmpfile.name
+
+                            wc_sheet.insert_image(oe_start_row+3, cl_col, image_path, {'x_scale': 0.4, 'y_scale': 0.4})
+
+                            wc_sheet.merge_range(oe_start_row+2, cl_col, oe_start_row+2, cl_col+4, col_name, table_head)
+                            wc_sheet.merge_range(oe_start_row+3, cl_col, oe_start_row+12, cl_col+4, None, image_cell)
+                            cl_col += 5
+                            group_cl += 4
+                        
+                        wc_sheet.merge_range(oe_start_row+1, group_start_col, oe_start_row+1, group_cl+(len(gwc.cloud_list)-1), head, table_head)
+
+                    oe_start_row += 16
+                    
+                else :
+                    # CE TABLE
+                    new_group_name = {
+                        'index': '',
+                        'columns': key
+                    }
+                    for item, gr_name in new_group_name.items() :
+                        base = getattr(result, item)
+                        if not isinstance(base, pd.MultiIndex) :
+                            setattr(result, item, pd.MultiIndex.from_tuples([('' if b == total_label else gr_name, b) for b in base]))
+
+                        else :
+                            group_lenth = base.nlevels
+                            if group_lenth > 2 :
+                                setattr(result, item, pd.MultiIndex.from_tuples([('' if b[-1]==total_label else b[-2], b[-1]) for b in base]))
+
+                    index_header = None
+                    if all(i is None for i in result.index.names) :
+                        if total_label in result.index.get_level_values(-1) and total_label in result.columns.get_level_values(-1) :
+                            all_count = result.loc[('', total_label), ('', total_label)]
+                            sample_count = len(self)
+                            if sample_count == all_count :
+                                index_header = 'All Base'
+                            else :
+                                sample_ratio = round(all_count/sample_count, 2) * 100
+                                index_header = f'Not All Base ({sample_ratio:.0f}%)'
+                            
+                            result.index.names = pd.Index(['', index_header])
+
+                    index_sheet.write_url(row, col, f'internal:Table!A{data_start_row+1}', string=key, cell_format=index_format)
+                    index_sheet.write(row, col + 1, desc, desc_format)
+
+                    base_desc = None
+                    qid_name = None
+
+                    if isinstance(result, CrossTabs) :
+                        qid_name = result.index.names[0]
+                        base_desc = result.index.names[-1]
+                        
+                        resurt_type = result.attrs['type']
+                        
+                        if isinstance(resurt_type, list) :
+                            if all(not x in ['number', 'float'] for x in resurt_type) :
+                                result = result.ratio(ratio_round=None, heatmap=False)
+                            
+                        elif not resurt_type in ['number', 'float'] :
                             result = result.ratio(ratio_round=None, heatmap=False)
                         
-                    elif not resurt_type in ['number', 'float'] :
-                        result = result.ratio(ratio_round=None, heatmap=False)
+
+                    index_sheet.write(row, col + 2, qid_name, qid_format)
+                    index_sheet.write(row, col + 3, base_desc, qid_format)
+
+                    row += 1
+
+                    result.to_excel(writer, 
+                                    sheet_name='Table', 
+                                    startrow=data_start_row, 
+                                    startcol=0, engine='openpyxl')
+
+                    data_sheet.merge_range(data_start_row, col, data_start_row, col+1, key, table_head)
+                    data_sheet.merge_range(data_start_row+1, col, data_start_row+1, col+1, desc, table_head)
                     
-
-                index_sheet.write(row, col + 2, qid_name, qid_format)
-                index_sheet.write(row, col + 3, base_desc, qid_format)
-
-                row += 1
-
-                result.to_excel(writer, 
-                                sheet_name='Table', 
-                                startrow=data_start_row, 
-                                startcol=0, engine='openpyxl')
-
-                data_sheet.merge_range(data_start_row, col, data_start_row, col+1, key, table_head)
-                data_sheet.merge_range(data_start_row+1, col, data_start_row+1, col+1, desc, table_head)
-                
-                
-                zero_float_format = workbook.add_format({
-                    'num_format': '0',
-                    'align': 'center',
-                    'border': 1,
-                    'font_size': 9,
-                })
-
-                float_format = workbook.add_format({
-                    'num_format': '0.00',
-                    'align': 'center',
-                    'border': 1,
-                    'font_size': 9,
-                })
-
-                default_format = workbook.add_format({
-                    'align': 'center',
-                    'border': 1,
-                    'font_size': 9,
-                })
-                
-                total_format = workbook.add_format({
-                    'num_format': '0',
-                    'align': 'center',
-                    'border': 1,
-                    'font_size': 9,
-                    'bold': True,
-                })
-
-                head_row = data_start_row + 1
-                blank_row = data_start_row + 2
-                format_start = data_start_row+3
+                    head_row = data_start_row + 1
+                    blank_row = data_start_row + 2
+                    format_start = data_start_row+3
 
 
-
-                set_group = []
-                for col_idx, col_name in enumerate(result.columns) :
-                    set_col = col_idx+2
-                    group_col_name = col_name[0]
-                    set_col_name = col_name[-1]
-                    if col_idx == 0 and set_col_name == 'Total' :
-                        data_sheet.write(data_start_row, set_col, None, table_head)
-                        data_sheet.write(head_row, set_col, None, table_head)
-                        data_sheet.write(blank_row, set_col, set_col_name, table_head)
-                    else :
-                        data_sheet.write(blank_row, set_col, set_col_name, table_head)
-                        
-                        if not group_col_name in set_group :
-                            if group_col_name != '' and group_col_name is not None :
-                                set_group.append(group_col_name)
-                                merge_col_count = len([x for x in result.columns if x[0] == group_col_name]) - 1
-                                end_col = set_col+merge_col_count
-                                for m in range(set_col, end_col+1) :
-                                    data_sheet.write(data_start_row, m, f'#{len(set_group)}', table_head)
-                                
-                                if merge_col_count > 0 :
-                                    data_sheet.merge_range(head_row, set_col, head_row, set_col+merge_col_count, group_col_name, table_head)
-                                else :
-                                    data_sheet.write(head_row, set_col, group_col_name, table_head)
-                
-                if len(set_group) == 1 :
-                    data_sheet.write(data_start_row, 2, None, table_head)
-
-                last_row = None
-                for df_row, i in enumerate(range(format_start, format_start+len(result))) :
-                    for df_col, j in enumerate(range(2, len(result.columns)+2)) :
-                        cell_value = result.iloc[df_row, df_col]
-                        if pd.isna(cell_value) :
-                            cell_value = '-'
-
-                        df_row_name = result.index[df_row]
-
-                        if isinstance(result.index, pd.MultiIndex) :
-                            df_row_name = result.index[df_row][-1]
-
-                        if df_row_name == 'Total' :
-                            data_sheet.write(i, j, cell_value, total_format)
+                    set_group = []
+                    for col_idx, col_name in enumerate(result.columns) :
+                        set_col = col_idx+2
+                        group_col_name = col_name[0]
+                        set_col_name = col_name[-1]
+                        if col_idx == 0 and set_col_name == 'Total' :
+                            data_sheet.write(data_start_row, set_col, None, table_head)
+                            data_sheet.write(head_row, set_col, None, table_head)
+                            data_sheet.write(blank_row, set_col, set_col_name, table_head)
                         else :
+                            data_sheet.write(blank_row, set_col, set_col_name, table_head)
+                            
+                            if not group_col_name in set_group :
+                                if group_col_name != '' and group_col_name is not None :
+                                    set_group.append(group_col_name)
+                                    merge_col_count = len([x for x in result.columns if x[0] == group_col_name]) - 1
+                                    end_col = set_col+merge_col_count
+                                    for m in range(set_col, end_col+1) :
+                                        data_sheet.write(data_start_row, m, f'#{len(set_group)}', table_head)
+                                    
+                                    if merge_col_count > 0 :
+                                        data_sheet.merge_range(head_row, set_col, head_row, set_col+merge_col_count, group_col_name, table_head)
+                                    else :
+                                        data_sheet.write(head_row, set_col, group_col_name, table_head)
+                    
+                    if len(set_group) == 1 :
+                        data_sheet.write(data_start_row, 2, None, table_head)
+
+                    last_row = None
+                    for df_row, i in enumerate(range(format_start, format_start+len(result))) :
+                        for df_col, j in enumerate(range(2, len(result.columns)+2)) :
+                            cell_value = result.iloc[df_row, df_col]
                             if pd.isna(cell_value) :
-                                data_sheet.write(i, j, cell_value, default_format)
+                                cell_value = '-'
+
+                            df_row_name = result.index[df_row]
+
+                            if isinstance(result.index, pd.MultiIndex) :
+                                df_row_name = result.index[df_row][-1]
+
+                            if df_row_name == 'Total' :
+                                data_sheet.write(i, j, cell_value, total_format)
                             else :
-                                data_sheet.write(i, j, cell_value, zero_float_format)
-                                if heatmap :
-                                    if cell_value != '-' :
-                                        bg_color = calculate_bg_color(float(cell_value))
-                                        data_sheet.write(i, j, cell_value, workbook.add_format({
-                                            'num_format': '0',
-                                            'align': 'center',
-                                            'border': 1,
-                                            'font_size': 9,
-                                            'bg_color': bg_color
-                                        }))
-                                if df_row_name in ['mean', 'min', 'max', 'std', 'median', '100 point conversion'] :
-                                    data_sheet.write(i, j, cell_value, float_format)
+                                if pd.isna(cell_value) :
+                                    data_sheet.write(i, j, cell_value, default_format)
+                                else :
+                                    data_sheet.write(i, j, cell_value, zero_float_format)
+                                    if heatmap :
+                                        if cell_value != '-' :
+                                            bg_color = calculate_bg_color(float(cell_value))
+                                            data_sheet.write(i, j, cell_value, workbook.add_format({
+                                                'num_format': '0',
+                                                'align': 'center',
+                                                'border': 1,
+                                                'font_size': 9,
+                                                'bg_color': bg_color
+                                            }))
+                                    if df_row_name in ['mean', 'min', 'max', 'std', 'median', '100 point conversion'] :
+                                        data_sheet.write(i, j, cell_value, float_format)
 
-                last_row = i + 1
+                    last_row = i + 1
 
-                if ai is not None :
-                    ai_result_format = workbook.add_format({
-                        'font_size': 9,
-                        'text_wrap': True,  # 자동 줄바꿈 설정
-                        'valign': 'top',
-                        'align': 'left',
-                    })
-                    data_sheet.merge_range(last_row, col+2, last_row, col+12, ai, ai_result_format)
-                    data_sheet.set_row(last_row, 150)
+                    if ai is not None :
+                        ai_result_format = workbook.add_format({
+                            'font_size': 9,
+                            'text_wrap': True,  # 자동 줄바꿈 설정
+                            'valign': 'top',
+                            'align': 'left',
+                        })
+                        data_sheet.merge_range(last_row, col+2, last_row, col+12, ai, ai_result_format)
+                        data_sheet.set_row(last_row, 150)
 
-                data_start_row += len(result) + 6  # 3행 간격
+                    data_start_row += len(result) + 6  # 3행 간격
             
             except :
                 print(f"⚠️ Error in {key}")

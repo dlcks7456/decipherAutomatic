@@ -394,30 +394,36 @@ def preprocess_text(text, language='korean'):
     """
     # 특수문자 제거
     
-    if language == 'korean':
-        # 한글 불용어 리스트
-        korean_stopwords = set([
-    '의', '가', '이', '은', '는', '들', '을', '를', '에', '와', '과', 
-    '한', '하다', '있다', '되다', '수', '하다', '되다', '않다', '그', 
-    '이다', '다', '에서', '와', '또한', '더', '그것', '그리고', '하지만', 
-    '그러나', '어떤', '때문에', '대해', '것', '같다', '때문', '위해', 
-    '무엇', '이것', '저것', '해서', '더', '또', '이것', '저것', '모두', 
-    '아니', '오직', '대해', '후', '말', '만', '매우', '곧', '여기', '바로'
-])
+    filtered_words = text
+    try :
+        if language == 'korean':
+            # 한글 불용어 리스트
+            korean_stopwords = set([
+        '의', '가', '이', '은', '는', '들', '을', '를', '에', '와', '과', 
+        '한', '하다', '있다', '되다', '수', '하다', '되다', '않다', '그', 
+        '이다', '다', '에서', '와', '또한', '더', '그것', '그리고', '하지만', 
+        '그러나', '어떤', '때문에', '대해', '것', '같다', '때문', '위해', 
+        '무엇', '이것', '저것', '해서', '더', '또', '이것', '저것', '모두', 
+        '아니', '오직', '대해', '후', '말', '만', '매우', '곧', '여기', '바로'
+        ])
 
-        # 형태소 분석기 초기화
-        okt = Okt()
-        # 불용어 제거 (한글)
-        words = okt.morphs(text)
-        filtered_words = [word for word in words if word not in korean_stopwords]
-    else:
-        text = re.sub(r'[^a-zA-Z\s]', '', text)
-        # 형태소 분석 및 불용어 제거 (영어)
-        # NLTK의 불용어 데이터를 다운로드
-        nltk.download('stopwords', quiet=True)
-        stop_words = set(stopwords.words('english'))
-        words = text.split()
-        filtered_words = [word for word in words if word.lower() not in stop_words]
+            # 형태소 분석기 초기화
+            okt = Okt()
+            # 불용어 제거 (한글)
+            words = okt.morphs(text)
+            filtered_words = [word for word in words if word not in korean_stopwords]
+        else:
+            text = re.sub(r'[^a-zA-Z\s]', '', text)
+            # 형태소 분석 및 불용어 제거 (영어)
+            # NLTK의 불용어 데이터를 다운로드
+            nltk.download('stopwords', quiet=True)
+            stop_words = set(stopwords.words('english'))
+            words = text.split()
+            filtered_words = [word for word in words if word.lower() not in stop_words]
+    
+    except Exception as e:
+        # print(f"Error: {e}")
+        return text
     
     return ' '.join(filtered_words)
 
@@ -437,7 +443,7 @@ def cloude_color_func(word, font_size, position, orientation, random_state=None,
     return f"rgba({r}, {g}, {b}, {alpha})"
 
 
-def create_wordcloud(data, font_path='malgun.ttf', image_path=None, width=800, height=500):
+def create_wordcloud(data, font_path='malgun.ttf', file_name=None, image_path=None, width=800, height=500):
     """
     주어진 데이터프레임의 특정 컬럼을 기준으로 워드클라우드를 생성하고 저장하는 함수
     
@@ -451,7 +457,7 @@ def create_wordcloud(data, font_path='malgun.ttf', image_path=None, width=800, h
     WordCloud: 생성된 워드클라우드 객체
     """
     # 데이터프레임에서 해당 컬럼의 데이터 추출
-    text = ' '.join(data.astype(str).tolist())
+    text = ' '.join(list(data.astype(str).values))
     text = preprocess_text(text)
 
     # 워드클라우드 생성
@@ -464,59 +470,114 @@ def create_wordcloud(data, font_path='malgun.ttf', image_path=None, width=800, h
         ).generate(text)
     
     # 워드클라우드 이미지 저장
-    if image_path:
-        plt.figure(figsize=(10, 8))
-        plt.imshow(wordcloud, interpolation='bilinear')
-        plt.axis('off')
-        plt.savefig(image_path, format='png')
+    if image_path and file_name :
+        image_path = os.path.join(image_path, file_name)
+        wordcloud.to_file(image_path) 
 
     return wordcloud
 
 
-def show_wordcloud(wordcloud, title=None):
-    if title is not None :
-        display(HTML(f"""<div style="font-size: 0.8rem; padding: 7px; max-width: 600px; font-style: italic; margin-bottom: 7px;">
-{title}
-</div>"""))
-    plt.figure(figsize=(10, 8))
-    plt.imshow(wordcloud, interpolation='bilinear')
+def show_wordcloud(wordcloud, sub_title=None):    
+    plt.figure(figsize=(10, 5))
+    plt.imshow(wordcloud, interpolation='bilinear')    
     plt.axis('off')
+
+    if sub_title is not None :
+        plt.suptitle(sub_title, fontsize=14)
+
     plt.show()
 
 
 def wordcloud_table(df, 
                     index,
-                    columns, 
+                    columns=None,
                     font_path='malgun.ttf', 
                     image_path=None, 
                     width=800, 
                     height=500) :
     
-    if not isinstance(columns, str) :
-        raise ValueError("columns must be a string")
+    if columns is not None and not isinstance(columns, (str, list)) :
+        raise ValueError('columns must be str or list')
 
-    base_values = df[columns].value_counts().index.tolist()
+    if columns is None :
+        result = create_wordcloud(df[index],
+                                  font_path=font_path, 
+                                  file_name=f'{index}.png',
+                                  image_path=image_path, 
+                                  width=width, 
+                                  height=height)
+        
+        return result
+
+    # 2 Dimensional
     result_list = []
+    if isinstance(columns, str) :
+        base_values = df[columns].value_counts().sort_index().index.tolist()
 
-    for idx in index :
         for base in base_values :
-            filt_df = df[df[columns]==base][idx]
+            filt_df = df[df[columns]==base][index]
+            if len(filt_df) == 0 :
+                continue
             result = create_wordcloud(filt_df, 
-                                      font_path=font_path, 
-                                      image_path=image_path, 
-                                      width=width, 
-                                      height=height)
+                                        font_path=font_path, 
+                                        file_name=f'{columns}_Answer code {base}.png',
+                                        image_path=image_path, 
+                                        width=width, 
+                                        height=height)
             result_list.append((base, result))
+    
+    if isinstance(columns, list) :
+        for base in columns :
+            filt_df = df[(~df[base].isna()) & (df[base]!=0)][index]
+            if len(filt_df) == 0 :
+                continue
+            result = create_wordcloud(filt_df, 
+                                    font_path=font_path, 
+                                    file_name=f'{base}_Answer.png',
+                                    image_path=image_path, 
+                                    width=width, 
+                                    height=height)
+            
+            result_list.append((base, result))
+
     
     return result_list
 
-class WorldCloudHandler:
-    def __init__(self, cloud_list):
+class WordCloudHandler :
+    def __init__(self, question_title, cloud_list, variable=None, base_desc=None, sample_size=None) :
+        self.title = question_title
         self.cloud_list = cloud_list
+        self.variable = variable
+        self.base_desc = base_desc
+        self.sample_size = sample_size
     
-    def show(self) :
-        for cloud in self.cloud_list :
+    def show(self, desc=None) :
+        if desc is None :
+            desc = self.title
+        
+        if desc is not None :
+            display(HTML(f"""<div style="font-size: 1rem; font-weight:bold;padding: 7px; max-width: 600px; font-style: italic; margin-bottom: 7px;">
+                        {desc}
+            </div>"""))
+        
+        if isinstance(self.cloud_list, WordCloud) :
+            cloud = self.cloud_list
             show_wordcloud(cloud)
+        
+        if isinstance(self.cloud_list, list) :
+            for cloud in self.cloud_list :
+                show_wordcloud(cloud[1], sub_title=cloud[0])
+
+class BannerWordCloud :
+    def __init__(self, cloud_list, variable=None, base_desc=None, sample_size=None) :
+        self.cloud_list = cloud_list
+        self.variable = variable
+        self.base_desc = base_desc
+        self.sample_size = sample_size
+    
+    def show(self, desc=None) :
+        for head, cloud in self.cloud_list :
+            cloud.show(desc)
 
 
 
