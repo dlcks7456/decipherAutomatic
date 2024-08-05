@@ -336,7 +336,10 @@ def rating_netting(rating_crosstab_result,
 
     score_result = result.loc[scores, :]
     score_result.sort_index(ascending=reverse_rating, inplace=True)
-
+    
+    if not total_label in result.index.to_list() :
+        result.loc[total_label] = 0
+    
     total_df = pd.DataFrame(result.loc[total_label, :]).T
     result = pd.concat([total_df, score_result])
 
@@ -385,6 +388,7 @@ def rating_netting(rating_crosstab_result,
         result = pd.concat([result, net_table])
         
         result = result.astype(int)
+    
     
     return result
 

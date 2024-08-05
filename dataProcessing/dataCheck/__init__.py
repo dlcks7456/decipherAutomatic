@@ -2094,8 +2094,15 @@ class DataCheck(pd.DataFrame):
                     aggfunc = ['mean']
                 
                 if score is None :
-                    answers = max(df[index].value_counts().index.tolist())
-                    score = answers
+                    if index in metas.keys() :
+                        chk_meta = metas[index]
+                        values = [int(list(m.keys())[0]) for m in chk_meta]
+                        answers = max(values)
+                        score = answers
+                    else :
+                        chk_idx = df[index].value_counts().index.tolist()
+                        answers = max(chk_idx)
+                        score = answers
                         
             # With Value
             if index_meta is not None and with_value :
@@ -2205,24 +2212,24 @@ class DataCheck(pd.DataFrame):
                 result = result.astype(int)
 
                 # Rating Type
-                default_index = [idx for idx in result.index.to_list() if idx != total_label]
-                
                 if qtype in ['rating'] :
-                    score_min = min(default_index)
+                    # score_min = min(default_index)
                     if score is None :
                         score_meta = [int(list(x.keys())[0]) for x in index_meta]
                         score = max(score_meta)
-                        score_min = max(score_meta)
+                        # score_min = max(score_meta)
                     
                     
-                    scores = [i for i in range(score_min, score+1)]
-                    
+                    scores = [i for i in range(1, score+1)]
+                    default_index = [str(idx) for idx in scores]
                     result = rating_netting(result, 
                                             scores, 
                                             reverse_rating=reverse_rating, 
                                             top=top, 
                                             bottom=top, 
                                             medium=medium)
+                    
+                    
                 
                 if aggfunc is not None : 
                     calc_result = None 
@@ -2235,7 +2242,7 @@ class DataCheck(pd.DataFrame):
                         if qtype in ['rating'] and (score is not None) and (score >= 4) :
                             if 'mean' in calc_result.index and conversion :
                                 conversion_index = '100 point conversion'
-                                calc_result.loc[conversion_index, :] = [0 if i == 0 else ((i-1)/(score-1))*100 for i in calc_result.loc['mean', :].values]
+                                calc_result.loc[conversion_index, :] = [0 if (pd.isna(i)) or (i == 0) else ((i-1)/(score-1))*100 for i in calc_result.loc['mean', :].values]
                     
                     
                     result = pd.concat([result, calc_result])
@@ -2251,11 +2258,14 @@ class DataCheck(pd.DataFrame):
                     result.index = result.index.map(str)
                     
                     with_default = [str(idx) for idx in [total_label] + default_index]
-                    back_index = [idx for idx in result.index if not idx in with_default]
+                    
+                    back_index = [idx for idx in result.index if not str(idx) in with_default]
                     
                     index_order, index_labels = extract_order_and_labels(index_meta, [total_label], back_index)
+                    
                     result = add_missing_indices(result, index_order)
                     result = reorder_and_relabel(result, index_order, index_labels, axis=0, name=None)
+                    
 
             column_order = [total_label] + [i for i in result.columns.to_list() if not i == total_label]
             result = result[column_order]
@@ -2541,7 +2551,7 @@ class DataCheck(pd.DataFrame):
         qtypes = [x.attrs['type'] for x in summary_df]
         qtypes = list(set(qtypes))
         summary = pd.concat(summary_df, axis=1)
-        
+
         # summary.index.name = summary_name
         if isinstance(summary.index, pd.MultiIndex) :
             summary.index = summary.index.droplevel(0)
