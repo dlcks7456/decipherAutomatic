@@ -2211,6 +2211,8 @@ class DataCheck(pd.DataFrame):
                 result.fillna(0, inplace=True)
                 result = result.astype(int)
 
+                default_index = [idx for idx in result.index if idx != total_label]
+
                 # Rating Type
                 if qtype in ['rating'] :
                     # score_min = min(default_index)
