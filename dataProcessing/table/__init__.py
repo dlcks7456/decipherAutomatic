@@ -75,6 +75,9 @@ def multiple_total(data, base, total_label='Total') :
             tabs.append(zero_row)
     
     ma_table = pd.concat(tabs)
+    cdf = data[base].copy()
+    cdf['cnt'] = cdf.apply(lambda x: x.count() - (x==0).sum(), axis=1)
+    ma_table.loc[total_label, total_label] = (cdf['cnt']>=1).sum()
     
     return ma_table.loc[~ma_table.index.duplicated(), :]
 
