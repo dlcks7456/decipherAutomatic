@@ -2274,7 +2274,9 @@ class DataCheck(pd.DataFrame):
 
             if base_desc is None :
                 sample_count = len(self)
-                all_count = result.iloc[0, 0]
+                tot = result.iloc[0, 0]
+                tot = 0 if pd.isna(tot) else tot
+                all_count = int(tot)
                 
                 if sample_count == all_count :
                     base_desc = 'All Base'
@@ -2469,7 +2471,9 @@ class DataCheck(pd.DataFrame):
         
         if base_desc is None :
             sample_count = len(self)
-            all_count = int(merge_result.iloc[0, 0])
+            tot = merge_result.iloc[0, 0]
+            tot = 0 if pd.isna(tot) else tot
+            all_count = int(tot)
             if sample_count == all_count :
                 base_desc = 'All Base'
             else :
@@ -4030,7 +4034,7 @@ df.set_banner(df.net())"""
                 continue
 
             qtype = var['type']
-            if qtype in ['text', 'other_open'] :
+            if qtype in ['other_open'] :
                 continue
             
             meta = var['meta']
@@ -4086,7 +4090,7 @@ df.set_banner(df.net())"""
                 if qtype in ['rank'] :
                     # 1 to max rank
                     max_rank = len(variables)
-                    for i in range(1, max_rank) :
+                    for i in range(1, max_rank+1) :
                         rank_cnt = '1' if i == 1 else f"1-{i}"
                         rank_cell_text = f"# {qid} ({qtype}) : Rank {rank_cnt}\n"
 
@@ -4103,9 +4107,21 @@ df.set_banner(df.net())"""
                     cell_text += f"""table = df.proc({qid})\n"""
                     cell_text += f"""df.proc_append(\n\t('{table_id}', '{title}'), \n\ttable, \n\tai=False\n)"""
                     ipynb_cell.append(nbf.v4.new_code_cell(cell_text))
-            
+
+                if qtype in ['text'] :
+                    for idx, v in enumerate(variables, 1) :
+                        vid = list(v.keys())[0]
+                        text_cellt_text = f"# {vid} ({qtype})\n"
+                        text_cellt_text += f"""table = df.banner_wordcloud({vid})\n"""
+                        text_cellt_text += f"""df.proc_append(\n\t('{table_id}_{idx}', '{title}'), \n\ttable\n)"""
+
+                        ipynb_cell.append(nbf.v4.new_code_cell(text_cellt_text))
             else :
-                cell_text += f"""table = df.proc({qid})\n"""
+                if qtype in ['text'] :
+                    cell_text += f"""table = df.banner_wordcloud({qid})\n"""
+                else :
+                    cell_text += f"""table = df.proc({qid})\n"""
+                
                 cell_text += f"""df.proc_append(\n\t('{table_id}', '{title}'), \n\ttable, \n\tai=False\n)"""
 
                 ipynb_cell.append(nbf.v4.new_code_cell(cell_text))
