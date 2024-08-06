@@ -2144,35 +2144,24 @@ class DataCheck(pd.DataFrame):
                 if not 'count' in aggfunc :
                     aggfunc = ['count'] + aggfunc
                 
-                # Number / Float Type Only
-                def number_single_table(qid, columns, aggfunc) :
-                    if columns is not None :
-                        return number_with_columns(df, qid, columns, aggfunc)
-                    else :
-                        return number_total(df, qid, aggfunc)
-                
-                if isinstance(index, list) :
-                    number_tables = pd.DataFrame()
-                    for idx in index :
-                        each = number_single_table(idx, columns, aggfunc)
-                        for i in each.index :
-                            for c in each.columns :
-                                number_tables.loc[f'{idx}_{i}', c] = each.loc[i, c]
-                        
-                    group_index = []
-                    for idx in number_tables.index :
-                        qid, agg = idx.split('_')
-                        set_title = None
-                        if qid in titles.keys() :
-                            set_title = titles[qid]['sub_title']
-                        
-                        group_index.append((qid if set_title is None else set_title, agg))
-                        
+                def number_single_table(qid, columns, aggfunc):
+                    return number_with_columns(df, qid, columns, aggfunc) if columns is not None else number_total(df, qid, aggfunc)
+
+                if isinstance(index, list):
+                    number_tables = pd.concat(
+                        [number_single_table(idx, columns, aggfunc).rename(index=lambda x: f'{idx}_{x}') for idx in index]
+                    )
+
+                    group_index = [
+                        (titles.get(qid, {}).get('sub_title', qid), agg)
+                        for qid, agg in (idx.split('_') for idx in number_tables.index)
+                    ]
+
                     number_tables.index = pd.MultiIndex.from_tuples(group_index)
                     result = number_tables
-                    
-                else :
+                else:
                     result = number_single_table(index, columns, aggfunc)
+
                 
             else :
                 # MA/SA Only
@@ -2495,81 +2484,60 @@ class DataCheck(pd.DataFrame):
                     summary_name: str = '',
                     cond: Optional[pd.Series] = None,
                     base_desc: Optional[str] = None,
-                    **kwargs) :
+                    fill: bool = True,
+                    **kwargs):
         if not isinstance(index, list):
             raise ValueError(f'index must be list : {index}')
 
-        summary_df = []
-        cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
+        cond = self.attrs['default_filter'] if cond is None else self.attrs['default_filter'] & cond
 
+        summary_df = []
         multi_col = []
-        for idx in index :
-            table = None
+        titles = self.attrs.get('title', {})
+
+        for idx in index:
             if isinstance(idx, CrossTabs):
                 table = idx
-            else : 
+            else:
                 table = self.table(idx, cond=cond, **kwargs)
 
-            index_name = idx
-            col_name = idx
-            if isinstance(idx, tuple) :
-                idx = self.ma_return(idx)
-                if not self.col_name_check(*idx) : return
-
-            if isinstance(idx, list) :
-                index_name = idx[0]
-            
-            sub_title = ''
-            titles = self.attrs['title']
-            if titles :
-                if index_name in titles.keys() :
-                    sub_title = titles[index_name]['sub_title']
-                    if sub_title is None :
-                        sub_title = titles[index_name]['title']
-            
-            if isinstance(idx, list) :
-                if len(idx) == 1 :
-                    index_name = idx[0]
-                else :
-                    index_name = f'{idx[0]}-{idx[-1]}'
+            index_name = idx[0] if isinstance(idx, list) else idx
+            sub_title = titles.get(index_name, {}).get('sub_title', titles.get(index_name, {}).get('title', ''))
+            if isinstance(idx, list):
+                index_name = idx[0] if len(idx) == 1 else f'{idx[0]}-{idx[-1]}'
 
             multi_col.append((index_name, sub_title))
             table = table.rename(columns={'Total': index_name})
             summary_df.append(table)
-        
-        qtypes = [x.attrs['type'] for x in summary_df]
-        qtypes = list(set(qtypes))
+
+        qtypes = list(set(x.attrs['type'] for x in summary_df))
         summary = pd.concat(summary_df, axis=1)
 
-        # summary.index.name = summary_name
-        if isinstance(summary.index, pd.MultiIndex) :
+        if isinstance(summary.index, pd.MultiIndex):
             summary.index = summary.index.droplevel(0)
-        
+
         summary.index = pd.MultiIndex.from_tuples([(summary_name, idx) for idx in summary.index])
         result = CrossTabs(summary)
         result.attrs['type'] = qtypes
         result.columns = pd.MultiIndex.from_tuples(multi_col)
-        
 
-        if base_desc is None :
-            sample_count = len(self.index.to_list())
-            all_count = [x for x in list(result.iloc[0, :])]
-            dup_chk = list(set(all_count))
-            if len(dup_chk) > 1 :
-                base_desc = 'Difference Total'
-            else :
-                all_count = all_count[0]
-                if sample_count == all_count :
-                    base_desc = 'All Base'
-                else :
-                    sample_ratio = round(all_count/sample_count, 2) * 100
-                    base_desc = f'Not All Base ({sample_ratio:.0f}%)'
+        if base_desc is None:
+            sample_count = len(self.index)
+            all_count = summary.iloc[0, :].tolist()
+            base_desc = 'Difference Total' if len(set(all_count)) > 1 else (
+                'All Base' if sample_count == all_count[0] else f'Not All Base ({round(all_count[0] / sample_count, 2) * 100:.0f}%)'
+            )
+
+        if not fill:
+            result = result.loc[:, (result != 0).any(axis=0)]
 
         var_names = [f'{i[0]}-{i[-1]}' if isinstance(i, list) else i for i in index]
-        var_names = f'{var_names[0]} to {var_names[-1]}' # '/'.join(var_names)
+        var_names = f'{var_names[0]} to {var_names[-1]}'
 
         result.index.names = pd.Index([var_names, base_desc])
         return result
+
+
 
     def get_title(self, qid: str) :
         title = self.attrs['title']
@@ -4074,7 +4042,7 @@ df.set_banner(df.net())"""
 
                     grid_var = [list(v.keys())[0] for v in variables]
                     grid_var = ', '.join(grid_var)
-                    rating_text += f"table = df.grid_summary([{grid_var}])\n"
+                    rating_text += f"table = df.grid_summary([{grid_var}], fill=False)\n"
                     rating_text += f"df.proc_append(\n\t\t(f'{table_id}_sumamry', '{qid} Grid Summary'), \n\t\ttable, \n\t\tai=False\n\t)"
                     ipynb_cell.append(nbf.v4.new_code_cell(rating_text))
 
@@ -4143,4 +4111,13 @@ df.set_banner(df.net())"""
 
     print("✅ Setting Complete")
 
+
+
+def shutdown_window(time: int = 0) :
+    time = time * 60
+    print(f"⏰ Shutdown Window : {time} min")
+    time.sleep(time)
+    
+    print("✅ Shutdown Window")
+    os.system("shutdown /s /t 1")
 
