@@ -29,7 +29,7 @@ import nltk
 from nltk.corpus import stopwords
 from konlpy.tag import Okt
 
-def signle_total(data, base, total_label='Total') :
+def single_total(data, base, total_label='Total') :
     if len(data) == 0 :
         zero_row = pd.DataFrame([0], index=[base], columns=[total_label])
         return zero_row
@@ -43,42 +43,31 @@ def signle_total(data, base, total_label='Total') :
     
     return sa.loc[:, total_label].to_frame()
 
-def multiple_total(data, base, total_label='Total') :
+def multiple_total(data, base, total_label='Total'):
     tabs = []
-    if len(data) == 0 :
-        for row in base :
+    if data.empty:
+        for row in base:
             zero_row = pd.DataFrame([0], index=[row], columns=[total_label])
             tabs.append(zero_row)
-    else :
-        for row in base :
-            ma = pd.crosstab(
-                data[row],
-                columns='count',
-                margins=True,
-                margins_name=total_label
-            )
-
-            if 0 in ma.index :
-                ma.drop(0, inplace=True)
-            
-            ma_index = ma.index.to_list()
-            if ma_index :
-                chk = [i for i in ma_index if i != total_label]
-                if chk :
-                    rename_dict = {}
-                    rename_dict[chk[0]] = row
+    else:
+        for row in base:
+            ma = pd.crosstab(data[row], columns='count', margins=True, margins_name=total_label)
+            if not ma.empty:
+                chk = ma.index.difference([total_label]).tolist()
+                if chk:
+                    rename_dict = {chk[0]: row}
                     ma.rename(index=rename_dict, inplace=True)
                     tabs.append(ma[[total_label]])
-                continue
-            
-            zero_row = pd.DataFrame([0], index=[row], columns=[total_label])
-            tabs.append(zero_row)
-    
+
+    if not tabs:
+        zero_row = pd.DataFrame([0], index=base, columns=[total_label])
+        tabs.append(zero_row)
+
     ma_table = pd.concat(tabs)
     cdf = data[base].copy()
-    cdf['cnt'] = cdf.apply(lambda x: x.count() - (x==0).sum(), axis=1)
-    ma_table.loc[total_label, total_label] = (cdf['cnt']>=1).sum()
-    
+    cdf['cnt'] = (cdf != 0).sum(axis=1)
+    ma_table.loc[total_label, total_label] = (cdf['cnt'] > 0).sum()
+
     return ma_table.loc[~ma_table.index.duplicated(), :]
 
 def number_total(data, cols, aggfunc, total_label='Total') :
@@ -90,45 +79,50 @@ def number_total(data, cols, aggfunc, total_label='Total') :
     default_number.rename(index={'count': total_label, '50%': 'median'}, inplace=True)
     default_number.columns = pd.Index([total_label])
 
+    default_number.fillna(0, inplace=True)
+
     return default_number
 
 
-def number_with_columns(df, index, columns, aggfunc, total_label='Total') :
-    if columns is None :
-        raise Exception('columns cannot be None')
+def number_with_columns(df, index, columns, aggfunc, total_label='Total'):
+    if columns is None:
+        raise ValueError('columns cannot be None')
 
-    if index is None :
-        raise Exception('index cannot be None')
+    if index is None:
+        raise ValueError('index cannot be None')
 
-    if isinstance(columns, list) :
+    if isinstance(columns, list):
+        # 첫 번째 crosstab 생성
         crosstab = number_total(df, index, aggfunc)
+
+        for col in columns:
+            cond = (~df[col].isna())
+            filtered_df = df[cond]
+            if not filtered_df.empty:
+                nb = number_total(filtered_df, index, aggfunc)
+                nb.columns = [col]
+                nb.fillna(0, inplace=True)
+                crosstab[col] = nb[col]
+            else:
+                crosstab[col] = 0
+    else:
+        pivot_dict = {index: aggfunc}
         
-        for col in columns :
-            cond = (df[col]!=0) & (~df[col].isna())
-            nb = number_total(df[cond], index, aggfunc)
-            nb.columns = [col]
-            nb.fillna(0, inplace=True)
-            crosstab.loc[:, col] = nb.loc[:, col]
-        
-    else :
-    # Number By SA
-        pivot_dict = {}
-        pivot_dict[index] = aggfunc
-        
+        # 첫 번째 crosstab 생성
         crosstab = number_total(df, index, aggfunc)
         crosstab.rename(index={'count': total_label}, inplace=True)
 
+        # Pivot table 생성
         number_cols = pd.pivot_table(df, 
-                                    columns=columns, 
-                                    values=index, 
-                                    aggfunc=pivot_dict)
+                                     columns=columns, 
+                                     values=index, 
+                                     aggfunc=pivot_dict)
         
         number_cols.rename(index={'count': total_label}, inplace=True)
 
-        for col in number_cols.columns :
-            crosstab.loc[:, col] = number_cols.loc[:, col]
-        
-    
+        for col in number_cols.columns:
+            crosstab[col] = number_cols[col]
+
     return crosstab
 
 
@@ -143,181 +137,122 @@ def create_crosstab(df: pd.DataFrame,
         df (pd.DataFrame): The input DataFrame.
         index (str or list): The column name or list of column names to use for the crosstab index.
         columns (str or list, optional): The column name or list of column names to use for the crosstab columns.
-        index_meta (list of dict, optional): Metadata for the index values and labels.
-        columns_meta (list of dict, optional): Metadata for the columns values and labels.
-        top (int, optional): Number of top rows to summarize.
-        bottom (int, optional): Number of bottom rows to summarize.
     
     Returns:
         pd.DataFrame: The resulting crosstab with optional reordering, relabeling, top/bottom summaries, and total sum row.
     """
 
-    def rename_total_dict(col) :
-        total_to_qid = {}
-        total_to_qid[total_label] = col
+    def rename_total_dict(col):
+        return {total_label: col}
 
-        return total_to_qid
-
-    # ==== 
-    # print(f"CrossTab Start : {start_time}")
-
-    # Determine if we are working with single or multiple columns for index
     if not isinstance(index, (str, list)):
         raise ValueError("Index must be either a string or a list of strings.")
     
-    if columns is not None :
+    if columns is not None:
         if not isinstance(columns, (str, list)):
             raise ValueError("Columns must be either a string or a list of strings.")
 
-        # Normal CrossTab
-        # SA BY MA 
+        # SA BY MA or MA BY SA
         if (isinstance(index, str) and isinstance(columns, list)) or (isinstance(index, list) and isinstance(columns, str)):
-            base_row = index
-            base_col = columns
-            if (isinstance(index, list) and isinstance(columns, str)) :
-                base_row = columns
-                base_col = index
+            base_row = index if isinstance(index, str) else columns
+            base_col = columns if isinstance(index, str) else index
             
-            index_total = signle_total(df, base_row)
-            sa_table = []
-            for col in base_col :
-                cond = (df[col]!=0) & (~df[col].isna())
-                sa = signle_total(df[cond], base_row)
-                sa.rename(columns=rename_total_dict(col), inplace=True)
-                sa_table.append(sa)
-
-            crosstab_result = pd.concat([index_total, *sa_table], axis=1)
-            crosstab_result.fillna(0, inplace=True)
-
-            if (isinstance(index, list) and isinstance(columns, str)) : 
+            index_total = single_total(df, base_row)
+            sa_table = [
+                single_total(df[~df[col].isna()], base_row).rename(columns=rename_total_dict(col))
+                for col in base_col
+            ]
+            crosstab_result = pd.concat([index_total, *sa_table], axis=1).fillna(0)
+            if isinstance(index, list) and isinstance(columns, str):
                 crosstab_result = crosstab_result.T
 
-        # MA AND MA
-        elif isinstance(index, list) and isinstance(columns, list) :
-            index_total =  multiple_total(df, index)
-            
-            ma_table = []
-            for col in columns :
-                cond = (df[col]!=0) & (~df[col].isna())
-                ma = multiple_total(df[cond], index)
-                ma.rename(columns=rename_total_dict(col), inplace=True)
-
-                ma_table.append(ma)
-            
-            crosstab_result = pd.concat([index_total, *ma_table], axis=1)
-            crosstab_result.fillna(0, inplace=True)
-        else :
-            crosstab_result = pd.crosstab(
-                df[index],
-                df[columns],
-                margins=True,
-                margins_name=total_label,
-            )
-
-    else :
-        if isinstance(index, list) :
+        # MA BY MA
+        elif isinstance(index, list) and isinstance(columns, list):
+            index_total = multiple_total(df, index)
+            ma_table = [
+                multiple_total(df[~df[col].isna()], index).rename(columns=rename_total_dict(col))
+                for col in columns
+            ]
+            crosstab_result = pd.concat([index_total, *ma_table], axis=1).fillna(0)
+        
+        else:
+            crosstab_result = pd.crosstab(df[index], df[columns], margins=True, margins_name=total_label)
+    
+    else:
+        if isinstance(index, list):
             crosstab_result = multiple_total(df, index)
-        else :
-            crosstab_result = signle_total(df, index)
+        else:
+            crosstab_result = single_total(df, index)
 
         crosstab_result = crosstab_result.loc[:, total_label].to_frame()
     
-    crosstab_result = crosstab_result[[total_label] + [col for col in crosstab_result.columns if col!= total_label]]
-
-    
-    return crosstab_result
+    return crosstab_result[[total_label] + [col for col in crosstab_result.columns if col != total_label]]
 
 
-def top_setting(crosstab, top, diff_cols=[]) :
-    diff_cols = diff_cols + ['Total']
-    base_crosstab = crosstab.loc[[idx for idx in crosstab.index if not idx in diff_cols], :]
 
-    if top is not None:
-        chk_top_list = top
-        if isinstance(top, int) :
-            chk_top_list = [top]
-        
-        top_list = [] # Duplicate remove
-        for t in chk_top_list :
-            if not t in top_list :
-                top_list.append(t)
+def top_setting(crosstab, top, diff_cols=None):
+    if diff_cols is None:
+        diff_cols = []
+    diff_cols.append('Total')
+    base_crosstab = crosstab.loc[~crosstab.index.isin(diff_cols), :]
 
-        top_result = []
-        for t in top_list :
-            top_indices = base_crosstab.loc[base_crosstab.index[:t]].sum()
-            
-            top_name = f'Top {t}'
-            top_indices.name = top_name
-            top_result.append(pd.DataFrame([top_indices]))
-        
-        top_indices = pd.concat(top_result)
-    else :
+    if top is None:
         return None
     
-    return top_indices
+    if isinstance(top, int):
+        top = [top]
 
-
-def medium_setting(crosstab, medium, diff_cols=[]) :
-    diff_cols = diff_cols + ['Total']
-    base_crosstab = crosstab.loc[[idx for idx in crosstab.index if not idx in diff_cols], :]
+    top = list(set(top))  # 중복 제거
+    top_result = [
+        pd.DataFrame([base_crosstab.iloc[:t].sum().rename(f'Top {t}')])
+        for t in top
+    ]
     
-    if medium is not None:
-        chk_med_list = medium
-        if isinstance(medium, int) :
-            chk_med_list = [medium]
-        
-        med_list = [] # Duplicate remove
-        for b in chk_med_list :
-            if not b in med_list :
-                med_list.append(b)
+    return pd.concat(top_result)
 
-        med_list = list(set(med_list))
-        
-        med_result = []
-        filt_index = [idx for idx in base_crosstab.index if idx in med_list]
-        medium_indices = base_crosstab.loc[filt_index].sum()
 
-        
-        medium_txt = ', '.join([str(m) for m in list(set(medium))])
-        med_name = f'Medium ({medium_txt})'
-        medium_indices.name = med_name
-        med_result.append(pd.DataFrame([medium_indices]))
-        
-        medium_indices = pd.concat(med_result)
-    else :
+def medium_setting(crosstab, medium, diff_cols=None):
+    if diff_cols is None:
+        diff_cols = []
+    diff_cols.append('Total')
+    base_crosstab = crosstab.loc[~crosstab.index.isin(diff_cols), :]
+
+    if medium is None:
         return None
+    
+    if isinstance(medium, int):
+        medium = [medium]
 
-    return medium_indices
+    medium = list(set(medium))  # 중복 제거
+    filt_index = [idx for idx in base_crosstab.index if idx in medium]
+    medium_indices = base_crosstab.loc[filt_index].sum()
+    
+    medium_txt = ', '.join(map(str, medium))
+    medium_indices.name = f'Medium ({medium_txt})'
+    
+    return pd.DataFrame([medium_indices])
 
 
-def bottom_setting(crosstab, bottom, diff_cols=[]) :
-    diff_cols = diff_cols + ['Total']
-    base_crosstab = crosstab.loc[[idx for idx in crosstab.index if not idx in diff_cols], :]
+def bottom_setting(crosstab, bottom, diff_cols=None):
+    if diff_cols is None:
+        diff_cols = []
+    diff_cols.append('Total')
+    base_crosstab = crosstab.loc[~crosstab.index.isin(diff_cols), :]
 
-    if bottom is not None:
-        chk_bot_list = bottom
-        if isinstance(bottom, int) :
-            chk_bot_list = [bottom]
-        
-        bot_list = [] # Duplicate remove
-        for b in chk_bot_list :
-            if not b in bot_list :
-                bot_list.append(b)
-
-        bot_list = list(set(bot_list))
-        
-        bot_result = []
-        for b in bot_list :
-            bottom_indices = base_crosstab.loc[base_crosstab.index[-b:]].sum()
-            bot_name = f'Bottom {b}'
-            bottom_indices.name = bot_name
-            bot_result.append(pd.DataFrame([bottom_indices]))
-        
-        bottom_indices = pd.concat(bot_result)
-    else :
+    if bottom is None:
         return None
+    
+    if isinstance(bottom, int):
+        bottom = [bottom]
 
-    return bottom_indices
+    bottom = list(set(bottom))  # 중복 제거
+    bottom_result = [
+        pd.DataFrame([base_crosstab.iloc[-b:].sum().rename(f'Bottom {b}')])
+        for b in bottom
+    ]
+    
+    return pd.concat(bottom_result)
+
 
 def rating_netting(rating_crosstab_result, 
                    scores, 
@@ -325,72 +260,58 @@ def rating_netting(rating_crosstab_result,
                    total_label='Total', 
                    top=None, 
                    bottom=None, 
-                   medium=True) :
+                   medium=True):
     
     result = rating_crosstab_result.copy()
-    for idx in scores :
-        if idx not in result.index.to_list() :
-            result.loc[idx] = 0
     
-    score = max(scores)
-
-    score_result = result.loc[scores, :]
-    score_result.sort_index(ascending=reverse_rating, inplace=True)
+    # Ensure all scores are in the index
+    missing_scores = [idx for idx in scores if idx not in result.index]
+    result = pd.concat([result, pd.DataFrame(0, index=missing_scores, columns=result.columns)])
     
-    if not total_label in result.index.to_list() :
+    score_result = result.loc[scores].sort_index(ascending=reverse_rating)
+    
+    if total_label not in result.index:
         result.loc[total_label] = 0
     
-    total_df = pd.DataFrame(result.loc[total_label, :]).T
+    total_df = result.loc[[total_label]]
     result = pd.concat([total_df, score_result])
-
     result.fillna(0, inplace=True)
 
-    net_table = pd.DataFrame(columns=result.columns)
+    net_crosstab = []
 
-    if all([n is not None for n in [top, bottom]]) and isinstance(medium, bool) and (medium is True) :
-        # TOP
-        chk_top_list = top
-        if isinstance(top, int) :
-            chk_top_list = [top]
-        
-        top_list = [] # Duplicate remove
-        for t in chk_top_list :
-            if not t in top_list :
-                top_list.append(t)
-
-        # BOTTOM
-        chk_bot_list = bottom
-        if isinstance(bottom, int) :
-            chk_bot_list = [bottom]
-        
-        bot_list = [] # Duplicate remove
-        for b in chk_bot_list :
-            if not b in bot_list :
-                bot_list.append(b)
+    def get_unique_list(lst):
+        if isinstance(lst, int):
+            return [lst]
+        return list(set(lst))
+    
+    if all([n is not None for n in [top, bottom]]) and medium:
+        top_list = get_unique_list(top)
+        bot_list = get_unique_list(bottom)
 
         vtop = min(top_list)
         vbot = min(bot_list)
-        medium = [idx for idx in result.index if not idx == total_label][vbot:-vtop]
+        medium = [idx for idx in result.index if idx != total_label][vbot:-vtop]
 
-    net_list = ['top', 'medium', 'bottom']
-    net_crosstab = []
-    for n in net_list :
-        net = eval(n)
-        if net is not None and net:
-            _func = eval(f'{n}_setting')
-            net_result = _func(result, net)
-            net_result.fillna(0, inplace=True)
-            net_crosstab.append(net_result)
+    settings = {
+        'top': top,
+        'medium': medium,
+        'bottom': bottom
+    }
 
+    for key, val in settings.items():
+        if val:
+            func = globals()[f'{key}_setting']
+            net_result = func(result, val)
+            if net_result is not None:
+                net_crosstab.append(net_result.fillna(0))
 
-    if net_crosstab and score > 3 :
+    if net_crosstab and max(scores) > 3:
         net_table = pd.concat(net_crosstab)
         result = pd.concat([result, net_table])
-        
         result = result.astype(int)
-    
-    
+
     return result
+
 
 def preprocess_text(text, language='korean'):
 
@@ -609,7 +530,8 @@ class CrossTabs(pd.DataFrame):
         if ratio_round is not None and ratio_round < 0 :
             raise ValueError('ratio_round must be greater than 0')
 
-        result = self.astype(float)
+        result = self.copy()
+        result = result.astype(float)
         all_value = result.iloc[0]
 
         mask_index = ['mean', 'man', 'min', 'max', 'median', 'std', '100 point conversion', 'Total']

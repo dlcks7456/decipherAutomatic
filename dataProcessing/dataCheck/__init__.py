@@ -1813,7 +1813,7 @@ class DataCheck(pd.DataFrame):
         
         df = df[index_cond][filt_variables].copy()
         
-        sample_count = len(self)
+        sample_count = len(self.index.to_list())
         all_count = len(df)
         
         if base_desc is None :
@@ -2033,7 +2033,12 @@ class DataCheck(pd.DataFrame):
 
             
             df = df[index_cond][filt_variables].copy()
-
+            if isinstance(index, list) :
+                df[index] = df[index].replace(0, np.nan)
+            
+            if isinstance(columns, list) :
+                df[columns] = df[columns].replace(0, np.nan)
+            
             original_index_meta = index_meta
             original_columns_meta = columns_meta
 
@@ -2173,35 +2178,26 @@ class DataCheck(pd.DataFrame):
                 # MA/SA Only
 
                 if isinstance(index, list) and qtype in ['single', 'rank'] :
-                    sa_sum_table = []
-                    for idx in index :
-                        sa_table = create_crosstab(df,
-                                                   index=idx,
-                                                   columns=columns,
-                                                   total_label=total_label)
-                        
-                        sa_sum_table.append(sa_table)
+                    sa_sum_table = [
+                        create_crosstab(df, index=idx, columns=columns, total_label=total_label)
+                        for idx in index
+                    ]
+                    result = pd.concat(sa_sum_table).groupby(level=0).sum()
 
-                    result = sum(sa_sum_table)
                     result.fillna(0, inplace=True)
                     result.loc[total_label, total_label] = len(df)
 
-                    if isinstance(columns, str) :
-                        for col in result.columns :
-                            if col == total_label :
-                                continue
-                            sample_count = len(df[df[columns]==col].index)
-                            result.loc[total_label, col] = sample_count
-                    
-                    if isinstance(columns, list) :
-                        for col in result.columns :
-                            if col == total_label :
-                                continue
-                            
-                            sample_count = len(df[(df[col]!=0) & (~df[col].isna())].index)
-                            
-                            result.loc[total_label, col] = sample_count
-                    
+                    if isinstance(columns, str):
+                        column_sample_counts = df[columns].value_counts()
+                        for col in result.columns:
+                            if col != total_label:
+                                result.loc[total_label, col] = column_sample_counts.get(col, 0)
+
+                    elif isinstance(columns, list):
+                        for col in result.columns:
+                            if col != total_label:
+                                sample_count = df[df[col].notna()].shape[0]
+                                result.loc[total_label, col] = sample_count
                 else :
                     result = create_crosstab(df,
                                             index=index,
@@ -2285,7 +2281,7 @@ class DataCheck(pd.DataFrame):
                 result = result.loc[(result != 0).any(axis=1), (result != 0).any(axis=0)]
 
             if base_desc is None :
-                sample_count = len(self)
+                sample_count = len(self.index.to_list())
                 tot = result.iloc[0, 0]
                 tot = 0 if pd.isna(tot) else tot
                 all_count = int(tot)
@@ -2294,12 +2290,11 @@ class DataCheck(pd.DataFrame):
                     base_desc = 'All Base'
                 else :
                     sample_ratio = round(all_count/sample_count, 2) * 100
-                    base_desc = f'Not All Base ({sample_ratio:.0f}%)'
+                    base_desc = f'Not All Base ({sample_ratio:.2f}%)'
             
             if not isinstance(result.index, pd.MultiIndex) :
                 result.index = pd.MultiIndex.from_tuples([('' if group_name is None else group_name, i) for i in result.index])
                 result.index.names = pd.Index(['/'.join(varable_text), base_desc])
-
 
             result = CrossTabs(result)
             result.attrs['type'] = qtype
@@ -2423,85 +2418,77 @@ class DataCheck(pd.DataFrame):
         
 
     def proc(self, 
-             index: IndexWithTypes, 
-             columns: Optional[ColumnsWithHeader] = None, 
-             fill: bool = True, 
-             group_name: Optional[str] = None,
-             base_desc: Optional[str] = None,
-             **options) :
-        merge_result = None
-
-        if columns is None :
-            banner = self.attrs['banner']
-            if banner is None :
+            index: IndexWithTypes, 
+            columns: Optional[ColumnsWithHeader] = None, 
+            fill: bool = True, 
+            group_name: Optional[str] = None,
+            base_desc: Optional[str] = None,
+            **options):
+        
+        if columns is None:
+            banner = self.attrs.get('banner')
+            if banner is None:
                 raise ValueError("banner is not set")
-            else :
-                columns = banner
+            columns = banner
 
         titles = self.attrs['title']
 
-        if not isinstance(columns, list) :
+        if not isinstance(columns, list):
             raise TypeError("columns must be a list")
 
-        index_name = index
-        if isinstance(index, tuple) :
+        if isinstance(index, tuple):
             index = self.ma_return(index)
-            if not self.col_name_check(*index) : return
+            if not self.col_name_check(*index):
+                return
 
+        index_name = index
         if isinstance(index, list) :
             if len(index) == 1 :
                 index_name = index[0]
             else :
                 index_name = f'{index[0]}-{index[-1]}'
 
-        tables = []
+        tables = [
+            (titles.get(col_head, {}).get('title', col_head), self.table(index, col, **options))
+            for col_head, col in columns
+        ]
 
-        for col_head, col in columns :
-            header = col_head
-            if col_head in titles.keys() :
-                header = titles[col_head]['title']
-            
-            tables.append((header, self.table(index, col, **options)))
+        merge_table = pd.concat([t for _, t in tables], axis=1)
 
-        merge_table = pd.concat([t for head, t in tables], axis=1)
         new_columns = []
         qtypes = []
-        for head, table in tables :
+        for head, table in tables:
             new_columns.append(('', table.columns[0]))
             qtypes.append(table.attrs['type'])
-            for col in table.columns[1:] : # Total 제외
-                # From Tuple
-                new_columns.append((head, col))
-        
+            new_columns.extend((head, col) for col in table.columns[1:])  # Total 제외
+
         merge_table.columns = pd.MultiIndex.from_tuples(new_columns)
         merge_result = merge_table.loc[:, ~merge_table.columns.duplicated()]
 
-        if isinstance(merge_result.index, pd.MultiIndex) :
+        if isinstance(merge_result.index, pd.MultiIndex):
             merge_result.index = merge_result.index.droplevel(0)
 
         merge_result.index = pd.MultiIndex.from_tuples([('' if group_name is None else group_name, idx) for idx in merge_result.index])
         
-        if base_desc is None :
-            sample_count = len(self)
-            tot = merge_result.iloc[0, 0]
-            tot = 0 if pd.isna(tot) else tot
+        if base_desc is None:
+            sample_count = len(self.index.to_list())
+            tot = merge_result.iloc[0, 0] if not pd.isna(merge_result.iloc[0, 0]) else 0
             all_count = int(tot)
-            if sample_count == all_count :
+            if sample_count == all_count:
                 base_desc = 'All Base'
-            else :
-                sample_ratio = round(all_count/sample_count, 2) * 100
+            else:
+                sample_ratio = round(all_count / sample_count, 2) * 100
                 base_desc = f'Not All Base ({sample_ratio:.0f}%)'
 
         merge_result.index.names = pd.Index([index_name, base_desc])
 
-        # merge_result = merge_result.fillna('-')
-        if not fill :
+        if not fill:
             merge_result = merge_result.loc[(merge_result != 0).any(axis=1), (merge_result != 0).any(axis=0)]
-            #merge_result = merge_result.loc[(merge_result != '-').any(axis=1), (merge_result != '-').any(axis=0)]
         
         result = CrossTabs(merge_result)
         result.attrs['type'] = list(set(qtypes))
         return result
+
 
 
     def grid_summary(self, index: Union[List[str], List[List[str]], Tuple[str], CrossTabs],
@@ -2565,7 +2552,7 @@ class DataCheck(pd.DataFrame):
         
 
         if base_desc is None :
-            sample_count = len(self)
+            sample_count = len(self.index.to_list())
             all_count = [x for x in list(result.iloc[0, :])]
             dup_chk = list(set(all_count))
             if len(dup_chk) > 1 :
@@ -2953,7 +2940,7 @@ class DataCheck(pd.DataFrame):
                     if all(i is None for i in result.index.names) :
                         if total_label in result.index.get_level_values(-1) and total_label in result.columns.get_level_values(-1) :
                             all_count = result.loc[('', total_label), ('', total_label)]
-                            sample_count = len(self)
+                            sample_count = len(self.index.to_list())
                             if sample_count == all_count :
                                 index_header = 'All Base'
                             else :
@@ -4093,10 +4080,12 @@ df.set_banner(df.net())"""
 
                 if qtype in ['number', 'float', 'rating', 'single'] :
                     cell_text += f"""for idx, qid in enumerate({qid}, 1) :\n"""
-                    cell_text += f"""\tsub_title = df.title(qid)['sub_title']\n"""
+                    cell_text += f"""\ttitle_dict = df.title(qid)\n"""
+                    cell_text += f"""\ttitle = title_dict['title']\n"""
+                    cell_text += f"""\tsub_title = title_dict['sub_title']\n"""
                     cell_text += f"""\tsub_title = qid if sub_title is None else sub_title\n"""
                     cell_text += f"""\ttable = df.proc(qid)\n"""
-                    cell_text += f"""\tdf.proc_append(\n\t\t(f'{table_id}_{{idx}}', sub_title), \n\t\ttable, \n\t\tai=False\n\t)"""
+                    cell_text += f"""\tdf.proc_append(\n\t\t(f'{table_id}_{{idx}}', f'{{title}}_{{sub_title}}'), \n\t\ttable, \n\t\tai=False\n\t)"""
                     ipynb_cell.append(nbf.v4.new_code_cell(cell_text))
                 
                 if qtype in ['rank'] :
