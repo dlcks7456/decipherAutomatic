@@ -2517,8 +2517,8 @@ class DataCheck(pd.DataFrame):
             summary.index = summary.index.droplevel(0)
 
         summary.index = pd.MultiIndex.from_tuples([(summary_name, idx) for idx in summary.index])
-        result = CrossTabs(summary)
-        result.attrs['type'] = qtypes
+        result = summary
+
         result.columns = pd.MultiIndex.from_tuples(multi_col)
 
         if base_desc is None:
@@ -2535,6 +2535,9 @@ class DataCheck(pd.DataFrame):
         var_names = f'{var_names[0]} to {var_names[-1]}'
 
         result.index.names = pd.Index([var_names, base_desc])
+
+        result = CrossTabs(result)
+        result.attrs['type'] = qtypes
         return result
 
 
