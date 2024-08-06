@@ -4,6 +4,7 @@ import itertools
 import random
 import pandas as pd
 import os
+import pickle
 
 sys_vars = [i for i in sys.variables.split('\n') if not i == '']
 key_vars = [i for i in key.variables.split('\n') if not i == '']
@@ -80,3 +81,23 @@ def get_versioned_filename(base_name):
         if versioned_name not in files:
             return versioned_name
         version += 1
+
+
+# pickle 파일로 저장하는 함수
+def save_to_pickle(data, file_path, folder_name=None):
+    # 폴더가 없으면 생성
+    if folder_name is not None :
+        if not os.path.exists(folder_name):
+            os.makedirs(folder_name)
+        
+        # 전체 경로 구성
+        file_path = os.path.join(folder_name, file_path)
+
+    with open(file_path, 'wb') as file:
+        pickle.dump(data, file)
+
+
+def load_from_pickle(filepath):
+    with open(filepath, 'rb') as file:
+        data = pickle.load(file)
+    return data

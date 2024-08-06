@@ -25,6 +25,7 @@ from matplotlib.colors import to_hex
 from matplotlib.colors import LinearSegmentedColormap
 from pprint import pprint
 import tempfile
+from datetime import datetime
 
 VarWithHeader = Tuple[str, Union[str, List[str]]]
 ColumnsWithHeader = List[VarWithHeader]
@@ -2647,12 +2648,21 @@ class DataCheck(pd.DataFrame):
             display(HTML(table_id_html))
     
     
+    def load_log(self, pkl_path: str) :
+        self.attrs['proc_result'] = load_from_pickle(pkl_path)
+        print(f'✅ Load log : {pkl_path}')
+
     def proc_export_excel(self, file_name: str, heatmap: bool = False) :
         total_label = 'Total'
         proc_result = self.attrs['proc_result']
         if not proc_result : 
             raise ValueError('No result to export')
         
+        # pickle 파일로 저장
+        # 현재 날짜와 시간을 형식에 맞게 가져오기
+        current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_to_pickle(proc_result, f'proccessing_result_{current_time}.pkl', 'LOG')
+
         excel.ExcelFormatter.header_style = {
             "font": {"bold": True, "size": 9},
             "borders": {
