@@ -2676,7 +2676,7 @@ class DataCheck(pd.DataFrame):
         }
 
         # 엑셀 파일 생성
-        file_name = get_versioned_filename(f'{file_name}.xlsx')
+        # file_name = get_versioned_filename(file_name)
 
         writer = pd.ExcelWriter(file_name, engine='xlsxwriter')
         workbook = writer.book
@@ -3059,6 +3059,10 @@ class DataCheck(pd.DataFrame):
 
 
         wb.save(file_name)
+
+        display(HTML(f"""
+<div>💾 {file_name} : Complete</div>
+"""))
     
     def meta(self, qid: Union[str, list]) :
         if not isinstance(qid, (str,  list)) :
@@ -3982,7 +3986,7 @@ banners = [
 import numpy as np
 from meta.variables_{pid} import *
 import os
-from decipherAutomatic.dataProcessing.dataCheck import DecipherDataProcessing, download_decipher_data
+from decipherAutomatic.dataProcessing.dataCheck import DecipherDataProcessing, download_decipher_data, get_versioned_filename
 # import pyreadstat
 
 pid = '{pid}'
@@ -4109,7 +4113,9 @@ df.set_banner(df.net())"""
                 ipynb_cell.append(nbf.v4.new_code_cell(cell_text))
 
 
-        export_cell = f"""df.proc_export_excel(f'{pid}_table_result', heatmap=True)"""
+        export_cell = f"""
+save_file_name = get_versioned_filename(f'{pid}_table_result.xlsx')
+df.proc_export_excel(save_file_name, heatmap=True)"""
         ipynb_cell.append(nbf.v4.new_code_cell(export_cell))
         
         nb['cells'] = ipynb_cell
