@@ -547,8 +547,12 @@ class DataCheck(pd.DataFrame):
             title_dict = self.attrs['title']
             if match_qid in title_dict.keys() :
                 vgroup = title_dict[match_qid]['vgroup']
-                title = title_dict[vgroup]['title']
-                qtype = title_dict[vgroup]['type']
+                if vgroup in title_dict :
+                    title = title_dict[vgroup]['title']
+                    qtype = title_dict[vgroup]['type']
+                else :
+                    title = title_dict[match_qid]['title']
+                    qtype = title_dict[match_qid]['type']
 
                 if not qtype in ['multiple'] :
                     sub_title = title_dict[match_qid]['sub_title']
