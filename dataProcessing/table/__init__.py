@@ -31,7 +31,7 @@ from konlpy.tag import Okt
 
 def single_total(data, base, total_label='Total') :
     if len(data) == 0 :
-        zero_row = pd.DataFrame([0], index=[base], columns=[total_label])
+        zero_row = pd.DataFrame([0], index=[total_label], columns=[total_label])
         return zero_row
     else :
         sa = pd.crosstab(
@@ -162,6 +162,7 @@ def create_crosstab(df: pd.DataFrame,
                 single_total(df[~df[col].isna()], base_row).rename(columns=rename_total_dict(col))
                 for col in base_col
             ]
+            
             crosstab_result = pd.concat([index_total, *sa_table], axis=1).fillna(0)
             if isinstance(index, list) and isinstance(columns, str):
                 crosstab_result = crosstab_result.T
@@ -252,6 +253,17 @@ def bottom_setting(crosstab, bottom, diff_cols=None):
     ]
     
     return pd.concat(bottom_result)
+
+
+def var_netting(crosstab, net) :
+    net_result = []
+    for name, code in net.items():
+        if any(not c in crosstab.index for c in code) :
+            raise ValueError(f'The code({code}) does not exist.')
+        base_crosstab = crosstab.loc[code, :]
+        net_result.append(pd.DataFrame([base_crosstab.sum().rename(name)]))
+    
+    return pd.concat(net_result)
 
 
 def rating_netting(rating_crosstab_result, 
@@ -777,33 +789,37 @@ def decipher_map(pid: Union[str, int]) :
         qtype = q['type']
         title = q['qtitle']
         variables = q['variables']
-        label_list = [{v['label']: {'vgroup': v['vgroup'], 'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle'])}} for v in variables]
+        label_list = {v['label']: {'vgroup': v['vgroup'], 'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle'])} for v in variables} 
         value_list = []
         meta_list = []
         oe_variables = []
         grouping = q['grouping']
         if not qtype in ['text'] :
+            set_oe_v = {}
             oe_variables = [{'qlabel': v['label'], \
                             'type': 'other_open', \
                             'row': v['row'], \
                             'col': v['col'], \
-                            'variables': [{v['label']: {'vgroup': qlabel, 'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle'])}}],\
+                            'variables': {v['label']: {'vgroup': qlabel, 'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle'])}},\
                             'title': title,\
                             'grouping': grouping, \
-                            'meta': [{v['label']: v['title']}],\
+                            'meta': v['title'],\
                             } for v in variables if v['type']=='text']
-            label_list = [{v['label']: {'vgroup': v['vgroup'], 'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle'])}} for v in variables if v['type'] in ['single', 'multiple', 'number', 'float']]
+            label_list = {v['label']: {'vgroup': v['vgroup'], 'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle'])} for v in variables if v['type'] in ['single', 'multiple', 'number', 'float']}
 
         if 'values' in q.keys():
             values = q['values']
             value_list = [x['value'] for x in values]
-            meta_list = [{x['value']: x['title']} for x in values]
+            meta_list = {x['value']: x['title'] for x in values}
         else :
             value_list = [v['value'] for v in variables if 'value' in v.keys()]
-            meta_list = [{x['label']: { \
-                            'value': x['value'] if 'value' in x.keys() else None, \
-                            'rowTitle': clean_text(x['rowTitle']), \
-                            'colTitle': clean_text(x['colTitle'])}} for x in variables]
+            meta_list = {
+                        x['label']: { \
+                        'value': x['value'] if 'value' in x.keys() else None, \
+                        'rowTitle': clean_text(x['rowTitle']), \
+                        'colTitle': clean_text(x['colTitle'])}
+                        for x in variables
+                        } 
         
         if 'dq' in q.keys() :
             if q['dq'] == 'atmtable' :
@@ -824,12 +840,15 @@ def decipher_map(pid: Union[str, int]) :
             
             for gr in groups :
                 filt_variable = [v for v in multiples if v['vgroup'] == gr]
-                ma_label_list = [{v['label']: {'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle']), 'vgroup': v['vgroup']}} for v in filt_variable]
+                ma_label_list = {v['label']: {'rowTitle': clean_text(v['rowTitle']), 'colTitle': clean_text(v['colTitle']), 'vgroup': v['vgroup']} for v in filt_variable}
                 ma_values = [v['value'] for v in filt_variable if 'value' in v.keys()]
-                ma_meta = [{x['label']: { \
+                ma_meta = {
+                            x['label']: { \
                             'value': x['value'] if 'value' in x.keys() else None, \
                             'rowTitle': clean_text(x['rowTitle']), \
-                            'colTitle': clean_text(x['colTitle'])}} for x in filt_variable]
+                            'colTitle': clean_text(x['colTitle'])}
+                            for x in filt_variable
+                          } 
                 return_questions.append({
                     'qlabel': gr, \
                     'variables': ma_label_list,

@@ -277,31 +277,37 @@ def calculate_bg_color(value):
     normalized_value = value / 100  # Normalize the value between 0 and 1
     return to_hex(cmap(normalized_value))
 
-def check_duplicate_meta(input_list: List[Dict[str, str]]) -> List[Dict[str, str]]:
-    value_counts = {}
-    for item in input_list:
-        for key, value in item.items():
-            if value in value_counts:
-                value_counts[value] += 1
+def check_duplicate_meta(original_dict: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    # 각 value의 발생 횟수를 계산
+    value_count = {}
+    for value in original_dict.values():
+        if value in value_count:
+            value_count[value] += 1
+        else:
+            value_count[value] = 1
+
+    new_dict = {}
+    value_rename_count = {}
+
+    for key, value in original_dict.items():
+        # 중복된 값이 있는 경우에만 리네임 진행
+        if value_count[value] > 1:
+            if value in value_rename_count:
+                value_rename_count[value] += 1
             else:
-                value_counts[value] = 1
-    
-    value_indices = {value: 1 for value in value_counts}
-    output_list = []
+                value_rename_count[value] = 1
 
-    for item in input_list:
-        for key, value in item.items():
-            if value_counts[value] > 1:
-                new_value = f"{value_indices[value]}. {value}"
-                value_indices[value] += 1
-            else:
-                new_value = value
-            output_list.append({key: new_value})
+            # "1_value", "2_value" 형식으로 리네임
+            new_value = f"{value_rename_count[value]}_{value}"
+        else:
+            new_value = value
 
-    return output_list
+        new_dict[key] = new_value
+
+    return new_dict
 
 
-def extract_order_and_labels(metadata: Union[list, dict], front_variable: Optional[list] = None, back_variable: Optional[list] = None):
+def extract_order_and_labels(metadata: Union[dict], front_variable: Optional[list] = None, back_variable: Optional[list] = None):
     """
     Extracts the order and labels from the provided metadata.
     
@@ -313,14 +319,14 @@ def extract_order_and_labels(metadata: Union[list, dict], front_variable: Option
         order (list): The extracted order of keys.
         labels (list): The extracted labels for the keys.
     """
-    order = [list(d.keys())[0] for d in metadata]
+    order = [d for d in metadata.keys()]
     if front_variable is not None :
         order = front_variable + order
     
     if back_variable is not None :
         order = order + back_variable
     
-    labels = [list(d.values())[0] for d in metadata]
+    labels = [d for d in metadata.values()]
     if front_variable is not None :
         labels = front_variable + labels
     
@@ -1659,51 +1665,15 @@ class DataCheck(pd.DataFrame):
 
         return_meta = None
         if meta is None :
-            meta_attr = self.attrs['meta']
+            meta = self.attrs['meta']
             titles = self.attrs['title']
-            if meta_attr :
+            if meta :
                 if isinstance(variable, str) :
-                    if variable in meta_attr.keys() :
-                        return_meta = meta_attr[variable]
+                    if variable in meta.keys() :
+                        return_meta = meta[variable]
                 
                 if isinstance(variable, list) :
-                    if titles and check_title :
-                        qtype = []
-                        vgroup = []
-
-                        for var in variable :
-                            if var in titles.keys() :
-                                vg = titles[var]['vgroup']
-                                qt = titles[var]['type']
-                                
-                                if vg is None :
-                                    raise ValueError(f"vgroup must be provided for each index ({var}).")
-                                else :
-                                    vgroup.append(vg)
-                                
-                                if qt is None :
-                                    raise ValueError(f"qtype must be provided for each index ({var}).")
-                                else :
-                                    qtype.append(qt)
-                        
-                        qtype = list(set(qtype))
-                        vgroup = list(set(vgroup))
-                        
-                        if not len(qtype) == 1 :
-                            raise ValueError("qtype must be the same for all indexes.")
-                        else :
-                            qtype = qtype[0]
-
-                        if not len(vgroup) == 1 :
-                            raise ValueError("vgroup must be the same for all indexes.")
-                        else :
-                            vgroup = vgroup[0]
-                            if (not qtype in ['multiple']) and (vgroup in meta_attr.keys()) :
-                                return_meta = meta_attr[vgroup]
-                            else :
-                                return_meta = [{v: meta_attr[v]} if v in meta_attr.keys() else {v: v} for v in variable]
-                    else :
-                        return_meta = [{v: meta_attr[v]} if v in meta_attr.keys() else {v: v} for v in variable]
+                    return_meta = {v: meta[v] if v in meta.keys() else v for v in variable}
             else :
                 return None
         else :
@@ -1881,7 +1851,7 @@ class DataCheck(pd.DataFrame):
 
                     if isinstance(columns, str) :
                         if columns in metas.keys() :
-                            col_meta = [list(m.values())[0] for m in metas[columns] if list(m.keys())[0] == str(base)]
+                            col_meta = [v for m, v in metas[columns].items() if m == str(base)]
                             if col_meta :
                                 col_title = col_meta[0]
                     
@@ -1952,6 +1922,8 @@ class DataCheck(pd.DataFrame):
                     medium: Optional[Union[int, List[int], bool]] = None,
                     bottom: Optional[int] = None,
                     reverse_rating: Optional[bool]=False,
+                    min_score : Optional[int] = None,
+                    net: Optional[Dict] = None,
                     aggfunc: Optional[list] = None,
                     with_value: bool = None,
                     group_name: Optional[str] = None,
@@ -1978,6 +1950,14 @@ class DataCheck(pd.DataFrame):
             if qtype is None :
                 raise ValueError('qtype is not defined')
 
+            if net is not None :
+                if not isinstance(net, dict) :
+                    raise ValueError('net must be dict')
+                
+                for value in net.values() :
+                    if not isinstance(value, list) :
+                        raise ValueError(f'net value must be list / Error : {value}')
+                        
 
             cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
             df = self[cond].copy()
@@ -2051,40 +2031,39 @@ class DataCheck(pd.DataFrame):
 
             index_meta = self.setting_meta(original_index_meta, index, not qtype in ['number', 'float', 'text'])
             if index_filter is not None :
+                index_filter = [str(i) for i in index_filter]
                 if index_meta is not None :
-                    index_meta_dict = {list(idx.keys())[0]:list(idx.values())[0] for idx in index_meta}
-                    index_meta = [{str(i) : index_meta_dict[str(i)]} for i in index_filter if str(i) in index_meta_dict.keys()]
+                    index_meta = {k: v for k, v in index_meta.items() if k in index_filter}
                 else :
-                    index_meta = [{str(i) : i} for i in index_filter]
+                    index_meta = {i: i for i in index_filter}
 
             if isinstance(index, str) and isinstance(index_meta, str) :
                 index_meta = None
 
             if index_meta is not None and index_sort is not None :
                 if index_sort == 'asc' :
-                    index_meta = sorted(index_meta, key=lambda d: list(d.keys())[0])
-                
+                    index_meta = dict(sorted(index_meta.items()))
+                    
                 if index_sort == 'desc' :
-                    index_meta = sorted(index_meta, key=lambda d: list(d.keys())[0], reverse=True)
+                    index_meta = dict(sorted(index_meta.items(), reverse=True))
 
             columns_meta = self.setting_meta(original_columns_meta, columns, dup_chk=False, check_title=False)
             if columns_filter is not None :
+                columns_filter = [str(i) for i in columns_filter]
                 if columns_meta is not None :
-                    columns_meta_dict = {list(col.keys())[0]:list(col.values())[0] for col in columns_meta}
-                    columns_meta = [{str(i) : columns_meta_dict[str(i)]} for i in columns_filter]
+                    columns_meta = {k:v for k, v in columns_meta.items() if k in columns_filter}
                 else :
-                    columns_meta = [{str(i) : i} for i in columns_filter]
-
+                    columns_meta = {i: i for i in columns_filter}
 
             if isinstance(columns, str) and isinstance(columns_meta, str) :
                 columns_meta = None
 
             if columns_meta is not None and columns_sort is not None :
                 if columns_sort == 'asc' :
-                    columns_meta = sorted(columns_meta, key=lambda d: list(d.keys())[0])
+                    columns_meta = dict(sorted(columns_meta.items()))
                 
                 if columns_sort == 'desc' :
-                    columns_meta = sorted(columns_meta, key=lambda d: list(d.keys())[0], reverse=True)
+                    columns_meta = dict(sorted(columns_meta.items(), reverse=True))
 
             # Number Type
             if qtype in ['number', 'float'] :
@@ -2100,13 +2079,18 @@ class DataCheck(pd.DataFrame):
                 bottom = self.attrs['default_bottom'] if bottom is None else bottom
                 medium = self.attrs['default_medium'] if medium is None else medium
                 
+                if net is not None :
+                    top = None
+                    bottom = None
+                    medium = None
+
                 if aggfunc is None :
                     aggfunc = ['mean']
                 
                 if score is None :
                     if index in metas.keys() :
                         chk_meta = metas[index]
-                        values = [int(list(m.keys())[0]) for m in chk_meta]
+                        values = [int(k) for k in chk_meta.keys()]
                         answers = max(values)
                         score = answers
                     else :
@@ -2116,13 +2100,10 @@ class DataCheck(pd.DataFrame):
                         
             # With Value
             if index_meta is not None and with_value :
-                new_index_meta = []
-                for idx in index_meta :
-                    new_meta = {}
-                    for k, m in idx.items() :
-                        new_meta[k] = f'[{k}] {m}'
-                    new_index_meta.append(new_meta)
-                
+                new_index_meta = {}
+                for key, v in index_meta.items() :
+                    new_index_meta[key] = f'[{key}] {v}'
+                    
                 index_meta = new_index_meta
             
 
@@ -2197,6 +2178,7 @@ class DataCheck(pd.DataFrame):
                                             index=index,
                                             columns=columns,
                                             total_label=total_label)
+                    
                 
                 result.fillna(0, inplace=True)
                 result = result.astype(int)
@@ -2207,12 +2189,12 @@ class DataCheck(pd.DataFrame):
                 if qtype in ['rating'] :
                     # score_min = min(default_index)
                     if score is None :
-                        score_meta = [int(list(x.keys())[0]) for x in index_meta]
+                        score_meta = [int(k) for k in index_meta.keys()]
                         score = max(score_meta)
                         # score_min = max(score_meta)
                     
-                    
-                    scores = [i for i in range(1, score+1)]
+                    min_score = 1 if min_score is None else min_score
+                    scores = [i for i in range(min_score, score+1)]
                     default_index = [str(idx) for idx in scores]
                     result = rating_netting(result, 
                                             scores, 
@@ -2221,7 +2203,12 @@ class DataCheck(pd.DataFrame):
                                             bottom=top, 
                                             medium=medium)
                     
-                    
+                
+                # Netting
+                if net is not None :
+                    net_result = var_netting(result, net)
+                    result = pd.concat([result, net_result])
+
                 
                 if aggfunc is not None : 
                     calc_result = None 
@@ -2248,27 +2235,19 @@ class DataCheck(pd.DataFrame):
                 # Process index metadata
                 if index_meta :
                     result.index = result.index.map(str)
-                    
-                    with_default = [str(idx) for idx in [total_label] + default_index]
-                    
-                    back_index = [idx for idx in result.index if not str(idx) in with_default]
-                    
-                    index_order, index_labels = extract_order_and_labels(index_meta, [total_label], back_index)
+                    index_order = [total_label] + [m for m in index_meta.keys()]
+                    index_order = index_order + [idx for idx in result.index if not idx in index_order]
                     
                     result = add_missing_indices(result, index_order)
-                    result = reorder_and_relabel(result, index_order, index_labels, axis=0, name=None)
+                    result.rename(index=index_meta, inplace=True)
                     
-
-            column_order = [total_label] + [i for i in result.columns.to_list() if not i == total_label]
-            result = result[column_order]
-
             # Process columns metadata
-            if columns_meta:
+            if columns and columns_meta:
                 result.columns = result.columns.map(str)
 
-                columns_order, columns_labels = extract_order_and_labels(columns_meta, [total_label])
+                columns_order = [total_label] + [m for m in columns_meta.keys()]
                 result = add_missing_indices(result.T, columns_order).T
-                result = reorder_and_relabel(result, columns_order, columns_labels, axis=1, name=None)
+                result.rename(columns=columns_meta, inplace=True)
 
             if not fill :
                 result.fillna(0, inplace=True)
@@ -2286,12 +2265,11 @@ class DataCheck(pd.DataFrame):
                     sample_ratio = round(all_count/sample_count, 2) * 100
                     base_desc = f'Not All Base ({sample_ratio:.2f}%)'
             
-            if not isinstance(result.index, pd.MultiIndex) :
-                result.index = pd.MultiIndex.from_tuples([('' if group_name is None else group_name, i) for i in result.index])
-                result.index.names = pd.Index(['/'.join(varable_text), base_desc])
-
             result = CrossTabs(result)
             result.attrs['type'] = qtype
+            result.attrs['qid'] = varable_text
+            result.attrs['base'] = base_desc
+            result.attrs['group_name'] = group_name
 
             return result
             #### ======================= ####
@@ -2459,11 +2437,8 @@ class DataCheck(pd.DataFrame):
         merge_table.columns = pd.MultiIndex.from_tuples(new_columns)
         merge_result = merge_table.loc[:, ~merge_table.columns.duplicated()]
 
-        if isinstance(merge_result.index, pd.MultiIndex):
-            merge_result.index = merge_result.index.droplevel(0)
+        qtype = list(set(qtypes))
 
-        merge_result.index = pd.MultiIndex.from_tuples([('' if group_name is None else group_name, idx) for idx in merge_result.index])
-        
         if base_desc is None:
             sample_count = len(self.index.to_list())
             tot = merge_result.iloc[0, 0] if not pd.isna(merge_result.iloc[0, 0]) else 0
@@ -2474,13 +2449,17 @@ class DataCheck(pd.DataFrame):
                 sample_ratio = round(all_count / sample_count, 2) * 100
                 base_desc = f'Not All Base ({sample_ratio:.0f}%)'
 
-        merge_result.index.names = pd.Index([index_name, base_desc])
+        merge_result.index.name = 'Index'
 
         if not fill:
             merge_result = merge_result.loc[(merge_result != 0).any(axis=1), (merge_result != 0).any(axis=0)]
         
         result = CrossTabs(merge_result)
-        result.attrs['type'] = list(set(qtypes))
+        result.attrs['type'] = qtype
+        result.attrs['qid'] = index_name
+        result.attrs['base'] = base_desc
+        result.attrs['group_name'] = group_name
+
         return result
 
 
@@ -2518,10 +2497,7 @@ class DataCheck(pd.DataFrame):
         qtypes = list(set(x.attrs['type'] for x in summary_df))
         summary = pd.concat(summary_df, axis=1)
 
-        if isinstance(summary.index, pd.MultiIndex):
-            summary.index = summary.index.droplevel(0)
-
-        summary.index = pd.MultiIndex.from_tuples([(summary_name, idx) for idx in summary.index])
+        summary.index.name = 'Index'
         result = summary
 
         result.columns = pd.MultiIndex.from_tuples(multi_col)
@@ -2539,10 +2515,12 @@ class DataCheck(pd.DataFrame):
         var_names = [f'{i[0]}-{i[-1]}' if isinstance(i, list) else i for i in index]
         var_names = f'{var_names[0]} to {var_names[-1]}'
 
-        result.index.names = pd.Index([var_names, base_desc])
-
         result = CrossTabs(result)
         result.attrs['type'] = qtypes
+        result.attrs['qid'] = index_name
+        result.attrs['base'] = base_desc
+        result.attrs['group_name'] = None
+
         return result
 
 
@@ -2610,6 +2588,9 @@ class DataCheck(pd.DataFrame):
             chat_result = None
             
             table_type = table.attrs['type']
+            base = table.attrs['base']
+            qid = table.attrs['qid']
+            group_name = table.attrs['group_name']
             if ai :
                 chat_result = table.chat_ai(model=model, 
                                             prompt=prompt, 
@@ -2621,7 +2602,10 @@ class DataCheck(pd.DataFrame):
             proc_result[table_name] = {
                 'desc': table_desc, 
                 'table': table,
-                'ai': chat_result
+                'ai': chat_result,
+                'base': base,
+                'group_name': group_name,
+                'qid': qid
             }
 
             table_html = None
@@ -2630,10 +2614,15 @@ class DataCheck(pd.DataFrame):
             else :
                 table_html = table.ratio(ratio_round=0, heatmap=heatmap).to_html()
 
-            table_desc_html = f"""<div style="font-size: 0.8rem; padding: 7px; max-width: 600px; font-style: italic; margin-bottom: 7px;">
-                    {table_desc}
+            table_desc_html = f"""<div style="font-size: 1rem; padding: 7px; max-width: 600px; margin-bottom: 7px; font-weight: bold;">
+                    {f'<span style="color:#2d6df6;">[{group_name}]</span><br/>' if group_name is not None else ''}{table_desc}
             </div>"""
-            
+
+            if base is not None :
+                table_desc_html += f"""<div style="font-size: 0.8rem; padding: 7px; max-width: 600px; font-style: italic; margin-bottom: 3px;">
+                    📌 {base}
+            </div>"""
+
             table_analysis_html = f"""<div style="font-weight: bold; font-size: 0.8rem; padding: 7px; max-width: 700px; margin-bottom: 7px;border: 1px solid #2d6df6; border-radius: 5px;">
                     {chat_result}
             </div>
@@ -2907,43 +2896,21 @@ class DataCheck(pd.DataFrame):
                     
                 else :
                     # CE TABLE
-                    new_group_name = {
-                        'index': '',
-                        'columns': key
-                    }
-                    for item, gr_name in new_group_name.items() :
-                        base = getattr(result, item)
-                        if not isinstance(base, pd.MultiIndex) :
-                            setattr(result, item, pd.MultiIndex.from_tuples([('' if b == total_label else gr_name, b) for b in base]))
-
-                        else :
-                            group_lenth = base.nlevels
-                            if group_lenth > 2 :
-                                setattr(result, item, pd.MultiIndex.from_tuples([('' if b[-1]==total_label else b[-2], b[-1]) for b in base]))
-
-                    index_header = None
-                    if all(i is None for i in result.index.names) :
-                        if total_label in result.index.get_level_values(-1) and total_label in result.columns.get_level_values(-1) :
-                            all_count = result.loc[('', total_label), ('', total_label)]
-                            sample_count = len(self.index.to_list())
-                            if sample_count == all_count :
-                                index_header = 'All Base'
-                            else :
-                                sample_ratio = round(all_count/sample_count, 2) * 100
-                                index_header = f'Not All Base ({sample_ratio:.0f}%)'
-                            
-                            result.index.names = pd.Index(['', index_header])
+                    use_qid = table_attrs['qid']
+                    base_text = table_attrs['base']
+                    group_name = table_attrs['group_name']
+                    
+                    if not isinstance(result.index, pd.MultiIndex) :
+                        result.index = pd.MultiIndex.from_tuples([('' if group_name is None else group_name, i) for i in result.index])
+                        result.index.names = pd.Index([use_qid, base_text])
 
                     index_sheet.write_url(row, col, f'internal:Table!A{data_start_row+1}', string=key, cell_format=index_format)
                     index_sheet.write(row, col + 1, desc, desc_format)
 
-                    base_desc = None
-                    qid_name = None
+                    index_sheet.write(row, col + 2, use_qid, qid_format)
+                    index_sheet.write(row, col + 3, base_text, qid_format)
 
-                    if isinstance(result, CrossTabs) :
-                        qid_name = result.index.names[0]
-                        base_desc = result.index.names[-1]
-                        
+                    if isinstance(result, CrossTabs) :                        
                         resurt_type = result.attrs['type']
                         
                         if isinstance(resurt_type, list) :
@@ -2953,9 +2920,6 @@ class DataCheck(pd.DataFrame):
                         elif not resurt_type in ['number', 'float'] :
                             result = result.ratio(ratio_round=None, heatmap=False)
                         
-
-                    index_sheet.write(row, col + 2, qid_name, qid_format)
-                    index_sheet.write(row, col + 3, base_desc, qid_format)
 
                     row += 1
 
@@ -3112,25 +3076,10 @@ class DataCheck(pd.DataFrame):
             return {x: title[x] for x in qid}
     
     def meta_validation(self, meta_data: List[Union[Dict, Tuple]]) :
-        if not isinstance(meta_data, list) :
+        if isinstance(meta_data, dict) :
             raise ValueError("meta_data must be list")
-        else :
-            type_check = [not isinstance(x, (dict, tuple)) for x in meta_data]
-            if any(type_check) :
-                raise ValueError("meta_data must be list of dict or list of tuple")
             
-            if all(isinstance(x, tuple) for x in meta_data) :
-                tuple_len_check = [len(x)!= 2 for x in meta_data]
-                if any(tuple_len_check) :
-                    raise ValueError("meta_data must be list of tuple with two values")
-
-                meta_data = [{x[0]: x[1]} for x in meta_data]
-            else :
-                dict_len_check = [len(x)!= 1 for x in meta_data]
-                if any(dict_len_check) :
-                    raise ValueError("meta_data must be list of dict with one key")
-        
-        to_str_meta = [{str(list(x.keys())[0]): list(x.values())[0]} for x in meta_data]
+        to_str_meta = {str(k): v for k, v in meta_data}
 
         return to_str_meta
 
@@ -3321,52 +3270,53 @@ def DecipherDataProcessing(dataframe: pd.DataFrame,
             title = {}
 
             for m in _map :
-                base = m['variables']
-                variables = [list(v.keys())[0] for v in base]
+                variables = m['variables']
                 qtype = m['type']
                 meta = m['meta']
                 grouping = m['grouping']
                 mtitle = m['title']
-
-                title[m['qlabel']] = {
+                qlabel = m['qlabel']
+                title[qlabel] = {
                     "type": qtype,
                     "title": mtitle,
                     "sub_title": None,
                     "vgroup": None
                 }
 
-                metadata[m['qlabel']] = meta
-
-                for v in variables :
+        
+                for v, dt in variables.items() :
                     qtitle = m['title']
-                    base_var = [b[v] for b in base if list(b.keys())[0] == v][0]
-                    
-                    if qtype in ['single', 'rating', 'rank'] :
+
+                    if qtype in ['single', 'rating', 'rank', 'other_open'] :
                         metadata[v] = meta
-                    elif qtype in ['other_open'] :
-                        metadata[v] = list(meta[0].values())[0]
                     else :
                         if grouping == 'rows' :
-                            metadata[v] = [list(i.values())[0]['colTitle'] for i in meta if list(i.keys())[0] == v][0]
+                            metadata[v] = meta[v]['colTitle']
                         else :
-                            metadata[v] = [list(i.values())[0]['rowTitle'] for i in meta if list(i.keys())[0] == v][0]
+                            metadata[v] = meta[v]['rowTitle']
                     
                     sub_title = None
                     if grouping == 'rows' :
-                        sub_title = base_var['rowTitle']
+                        sub_title = dt['rowTitle']
                         if sub_title is None :
-                            sub_title = base_var['colTitle']
+                            sub_title = dt['colTitle']
                     if grouping == 'cols' :
-                        sub_title = base_var['colTitle']
+                        sub_title = dt['colTitle']
                         if sub_title is None :
-                            sub_title = base_var['rowTitle']
+                            sub_title = dt['rowTitle']
 
                     title[v] = {
                         "type": qtype,
                         "title": qtitle,
                         "sub_title": sub_title,
-                        "vgroup": base_var['vgroup']
+                        "vgroup": dt['vgroup']
                     }
+                
+                if not qlabel in metadata :
+                    if grouping == "rows":
+                        metadata[qlabel] = {str(k):v if isinstance(v, str) else v['colTitle'] for k, v in meta.items()}
+                    else :
+                        metadata[qlabel] = {str(k):v if isinstance(v, str) else v['rowTitle'] for k, v in meta.items()}
 
         except FileNotFoundError :
             print(f"File not found: {title_path}")
@@ -3522,14 +3472,14 @@ def DecipherSetting(pid: str,
     if meta :
         meta_path = os.path.join(parent_path, 'meta')
         ensure_directory_exists(meta_path)
-        metadata = decipher_meta(pid) # attr meta
-        title = decipher_title(pid) # title meta
+        # metadata = decipher_meta(pid) # attr meta
+        # title = decipher_title(pid) # title meta
 
-        with open(os.path.join(meta_path, f'meta_{pid}.json'), 'w', encoding='utf-8') as f :
-            json.dump(metadata, f, ensure_ascii=False, indent=4)
+        # with open(os.path.join(meta_path, f'meta_{pid}.json'), 'w', encoding='utf-8') as f :
+        #     json.dump(metadata, f, ensure_ascii=False, indent=4)
         
-        with open(os.path.join(meta_path, f'title_{pid}.json'), 'w', encoding='utf-8') as f :
-            json.dump(title, f, ensure_ascii=False, indent=4)
+        # with open(os.path.join(meta_path, f'title_{pid}.json'), 'w', encoding='utf-8') as f :
+        #     json.dump(title, f, ensure_ascii=False, indent=4)
 
         with open(os.path.join(meta_path, f'map_{pid}.json'), 'w', encoding='utf-8') as f :
             json.dump(map_py, f, ensure_ascii=False, indent=4)
@@ -3538,7 +3488,7 @@ def DecipherSetting(pid: str,
             for mp in map_py :
                 qlabel = mp['qlabel']
                 variables = mp['variables']
-                variables = [list(v.keys())[0] for v in variables]
+                variables = [v for v in variables.keys()]
                 qtype = mp['type']
                 var_text = f"""# {qlabel} : {qtype}\n"""
 
@@ -4039,18 +3989,18 @@ df.set_banner(df.net())"""
             if not variables :
                 if meta and qtype in ['number', 'float', 'text', 'rating'] :
                     if len(meta) == 1 :
-                        var_name = list(meta[0].keys())[0]
+                        var_name = meta.keys()[0]
                         cell_text += f"""# {qid} = '{var_name}'"""
 
             elif len(variables) == 1 :
-                var_name = list(variables[0].keys())[0]
+                var_name = list(variables.keys())[0]
                 if var_name != qid :
                     qid = var_name
                 
                 cell_text += f"""# {qid} = '{var_name}'"""
             
             elif len(variables) >= 2 :
-                var_list = [list(v.keys())[0] for v in variables]
+                var_list = [v for v in variables.keys()]
                 var_list = ', '.join([f"'{v}'" for v in var_list])
                 cell_text += f"# {qid} = [{var_list}]"
 
@@ -4061,7 +4011,7 @@ df.set_banner(df.net())"""
                     rating_text = cell_text
                     rating_text += f"# {qid} Grid summary\n"
 
-                    grid_var = [list(v.keys())[0] for v in variables]
+                    grid_var = [v for v in variables.keys()]
                     grid_var = ', '.join(grid_var)
                     rating_text += f"table = df.grid_summary([{grid_var}], fill=False)\n"
                     rating_text += f"df.proc_append(\n\t\t(f'{table_id}_sumamry', '{qid} Grid Summary'), \n\t\ttable, \n\t\tai=False\n\t)"
@@ -4083,12 +4033,10 @@ df.set_banner(df.net())"""
                     for i in range(1, max_rank+1) :
                         rank_cnt = '1' if i == 1 else f"1-{i}"
                         rank_cell_text = f"# {qid} ({qtype}) : Rank {rank_cnt}\n"
-
-                        filt_var = variables[:i]
-                        filt_var = [list(v.keys())[0] for v in filt_var]
-                        # join_qid = ', '.join([f"'{v}'" for v in filt_var])
+                        rank_var = [v for v in variables.keys()]
+                        filt_var = rank_var[:i]
                         join_qid = ', '.join(filt_var)
-                        # Need Append Cell
+                        
                         rank_cell_text += f"""table = df.proc([{join_qid}])\n"""
                         rank_cell_text += f"""df.proc_append(\n\t('{table_id}_{i}', '[Rank {rank_cnt}] {title}'), \n\ttable, \n\tai=False\n)"""
                         ipynb_cell.append(nbf.v4.new_code_cell(rank_cell_text))
@@ -4099,8 +4047,7 @@ df.set_banner(df.net())"""
                     ipynb_cell.append(nbf.v4.new_code_cell(cell_text))
 
                 if qtype in ['text'] :
-                    for idx, v in enumerate(variables, 1) :
-                        vid = list(v.keys())[0]
+                    for idx, vid in enumerate(variables.keys(), 1) :
                         text_cellt_text = f"# {vid} ({qtype})\n"
                         text_cellt_text += f"""table = df.banner_wordcloud({vid})\n"""
                         text_cellt_text += f"""df.proc_append(\n\t('{table_id}_{idx}', '{title}'), \n\ttable\n)"""
