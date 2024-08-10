@@ -29,9 +29,8 @@ from datetime import datetime
 
 VarWithHeader = Tuple[str, Union[str, List[str]]]
 ColumnsWithHeader = List[VarWithHeader]
-IndexWithTypes = Union[str, List[str], Tuple[str]]
+IndexWithTypes = Union[str, List[str], Tuple[str], Dict]
 Qtypes = Literal['single', 'rating', 'rank', 'ranksort', 'multiple', 'number', 'float', 'text']
-
 
 def check_print(variables: Union[List[str], Tuple[str, ...], str], 
                 error_type: Literal['SA', 'MA', 'LOGIC', 'MASA', 'MAMA', 'MARK', 'RATERANK', 'DUP'], 
@@ -545,12 +544,12 @@ class DataCheck(pd.DataFrame):
         
         result_alt = alt_qid
 
-        if self.attrs['title'] is not None :
+        if self.attrs.get('title') is not None :
             match_qid = qid
             if isinstance(qid, list) :
                 match_qid = qid[0]
             
-            title_dict = self.attrs['title']
+            title_dict = self.attrs.get('title')
             if match_qid in title_dict.keys() :
                 vgroup = title_dict[match_qid]['vgroup']
                 if vgroup in title_dict :
@@ -1665,15 +1664,25 @@ class DataCheck(pd.DataFrame):
 
         return_meta = None
         if meta is None :
-            meta = self.attrs['meta']
-            titles = self.attrs['title']
+            meta = self.attrs.get('meta')
+            titles = self.attrs.get('title')
             if meta :
                 if isinstance(variable, str) :
                     if variable in meta.keys() :
                         return_meta = meta[variable]
                 
                 if isinstance(variable, list) :
+                    qtypes = [titles[v]['type'] for v in variable if v in titles.keys()]
+                    
                     return_meta = {v: meta[v] if v in meta.keys() else v for v in variable}
+                    if qtypes :
+                        qtype = list(set(qtypes))[0]
+                        if qtype in ['rank', 'single', 'rating'] :
+                            vgroup = list(set([titles[v]['vgroup'] for v in variable]))
+                            if len(vgroup) > 1 :
+                                print(f"⚠️ duplicate variable group detected : {vgroup} / Gets the meta of the first variable reference")
+                            
+                            return_meta = meta[vgroup[0]]
             else :
                 return None
         else :
@@ -1693,7 +1702,7 @@ class DataCheck(pd.DataFrame):
 
         return_title = None
         if title is None :
-            title_attr = self.attrs['title']
+            title_attr = self.attrs.get('title')
             if title_attr :
                 chk_var = variable
                 if isinstance(chk_var, list) :
@@ -1738,8 +1747,8 @@ class DataCheck(pd.DataFrame):
         if isinstance(index, list) :
             raise ValueError('index must be string')
 
-        titles = self.attrs['title']
-        metas = self.attrs['meta']
+        titles = self.attrs.get('title')
+        metas = self.attrs.get('meta')
 
         qtype = 'text'
         if isinstance(index, str) :
@@ -1865,7 +1874,7 @@ class DataCheck(pd.DataFrame):
 
     def banner_wordcloud(self, 
                          index: str,
-                         columns: Optional[Union[str, List[str]]] = None,
+                         columns: Optional[Union[str, List[str], dict]] = None,
                          cond: Optional[pd.Series] = None,
                          base_desc: Optional[str] = None,
                          **options) :
@@ -1877,10 +1886,16 @@ class DataCheck(pd.DataFrame):
                 else :
                     columns = banner
             
-            titles = self.attrs['title']
+            titles = self.attrs.get('title')
             clouds = []
 
             total_flag = True
+            if isinstance(columns, dict) :
+                columns = list(columns.items())
+            
+            if isinstance(columns, str) :
+                columns = [(titles.get(columns, {}).get('title', columns), columns)]
+
             for col_head, col in columns :
                 header = col_head
                 if col_head in titles.keys() :
@@ -1929,8 +1944,8 @@ class DataCheck(pd.DataFrame):
                     group_name: Optional[str] = None,
                     base_desc: Optional[str] = None) -> pd.DataFrame :
 
-            titles = self.attrs['title']
-            metas = self.attrs['meta']
+            titles = self.attrs.get('title')
+            metas = self.attrs.get('meta')
 
             if qtype is None :
                 if isinstance(index, str) :
@@ -1978,7 +1993,6 @@ class DataCheck(pd.DataFrame):
             # Table Header
             varable_text = []
             index_cond = None
-            column_cond = None
             if isinstance(index, list) :
                 varable_text.append(f'{index[0]}-{index[-1]}')
                 if qtype == 'multiple' :
@@ -1991,24 +2005,18 @@ class DataCheck(pd.DataFrame):
 
             if isinstance(columns, list) :
                 varable_text.append(f'{columns[0]}-{columns[-1]}')
-                # column_cond = ((~df[columns].isna()).any(axis=1)) & ((df[columns] != 0).any(axis=1))
             else :
                 if columns is not None :
                     varable_text.append(columns)
-                    #column_cond = ~df[columns].isna()
 
             # Index
             if isinstance(index, (list)) :
-                # index = self.ma_return(index)
-                # if not self.col_name_check(*index) : return
                 filt_variables += index
             else :
                 filt_variables.append(index)
 
             # Columns
             if isinstance(columns, (list)) :
-                # columns = self.ma_return(columns)
-                # if not self.col_name_check(*columns) : return
                 filt_variables += columns
             else :
                 if columns is not None :
@@ -2026,7 +2034,6 @@ class DataCheck(pd.DataFrame):
             
             original_index_meta = index_meta
             original_columns_meta = columns_meta
-
 
 
             index_meta = self.setting_meta(original_index_meta, index, not qtype in ['number', 'float', 'text'])
@@ -2239,14 +2246,16 @@ class DataCheck(pd.DataFrame):
                     index_order = index_order + [idx for idx in result.index if not idx in index_order]
                     
                     result = add_missing_indices(result, index_order)
+                    result = result.loc[index_order, :]
                     result.rename(index=index_meta, inplace=True)
                     
             # Process columns metadata
             if columns and columns_meta:
                 result.columns = result.columns.map(str)
-
                 columns_order = [total_label] + [m for m in columns_meta.keys()]
+                
                 result = add_missing_indices(result.T, columns_order).T
+                result = result.loc[:, columns_order]
                 result.rename(columns=columns_meta, inplace=True)
 
             if not fill :
@@ -2274,174 +2283,258 @@ class DataCheck(pd.DataFrame):
             return result
             #### ======================= ####
 
-    def netting(self, banner_list: List[Union[Tuple, List]]):
-        # [ ('banner column name', 'banner title', banner condition) ]
-        new_meta = self.attrs['meta_origin']
-        new_title = self.attrs['title_origin']
-        nets = self.attrs['nets']
-        
-        def add_netting_column(col, title, cond, vgroup=None):
-            if not isinstance(col, str):
-                raise ValueError(f'banner column name must be string : {col}')
-            
-            if not isinstance(title, str):
-                raise ValueError(f'banner title must be string : {title}')
 
-            if not isinstance(cond, pd.Series):
-                raise ValueError(f'banner condition must be pd.Series : {cond}')
-            
-            new_col = pd.Series(0, index=self.index)
-            new_col[cond] = 1
-            result = self.assign(**{col: new_col})
+    def sa_netting(self, 
+                name: str,
+                code_dict: Dict,
+                title: Optional[str] = None,
+                sub_title: Optional[str] = None,
+                qtype: Literal['single', 'rating', 'rank'] = 'single') :
+        if not isinstance(code_dict, dict):
+            raise TypeError("code_dict must be a dictionary")
+
+        if not isinstance(name, str):
+            raise TypeError("name must be a string")
+        
+        df = self
+        code_meta = {}
+        result_series = pd.Series(index=df.index, dtype=int)  # 빈 시리즈 생성
+        for code, [label, cond] in code_dict.items():
+            result_series.loc[cond] = code  # 조건에 맞는 값 할당
+            code_meta[str(code)] = label
+        
+        result = self.assign(**{name: result_series})
+        self.__dict__.update(result.__dict__)
+        self[name] = self[name].astype(int)
+
+        self.set_meta(name, code_meta)
+        self.set_title(
+            qid=name,
+            qtype=qtype,
+            title=title if title is not None else name,
+            sub_title=sub_title,
+        )
+
+        result = self.table(name)
+        return result
+    
+
+    def ma_netting(self, 
+                name: str,
+                code_dict: Dict,
+                title: Optional[str] = None,
+                sub_title: Optional[str] = None,
+                qtype: Literal['multiple'] = 'multiple') :
+        
+        if not isinstance(code_dict, dict):
+            raise TypeError("code_dict must be a dictionary")
+
+        if not isinstance(name, str):
+            raise TypeError("name must be a string")
+        
+        df = self
+        ma_net_var = {}
+
+        self.set_title(
+            qid=name,
+            qtype=qtype,
+            title=title if title is not None else name,
+            sub_title=sub_title,
+        )
+
+        for code, [label, cond] in code_dict.items():
+            net_result = pd.Series(0, index=df.index, dtype=int)  # 빈 시리즈 생성: Default 0
+            net_result.loc[cond] = 1  # 조건에 맞는 값 할당
+            qlabel = f'{name}#{code}'
+            ma_net_var[qlabel] = label
+
+            result = self.assign(**{qlabel: net_result})
             self.__dict__.update(result.__dict__)
-            
-            new_meta[col] = title
-            new_title[col] = {
-                'type': 'multiple',
-                'title': title,
-                'sub_title': None,
-                'vgroup': vgroup,
-            }
-            if vgroup is None :
-                nets[col] = col
+            self[qlabel] = self[qlabel].astype(int)
 
-        def add_netting_group(group_label, group_title, banners) :
-            new_meta[group_label] = group_title
-            
-            banner_child = []
-            col_group = []
-            
-            new_title[group_label] = {
-                'type': 'multiple',
-                'title': group_title,
-                'sub_title': None,
-                'vgroup': None,
-            }
-
-            for ba in banners :
-                col, title, cond = ba
-                add_netting_column(col, title, cond, group_label)
-                banner_child.append(col)
-                col_group.append(col)
-
-            nets[group_label] = col_group
-
-
-        for banner in banner_list:
-            if isinstance(banner, tuple) :
-                col, title, cond = banner
-                add_netting_column(col, title, cond)
-            
-            if isinstance(banner, list):
-                group, bas = banner
-                if not isinstance(group, tuple):
-                    raise ValueError(f'banner group must be tuple : {banner}')
-                
-                if not isinstance(bas, list):
-                    raise ValueError(f'banner variable must be list : {banner}')
-                
-                glabel, gtitle = group
-                add_netting_group(glabel, gtitle, bas)
-                
-        # Add all new columns to the dataframe at once
-        # self.dataframe = pd.concat([self.dataframe, pd.DataFrame(new_columns, index=self.dataframe.index)], axis=1)
-        self.attrs['meta'] = new_meta
-        self.attrs['title'] = new_title
-        self.attrs['nets'] = nets
-
-        # 데이터 저장을 위한 리스트 초기화
-        data = []
-
-        for key, value in nets.items():
-            if isinstance(value, str):
-                meta = self.attrs['meta'][value]
-                sample = (self[value] == 1).sum()
-                data.append([None, None, value, meta, sample])
-            if isinstance(value, list):
-                for v in value:
-                    meta = self.attrs['meta'][v]
-                    sample = (self[v] == 1).sum()
-                    title = self.attrs['meta'][key]
-                    data.append([key, title, v, meta, sample])
-
-        # 리스트를 DataFrame으로 변환
-        df = pd.DataFrame(data, columns=["Group Variable", "Group Title", "Variable", "Title", "Sample"])
-        return df
-
-
-    def net(self, key: Optional[str] = None) :
-        nets = self.attrs['nets']
-        if key is None :
-            if nets :
-                return [(key, var) for key, var in nets.items()]
-            else :
-                return None
+            self.set_meta(qlabel, label)
+            self.set_title(
+                qid=qlabel,
+                qtype=qtype,
+                title=title if title is not None else qlabel,
+                sub_title=label,
+                vgroup=name
+            )
         
-        if not isinstance(key, str):
-            raise ValueError(f'key must be str : {key}')
+        self.set_meta(name, ma_net_var)
+        result = self.table(list(ma_net_var.keys()))
+
+        return result
+
         
-        if key not in nets.keys():
-            raise ValueError(f'key not found in nets : {key}')
 
-        return nets[key]
-
-    def set_banner(self, banner_list: Optional[List[Tuple[str, List]]] = None):
+    def set_banner(self, banner_list: Optional[Union[str, List, Dict]] = None):
         self.attrs['banner'] = banner_list
+
+
+    def total_row(self, columns: Union[str, List, Dict], cond=None):
+        titles = self.attrs.get('title')
+        if isinstance(columns, dict) :
+            index_group = []
+            tables = [
+                (titles.get(col_head, {}).get('title', col_head), self.table(col, cond=cond))
+                for col_head, col in columns.items()
+            ]
+
+            result = pd.concat([t for _, t in tables])
+            for head, table in tables:
+                index_group.append(('', table.index[0]))
+                index_group.extend((head, col) for col in table.index[1:])  # Total 제외
+            
+            result.index = pd.MultiIndex.from_tuples(index_group)
+            result = result.loc[~result.index.duplicated(), :]
+
+        elif isinstance(columns, (str, list)) :
+            result = self.table(columns, cond=cond)
         
+        result.fillna(0, inplace=True)
+        return result.T
 
     def proc(self, 
             index: IndexWithTypes, 
             columns: Optional[ColumnsWithHeader] = None, 
+            cond: Optional[pd.Series] = None,
             fill: bool = True, 
             group_name: Optional[str] = None,
             base_desc: Optional[str] = None,
+            index_net: Optional[bool] = False,
             **options):
         
+        if not isinstance(index, (str, list, dict)):
+            raise TypeError("index must be a string, list, or dictionary")
+
         if columns is None:
             banner = self.attrs.get('banner')
-            if banner is None:
-                raise ValueError("banner is not set")
             columns = banner
 
-        titles = self.attrs['title']
+        titles = self.attrs.get('title')
 
-        if not isinstance(columns, list):
-            raise TypeError("columns must be a list")
-
-        if isinstance(index, tuple):
-            index = self.ma_return(index)
-            if not self.col_name_check(*index):
-                return
+        if columns is not None :
+            if not isinstance(columns, (str, list, dict)):
+                raise TypeError("columns must be a string, list, or dictionary")
 
         index_name = index
+        total_label = 'Total'
+        tables = []
+        new_index = []
+        new_columns = []
+        qtypes = []
+
         if isinstance(index, list) :
             if len(index) == 1 :
                 index_name = index[0]
             else :
                 index_name = f'{index[0]}-{index[-1]}'
 
-        tables = [
-            (titles.get(col_head, {}).get('title', col_head), self.table(index, col, **options))
-            for col_head, col in columns
-        ]
+        if isinstance(index, dict) :
+            index_keys = list(index.keys())
+            if len(index_keys) == 1 :
+                index_name = index_keys[0]
+            else :
+                index_name = f'{index_keys[0]}-{index_keys[-1]}'
 
-        merge_table = pd.concat([t for _, t in tables], axis=1)
+        if isinstance(index, (str, list)) :
+            # By Column Table
+            if isinstance(columns, dict) :
+                
+                tables = [
+                    (titles.get(col_head, {}).get('title', col_head), self.table(index, col, cond=cond, **options))
+                    for col_head, col in columns.items()
+                ]
 
-        new_columns = []
-        qtypes = []
-        for head, table in tables:
-            new_columns.append(('', table.columns[0]))
-            qtypes.append(table.attrs['type'])
-            new_columns.extend((head, col) for col in table.columns[1:])  # Total 제외
+                result = pd.concat([t for _, t in tables], axis=1)
+                for head, table in tables:
+                    new_columns.append(('', table.columns[0]))
+                    qtypes.append(table.attrs['type'])
+                    new_columns.extend((head, col) for col in table.columns[1:])  # Total 제외
 
-        merge_table.columns = pd.MultiIndex.from_tuples(new_columns)
-        merge_result = merge_table.loc[:, ~merge_table.columns.duplicated()]
+            elif isinstance(columns, (str, list)) :
+                result = self.table(index, columns, cond=cond, **options)
+            
+            else :
+                result = self.table(index, cond=cond, **options)
+                qtypes = result.attrs['type']
+        
+        if isinstance(index, dict) :
+            if isinstance(columns, dict) :
+                    for idx_head, idx in index.items() :
+                        idx_name = idx
+                        idx_cond = cond
+                        if isinstance(idx, tuple) :
+                            idx_name, base = idx
+                            idx_cond = (cond) & (base)
+
+                        each_table = [
+                            (titles.get(col_head, {}).get('title', col_head), self.table(idx_name, col, cond=idx_cond, **options))
+                            for col_head, col in columns.items()
+                        ]
+                        
+                        col_group = []
+                        for head, table in each_table:
+                            col_group.append(('', table.columns[0]))
+                            qtypes.append(table.attrs.get('type', None))
+                            col_group.extend((head, col) for col in table.columns[1:])  # Total 제외
+                        
+                        each_table = pd.concat([t for _, t in each_table], axis=1)
+
+                        if (isinstance(idx_name, str)) and (idx_cond is not None) :
+                            each_table = each_table.loc[(each_table != 0).any(axis=1), :]
+
+                        each_table.columns = pd.MultiIndex.from_tuples(col_group)
+                        each_table = each_table.loc[:, ~each_table.columns.duplicated()]
+
+                        tables.append((idx_head, each_table))
+                    
+                    idx_group = []
+                    for head, table in tables :
+                        if index_net :
+                            table.rename(index={total_label: f'▣ {head}'}, inplace=True)
+                            idx_group.extend((head, t) for t in table.index)
+                        else :
+                            idx_group.append(('', table.index[0]))
+                            idx_group.extend((head, t) for t in table.index[1:])  # Total 제외
+                        
+                        qtypes.append(table.attrs.get('type', None))
+                    
+                    result = pd.concat([t for _, t in tables])
+                    result.index = pd.MultiIndex.from_tuples(idx_group)
+                    result = result.loc[~result.index.duplicated(), :]
+
+                    if index_net :
+                        total_row = self.total_row(columns, cond=cond)
+                        total_row.index = pd.MultiIndex.from_tuples([('', idx) for idx in total_row.index])
+                        result = pd.concat([total_row, result])
+
+            else :
+                tables = [
+                    (titles.get(idx_head, {}).get('title', idx_head), self.table(idx, columns, cond=cond, **options))
+                    for idx_head, idx in index.items()
+                ]
+
+                result = pd.concat([t for _, t in tables])
+                for head, table in tables:
+                    new_index.append(('', table.index[0]))
+                    qtypes.append(table.attrs.get('type', None))
+                    new_index.extend((head, idx) for idx in table.index[1:])  # Total 제외
+        
+        if new_index :
+            result.index = pd.MultiIndex.from_tuples(new_index)
+            result = result.loc[~result.index.duplicated(), :]
+
+        if new_columns :
+            result.columns = pd.MultiIndex.from_tuples(new_columns)
+            result = result.loc[:, ~result.columns.duplicated()]
 
         qtype = list(set(qtypes))
 
         if base_desc is None:
             sample_count = len(self.index.to_list())
-            tot = merge_result.iloc[0, 0] if not pd.isna(merge_result.iloc[0, 0]) else 0
+            tot = result.iloc[0, 0] if not pd.isna(result.iloc[0, 0]) else 0
             all_count = int(tot)
             if sample_count == all_count:
                 base_desc = 'All Base'
@@ -2449,17 +2542,17 @@ class DataCheck(pd.DataFrame):
                 sample_ratio = round(all_count / sample_count, 2) * 100
                 base_desc = f'Not All Base ({sample_ratio:.0f}%)'
 
-        merge_result.index.name = 'Index'
+        result.index.name = 'Index'
 
         if not fill:
-            merge_result = merge_result.loc[(merge_result != 0).any(axis=1), (merge_result != 0).any(axis=0)]
+            result = result.loc[(result != 0).any(axis=1), (result != 0).any(axis=0)]
         
-        result = CrossTabs(merge_result)
+        result = CrossTabs(result)
         result.attrs['type'] = qtype
         result.attrs['qid'] = index_name
         result.attrs['base'] = base_desc
         result.attrs['group_name'] = group_name
-
+        
         return result
 
 
@@ -2526,7 +2619,7 @@ class DataCheck(pd.DataFrame):
 
 
     def get_title(self, qid: str) :
-        title = self.attrs['title']
+        title = self.attrs.get('title')
         if title :
             if qid in title.keys():
                 qtitle = title[qid]['title']
@@ -2794,7 +2887,7 @@ class DataCheck(pd.DataFrame):
         data_sheet.set_column('C:C', 7)
 
         for key, table_attrs in proc_result.items():
-            try :
+            # try :
                 result = table_attrs['table']
                 desc = table_attrs['desc']
                 ai = table_attrs['ai']
@@ -2903,6 +2996,10 @@ class DataCheck(pd.DataFrame):
                     if not isinstance(result.index, pd.MultiIndex) :
                         result.index = pd.MultiIndex.from_tuples([('' if group_name is None else group_name, i) for i in result.index])
                         result.index.names = pd.Index([use_qid, base_text])
+                    
+                    if not isinstance(result.columns, pd.MultiIndex) :
+                        result.columns = pd.MultiIndex.from_tuples([('', i) for i in result.columns])
+                        result.columns.names = pd.Index([use_qid, base_text])
 
                     index_sheet.write_url(row, col, f'internal:Table!A{data_start_row+1}', string=key, cell_format=index_format)
                     index_sheet.write(row, col + 1, desc, desc_format)
@@ -3010,8 +3107,8 @@ class DataCheck(pd.DataFrame):
 
                     data_start_row += len(result) + 6  # 3행 간격
             
-            except :
-                print(f"⚠️ Error in {key}")
+            # except :
+            #     print(f"⚠️ Error in {key}")
 
             
         writer.close()
@@ -3036,7 +3133,7 @@ class DataCheck(pd.DataFrame):
         if not isinstance(qid, (str,  list)) :
             raise ValueError("qid must be str or list")
 
-        meta = self.attrs['meta']
+        meta = self.attrs.get('meta')
 
         if not meta :
             raise ValueError("There is no meta data")
@@ -3058,7 +3155,7 @@ class DataCheck(pd.DataFrame):
         if not isinstance(qid, (str,  list)) :
             raise ValueError("qid must be str or list")
 
-        title = self.attrs['title']
+        title = self.attrs.get('title')
 
         if not title :
             raise ValueError("There is no title data")
@@ -3075,40 +3172,43 @@ class DataCheck(pd.DataFrame):
             
             return {x: title[x] for x in qid}
     
-    def meta_validation(self, meta_data: List[Union[Dict, Tuple]]) :
-        if isinstance(meta_data, dict) :
-            raise ValueError("meta_data must be list")
-            
-        to_str_meta = {str(k): v for k, v in meta_data}
+    def meta_validation(self, meta_data: Union[str, dict]) :
+        if isinstance(meta_data, str) :
+            return meta_data
+        else :
+            if not isinstance(meta_data, dict) :
+                raise ValueError("meta_data must be str or dict")
+
+            to_str_meta = {str(k): v for k, v in meta_data.items()}
 
         return to_str_meta
 
-    def set_meta(self, qid: str, meta_data: List[Union[Dict, Tuple]]) :
+    def set_meta(self, qid: str, meta_data: Union[List[Union[Dict, Tuple]], str]) :
         if not isinstance(qid, str) :
             raise ValueError("qid must be str")
         
-        meta = self.attrs['meta']
+        meta = self.attrs.get('meta')
 
         if qid in meta.keys() :
             raise ValueError(f"qid already exists")
 
-        self.attrs['meta'][qid] = self.meta_validation(meta_data)
+        self.attrs.get('meta')[qid] = self.meta_validation(meta_data)
 
     
     def update_meta(self, qid: str, meta_data: List[Dict]) :
         if not isinstance(qid, str) :
             raise ValueError("qid must be str")
         
-        meta = self.attrs['meta']
+        meta = self.attrs.get('meta')
 
         if not qid in meta.keys() :
             raise ValueError(f"qid does not exist")
 
-        self.attrs['meta'][qid] = self.meta_validation(meta_data)
+        self.attrs.get('meta')[qid] = self.meta_validation(meta_data)
 
 
     def title_validation(self, qtype: Qtypes, title: str, sub_title: Optional[str] = None, vgroup: Optional[str] = None) :
-        title_meta = self.attrs['title']
+        title_meta = self.attrs.get('title')
 
         if not isinstance(title, str) :
             raise ValueError("title must be str")
@@ -3138,26 +3238,26 @@ class DataCheck(pd.DataFrame):
         if not isinstance(qid, str) :
             raise ValueError("qid must be str")
         
-        title_meta = self.attrs['title']
+        title_meta = self.attrs.get('title')
 
         if qid in title_meta.keys() :
             raise ValueError(f"qid already exists")
 
         
-        self.attrs['title'][qid] = self.title_validation(qtype, title, sub_title, vgroup)
+        self.attrs.get('title')[qid] = self.title_validation(qtype, title, sub_title, vgroup)
 
 
     def update_title(self, qid: str, qtype: Qtypes, title: str, sub_title: Optional[str] = None, vgroup: Optional[str] = None) :
         if not isinstance(qid, str) :
             raise ValueError("qid must be str")
         
-        title_meta = self.attrs['title']
+        title_meta = self.attrs.get('title')
 
         if not qid in title_meta.keys() :
             raise ValueError(f"qid already exists")
 
         
-        self.attrs['title'][qid] = self.title_validation(qtype, title, sub_title, vgroup)
+        self.attrs.get('title')[qid] = self.title_validation(qtype, title, sub_title, vgroup)
 
 
 
@@ -3907,29 +4007,6 @@ df = DecipherDataProcessing([Raw DataFrame], map_json='[Map JSON Path]', default
     'medium' : False, # or 3 or [3, 4, 5], etc ...  
     'bottom': [2, 3],  
 }})  
-```  
-
-##### 📌 Banner Netting example
-```python
-banners = [
-    [
-        ('BAG1', '성별'),
-        [
-            ('#1', '남', df.Q2==1),
-            ('#2', '여', df.Q2==2),
-        ]
-    ],
-    [
-        ('BAG2', '연령'),
-        [
-            ('#3', '10대', df.Q4.isin([1, 2])),
-            ('#4', '20대', df.Q4.isin([3, 4])),
-            ('#5', '30대', df.Q4.isin([5, 6])),
-            ('#6', '40대', df.Q4.isin([7, 8])),
-            ('#7', '50대 이상', df.Q4.isin([9, 10, 11])),
-        ]
-    ],
-]
 ```  """
 
         ipynb_cell.append(nbf.v4.new_markdown_cell(guide_cell))
@@ -3940,7 +4017,8 @@ banners = [
 import numpy as np
 from meta.variables_{pid} import *
 import os
-from decipherAutomatic.dataProcessing.dataCheck import DecipherDataProcessing, download_decipher_data, get_versioned_filename
+from decipherAutomatic.dataProcessing.dataCheck import DecipherDataProcessing, download_decipher_data
+from decipherAutomatic.utils import get_versioned_filename
 # import pyreadstat
 
 pid = '{pid}'
