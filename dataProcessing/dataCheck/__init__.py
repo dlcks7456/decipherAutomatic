@@ -1990,24 +1990,45 @@ class DataCheck(pd.DataFrame):
                 if not self.col_name_check(*columns) : return
 
 
+            if index_filter is not None :
+                if not isinstance(index_filter, list) :
+                    raise ValueError("index_filter must be list")
+            
+            if columns_filter is not None :
+                if not isinstance(columns_filter, list) :
+                    raise ValueError("columns_filter must be list")
+
             # Table Header
             varable_text = []
             index_cond = None
             if isinstance(index, list) :
-                varable_text.append(f'{index[0]}-{index[-1]}')
                 if qtype == 'multiple' :
-                    index_cond = ((~df[index].isna()).any(axis=1)) & ((df[index] != 0).any(axis=1))
+                    if index_filter is not None :
+                        index_cond = ((~df[index_filter].isna()).any(axis=1)) & ((df[index_filter] != 0).any(axis=1))
+                        varable_text.append(f'{index_filter[0]}-{index_filter[-1]}')
+                    else :
+                        index_cond = ((~df[index].isna()).any(axis=1)) & ((df[index] != 0).any(axis=1))
+                        varable_text.append(f'{index[0]}-{index[-1]}')
                 else :
                     index_cond = (~df[index].isna()).any(axis=1)
             else :
                 varable_text.append(index)
                 index_cond = ~df[index].isna()
+                if index_filter is not None :
+                    index_cond = (index_cond) & (df[index].isin(index_filter))
 
             if isinstance(columns, list) :
-                varable_text.append(f'{columns[0]}-{columns[-1]}')
+                if columns_filter is not None :
+                    varable_text.append(f'{columns_filter[0]}-{columns_filter[-1]}')
+                    columns = columns_filter
+                else :
+                    varable_text.append(f'{columns[0]}-{columns[-1]}')
             else :
                 if columns is not None :
                     varable_text.append(columns)
+
+                    if columns_filter is not None :
+                        index_cond = (index_cond) & (df[columns].isin(columns_filter))
 
             # Index
             if isinstance(index, (list)) :
@@ -2035,14 +2056,15 @@ class DataCheck(pd.DataFrame):
             original_index_meta = index_meta
             original_columns_meta = columns_meta
 
-
             index_meta = self.setting_meta(original_index_meta, index, not qtype in ['number', 'float', 'text'])
+            original_index_meta = index_meta
             if index_filter is not None :
                 index_filter = [str(i) for i in index_filter]
                 if index_meta is not None :
                     index_meta = {k: v for k, v in index_meta.items() if k in index_filter}
                 else :
                     index_meta = {i: i for i in index_filter}
+                
 
             if isinstance(index, str) and isinstance(index_meta, str) :
                 index_meta = None
@@ -2055,6 +2077,7 @@ class DataCheck(pd.DataFrame):
                     index_meta = dict(sorted(index_meta.items(), reverse=True))
 
             columns_meta = self.setting_meta(original_columns_meta, columns, dup_chk=False, check_title=False)
+            original_columns_meta = columns_meta
             if columns_filter is not None :
                 columns_filter = [str(i) for i in columns_filter]
                 if columns_meta is not None :
@@ -2243,7 +2266,10 @@ class DataCheck(pd.DataFrame):
                 if index_meta :
                     result.index = result.index.map(str)
                     index_order = [total_label] + [m for m in index_meta.keys()]
-                    index_order = index_order + [idx for idx in result.index if not idx in index_order]
+                    if original_index_meta is not None :
+                        index_order = index_order + [idx for idx in result.index if (not idx in index_order) and (not idx in original_index_meta.keys())]
+                    else :
+                        index_order = index_order + [idx for idx in result.index if (not idx in index_order)]
                     
                     result = add_missing_indices(result, index_order)
                     result = result.loc[index_order, :]
@@ -2253,6 +2279,10 @@ class DataCheck(pd.DataFrame):
             if columns and columns_meta:
                 result.columns = result.columns.map(str)
                 columns_order = [total_label] + [m for m in columns_meta.keys()]
+                if original_columns_meta is not None :
+                    columns_order = columns_order + [idx for idx in result.columns if (not idx in columns_order) and (not idx in original_columns_meta.keys())]
+                else :
+                    columns_order = columns_order + [idx for idx in result.columns if (not idx in columns_order)]
                 
                 result = add_missing_indices(result.T, columns_order).T
                 result = result.loc[:, columns_order]
@@ -2372,29 +2402,106 @@ class DataCheck(pd.DataFrame):
         self.attrs['banner'] = banner_list
 
 
-    def total_row(self, columns: Union[str, List, Dict], cond=None):
+    def total_row(self,
+                  index: Union[str, List[str]],
+                  columns: Optional[Union[str, List, Dict]]=None, 
+                  cond=None):
         titles = self.attrs.get('title')
+        if not isinstance(index, (str, list)) :
+            raise ValueError("index must be str or list")
+
+        if columns is None:
+            banner = self.attrs.get('banner')
+            columns = banner
+
         if isinstance(columns, dict) :
-            index_group = []
+            new_columns = []
+
+            total_col = self.table(index, cond=cond)
+            new_columns.extend(('', col) for col in total_col.columns)
             tables = [
-                (titles.get(col_head, {}).get('title', col_head), self.table(col, cond=cond))
+                (titles.get(col_head, {}).get('title', col_head), self.table(index, col, cond=cond))
                 for col_head, col in columns.items()
             ]
 
-            result = pd.concat([t for _, t in tables])
+            result = pd.concat([t.loc[:, t.columns[1:]] for _, t in tables], axis=1)
             for head, table in tables:
-                index_group.append(('', table.index[0]))
-                index_group.extend((head, col) for col in table.index[1:])  # Total 제외
+                new_columns.extend((head, col) for col in table.columns[1:])  # Total 제외
             
-            result.index = pd.MultiIndex.from_tuples(index_group)
-            result = result.loc[~result.index.duplicated(), :]
+            result = pd.concat([total_col, result], axis=1)
+            result.columns = pd.MultiIndex.from_tuples(new_columns)
+            result = result.loc[:, ~result.columns.duplicated()]
 
-        elif isinstance(columns, (str, list)) :
-            result = self.table(columns, cond=cond)
+        else :
+            result = self.table(index, columns, cond=cond)
         
         result.fillna(0, inplace=True)
         
-        return result.T
+        return result.loc[['Total'], :]
+
+    def index_net(self, 
+                  total_index: Union[str, List],
+                  net_table: Dict,
+                  columns: Optional[ColumnsWithHeader] = None, 
+                  cond: Optional[pd.Series] = None,
+                  base_desc: Optional[str] = None,
+                  total_net:bool = True) :
+        if not isinstance(total_index, (str, list)) :
+            raise ValueError("index must be str or list")
+        if not isinstance(net_table, dict) :
+            raise ValueError("net_table must be dict")
+
+        if columns is None:
+            banner = self.attrs.get('banner')
+            columns = banner
+        
+        index_group = []
+        total_row = self.total_row(total_index, columns, cond=cond)
+        index_group.extend(('', c) for c in total_row.index)
+        titles = self.attrs.get('title')
+        total_label = 'Total'
+        concat_table = []        
+
+        for net_name, table in net_table.items() :
+            if total_net :
+                table.rename(index={total_label: '▣ %s'%(titles.get(net_name, {}).get('title', net_name))}, inplace=True)
+                concat_table.append(table.loc[:, [t for t in table.columns if t != total_label]])
+                index_group.extend((net_name, idx) for idx in table.index)
+            else :
+                concat_table.append(table.loc[[idx for idx in table.index if idx != total_label], [t for t in table.columns if t != total_label]])
+        
+        result = pd.concat([total_row, *concat_table])
+        
+        if total_net :
+            result.index = pd.MultiIndex.from_tuples(index_group)
+
+        index_name = total_index
+        if isinstance(total_index, list) :
+            if len(total_index) == 1 :
+                index_name = total_index[0]
+            else :
+                index_name = f'{total_index[0]}-{total_index[-1]}'
+
+        if base_desc is None:
+            sample_count = len(self.index.to_list())
+            tot = result.iloc[0, 0] if not pd.isna(result.iloc[0, 0]) else 0
+            all_count = int(tot)
+            if sample_count == all_count:
+                base_desc = 'All Base'
+            else:
+                sample_ratio = round(all_count / sample_count, 2) * 100
+                base_desc = f'Not All Base ({sample_ratio:.0f}%)'
+
+        if total_net :
+            result.index.names = pd.Index([index_name, 'Index'])
+
+        result = CrossTabs(result)
+        result.attrs['type'] = 'index_net'
+        result.attrs['qid'] = index_name
+        result.attrs['base'] = base_desc
+
+        return result
+
 
 
     def proc(self, 
@@ -2404,11 +2511,10 @@ class DataCheck(pd.DataFrame):
             fill: bool = True, 
             group_name: Optional[str] = None,
             base_desc: Optional[str] = None,
-            index_net: Optional[bool] = False,
             **options):
         
-        if not isinstance(index, (str, list, dict)):
-            raise TypeError("index must be a string, list, or dictionary")
+        if not isinstance(index, (str, list)):
+            raise TypeError("index must be a string or list")
 
         if columns is None:
             banner = self.attrs.get('banner')
@@ -2421,7 +2527,6 @@ class DataCheck(pd.DataFrame):
                 raise TypeError("columns must be a string, list, or dictionary")
 
         index_name = index
-        total_label = 'Total'
         tables = []
         new_index = []
         new_columns = []
@@ -2433,117 +2538,33 @@ class DataCheck(pd.DataFrame):
             else :
                 index_name = f'{index[0]}-{index[-1]}'
 
-        if isinstance(index, dict) :
-            index_keys = list(index.keys())
-            if len(index_keys) == 1 :
-                index_name = index_keys[0]
-            else :
-                index_name = f'{index_keys[0]}-{index_keys[-1]}'
 
-        if isinstance(index, (str, list)) :
-            # By Column Table
-            if isinstance(columns, dict) :
-                
-                tables = [
-                    (titles.get(col_head, {}).get('title', col_head), self.table(index, col, cond=cond, **options))
-                    for col_head, col in columns.items()
-                ]
-
-                result = pd.concat([t for _, t in tables], axis=1)
-                
-                for head, table in tables:
-                    new_columns.append(('', table.columns[0]))
-                    qtypes.append(table.attrs['type'])
-                    new_columns.extend((head, col) for col in table.columns[1:])  # Total 제외
-
-            elif isinstance(columns, (str, list)) :
-                result = self.table(index, columns, cond=cond, **options)
+        # By Column Table
+        if isinstance(columns, dict) :
+            total_col = self.table(index, cond=cond, **options)
+            new_columns.extend(('', col) for col in total_col.columns)
+            tables = [
+                (titles.get(col_head, {}).get('title', col_head), self.table(index, col, cond=cond, **options))
+                for col_head, col in columns.items()
+            ]
             
-            else :
-                result = self.table(index, cond=cond, **options)
-                qtypes = result.attrs['type']
+
+            result = pd.concat([t.loc[:, t.columns[1:]] for _, t in tables], axis=1)
+            
+            
+            for head, table in tables:
+                # new_columns.append(('', table.columns[0]))
+                qtypes.append(table.attrs['type'])
+                new_columns.extend((head, col) for col in table.columns[1:])  # Total 제외
+
+            result = pd.concat([total_col, result], axis=1)
+
+        elif isinstance(columns, (str, list)) :
+            result = self.table(index, columns, cond=cond, **options)
         
-        if isinstance(index, dict) :
-            if isinstance(columns, dict) :
-                    for idx_head, idx in index.items() :
-                        idx_name = idx
-                        idx_cond = cond
-                        if isinstance(idx, tuple) :
-                            idx_name, base = idx
-                            idx_cond = (cond) & (base)
-
-                        each_table = [
-                            (titles.get(col_head, {}).get('title', col_head), self.table(idx_name, col, cond=idx_cond, **options))
-                            for col_head, col in columns.items()
-                        ]
-                        
-                        col_group = []
-                        for head, table in each_table:
-                            col_group.append(('', table.columns[0]))
-                            qtypes.append(table.attrs.get('type', None))
-                            col_group.extend((head, col) for col in table.columns[1:])  # Total 제외
-                        
-                        each_table = pd.concat([t for _, t in each_table], axis=1)
-
-                        if (isinstance(idx_name, str)) and (idx_cond is not None) :
-                            each_table = each_table.loc[(each_table != 0).any(axis=1), :]
-
-                        each_table.columns = pd.MultiIndex.from_tuples(col_group)
-                        each_table = each_table.loc[:, ~each_table.columns.duplicated()]
-
-                        tables.append((idx_head, each_table))
-                    
-                    idx_group = []
-                    for head, table in tables :
-                        if index_net :
-                            table.rename(index={total_label: f'▣ {head}'}, inplace=True)
-                            idx_group.extend((head, t) for t in table.index)
-                        else :
-                            idx_group.append(('', table.index[0]))
-                            idx_group.extend((head, t) for t in table.index[1:])  # Total 제외
-                        
-                        qtypes.append(table.attrs.get('type', None))
-                    
-                    result = pd.concat([t for _, t in tables])
-                    result.index = pd.MultiIndex.from_tuples(idx_group)
-                    result = result.loc[~result.index.duplicated(), :]
-
-                    if index_net :
-                        total_row = self.total_row(columns, cond=cond)
-                        total_row.index = pd.MultiIndex.from_tuples([('', idx) for idx in total_row.index])
-                        result = pd.concat([total_row, result])
-
-            else :
-                idx_group = []
-                for idx_head, idx in index.items() :
-                    idx_name = idx
-                    idx_cond = cond
-                    if isinstance(idx, tuple) :
-                        idx_name, base = idx
-                        idx_cond = (cond) & (base)
-                    
-                    tables.append((titles.get(idx_head, {}).get('title', idx_head), self.table(idx_name, columns, cond=idx_cond, **options)))
-
-                for head, table in tables:
-                    if index_net :
-                        table.rename(index={total_label: f'▣ {head}'}, inplace=True)
-                        idx_group.extend((head, t) for t in table.index)
-                    else :
-                        idx_group.append(('', table.index[0]))
-                        idx_group.extend((head, t) for t in table.index[1:])  # Total 제외
-                
-                result = pd.concat([t for _, t in tables])
-                result.index = pd.MultiIndex.from_tuples(idx_group)
-                result = result.loc[~result.index.duplicated(), :]
-                if index_net :
-                    if columns is not None :
-                        total_row = self.total_row(columns, cond=cond)
-                    else :
-                        total_count = self.total_row(index, cond=cond)
-                        total_row = pd.DataFrame([total_count.iloc[0, 0]], index=[total_label], columns=[total_label])
-                        
-                    total_row.index = pd.MultiIndex.from_tuples([idx if isinstance(idx, pd.MultiIndex) else ('', idx) for idx in total_row.index])
-                    result = pd.concat([total_row, result])
+        else :
+            result = self.table(index, cond=cond, **options)
+            qtypes = result.attrs['type']
         
         if new_index :
             result.index = pd.MultiIndex.from_tuples(new_index)
@@ -2703,15 +2724,15 @@ class DataCheck(pd.DataFrame):
             
             chat_result = None
             
-            table_type = table.attrs['type']
-            base = table.attrs['base']
-            qid = table.attrs['qid']
-            group_name = table.attrs['group_name']
+            table_type = table.attrs.get('type', None)
+            base = table.attrs.get('base', None)
+            qid = table.attrs.get('qid', None)
+            group_name = table.attrs.get('group_name', None)
             if ai :
                 chat_result = table.chat_ai(model=model, 
                                             prompt=prompt, 
                                             with_table=False,
-                                            lang=self.attrs['chat_lang'],
+                                            lang=self.attrs.get('chat_lang', 'korean'),
                                             table_type=table_type,
                                             sub_title=table_desc)
 
@@ -2763,7 +2784,7 @@ class DataCheck(pd.DataFrame):
 
     def proc_export_excel(self, file_name: str, heatmap: bool = False) :
         total_label = 'Total'
-        proc_result = self.attrs['proc_result']
+        proc_result = self.attrs.get('proc_result', None)
         if not proc_result : 
             raise ValueError('No result to export')
         
@@ -2911,9 +2932,9 @@ class DataCheck(pd.DataFrame):
 
         for key, table_attrs in proc_result.items():
             # try :
-                result = table_attrs['table']
-                desc = table_attrs['desc']
-                ai = table_attrs['ai']
+                result = table_attrs.get('table', None)
+                desc = table_attrs.get('desc', None)
+                ai = table_attrs.get('ai', None)
 
                 if isinstance(result, WordCloudHandler) :
                     # WordCloud
@@ -3012,9 +3033,9 @@ class DataCheck(pd.DataFrame):
                     
                 else :
                     # CE TABLE
-                    use_qid = table_attrs['qid']
-                    base_text = table_attrs['base']
-                    group_name = table_attrs['group_name']
+                    use_qid = table_attrs.get('qid', '')
+                    base_text = table_attrs.get('base', '')
+                    group_name = table_attrs.get('group_name', '')
                     
                     if not isinstance(result.index, pd.MultiIndex) :
                         result.index = pd.MultiIndex.from_tuples([('' if group_name is None else group_name, i) for i in result.index])
@@ -3031,7 +3052,7 @@ class DataCheck(pd.DataFrame):
                     index_sheet.write(row, col + 3, base_text, qid_format)
 
                     if isinstance(result, CrossTabs) :                        
-                        resurt_type = result.attrs['type']
+                        resurt_type = result.attrs.get('type', None)
                         
                         if isinstance(resurt_type, list) :
                             if all(not x in ['number', 'float'] for x in resurt_type) :

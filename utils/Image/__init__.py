@@ -257,7 +257,7 @@ def image_re_all(image_path=None, save_folder=None, name_format="%s", file_forma
 
 
 
-def create_dummy_img(save_name, save_path=None, width=500, height=500):
+def create_dummy_img(save_name, save_path=None, width=500, height=500, background_color=(255, 255, 255, 0)) :
     '''### 더미 이미지 생성
     - `save_name` : 이미지 이름
     - `save_path` : 저장할 경로 (기본값 : None) / 경로가 지정되지 않으면 현재 경로를 저장 경로로 사용
@@ -266,7 +266,7 @@ def create_dummy_img(save_name, save_path=None, width=500, height=500):
     '''
 
     # 이미지 생성
-    image = Image.new('RGBA', (width, height), (255, 255, 255, 0))
+    image = Image.new('RGBA', (width, height), background_color)
 
     # 드로잉 객체 생성
     draw = ImageDraw.Draw(image)
