@@ -30,9 +30,8 @@ from nltk.corpus import stopwords
 from konlpy.tag import Okt
 
 def single_total(data, base, total_label='Total') :
-    if len(data) == 0 :
-        zero_row = pd.DataFrame([0], index=[total_label], columns=[total_label])
-        return zero_row
+    if len(data[~data[base].isna()]) == 0 :
+        sa = pd.DataFrame([0], index=[total_label], columns=[total_label])
     else :
         sa = pd.crosstab(
                 data[base],
@@ -178,6 +177,8 @@ def create_crosstab(df: pd.DataFrame,
         
         else:
             crosstab_result = pd.crosstab(df[index], df[columns], margins=True, margins_name=total_label)
+            if len(crosstab_result) == 0 :
+                crosstab_result = pd.DataFrame([0], index=[total_label], columns=[total_label])
     
     else:
         if isinstance(index, list):

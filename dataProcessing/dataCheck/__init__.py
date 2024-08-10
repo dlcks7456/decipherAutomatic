@@ -1946,7 +1946,7 @@ class DataCheck(pd.DataFrame):
 
             titles = self.attrs.get('title')
             metas = self.attrs.get('meta')
-
+            
             if qtype is None :
                 if isinstance(index, str) :
                     if index in titles.keys() :
@@ -2393,7 +2393,9 @@ class DataCheck(pd.DataFrame):
             result = self.table(columns, cond=cond)
         
         result.fillna(0, inplace=True)
+        
         return result.T
+
 
     def proc(self, 
             index: IndexWithTypes, 
@@ -2448,6 +2450,7 @@ class DataCheck(pd.DataFrame):
                 ]
 
                 result = pd.concat([t for _, t in tables], axis=1)
+                
                 for head, table in tables:
                     new_columns.append(('', table.columns[0]))
                     qtypes.append(table.attrs['type'])
@@ -2511,16 +2514,36 @@ class DataCheck(pd.DataFrame):
                         result = pd.concat([total_row, result])
 
             else :
-                tables = [
-                    (titles.get(idx_head, {}).get('title', idx_head), self.table(idx, columns, cond=cond, **options))
-                    for idx_head, idx in index.items()
-                ]
+                idx_group = []
+                for idx_head, idx in index.items() :
+                    idx_name = idx
+                    idx_cond = cond
+                    if isinstance(idx, tuple) :
+                        idx_name, base = idx
+                        idx_cond = (cond) & (base)
+                    
+                    tables.append((titles.get(idx_head, {}).get('title', idx_head), self.table(idx_name, columns, cond=idx_cond, **options)))
 
-                result = pd.concat([t for _, t in tables])
                 for head, table in tables:
-                    new_index.append(('', table.index[0]))
-                    qtypes.append(table.attrs.get('type', None))
-                    new_index.extend((head, idx) for idx in table.index[1:])  # Total 제외
+                    if index_net :
+                        table.rename(index={total_label: f'▣ {head}'}, inplace=True)
+                        idx_group.extend((head, t) for t in table.index)
+                    else :
+                        idx_group.append(('', table.index[0]))
+                        idx_group.extend((head, t) for t in table.index[1:])  # Total 제외
+                
+                result = pd.concat([t for _, t in tables])
+                result.index = pd.MultiIndex.from_tuples(idx_group)
+                result = result.loc[~result.index.duplicated(), :]
+                if index_net :
+                    if columns is not None :
+                        total_row = self.total_row(columns, cond=cond)
+                    else :
+                        total_count = self.total_row(index, cond=cond)
+                        total_row = pd.DataFrame([total_count.iloc[0, 0]], index=[total_label], columns=[total_label])
+                        
+                    total_row.index = pd.MultiIndex.from_tuples([idx if isinstance(idx, pd.MultiIndex) else ('', idx) for idx in total_row.index])
+                    result = pd.concat([total_row, result])
         
         if new_index :
             result.index = pd.MultiIndex.from_tuples(new_index)
