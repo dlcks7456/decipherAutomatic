@@ -4007,7 +4007,7 @@ df = {csv_meta}'''
         #print(nb)
         ipynb_file_path = os.path.join(parent_path, ipynb_file_name)
         if not os.path.isfile(ipynb_file_path) :
-            with open(ipynb_file_path, 'w') as f:
+            with open(ipynb_file_path, 'w', encoding='utf-8') as f:
                 nbf.write(nb, f)
         else :
             print('❗ The DataCheck ipynb file already exists')
