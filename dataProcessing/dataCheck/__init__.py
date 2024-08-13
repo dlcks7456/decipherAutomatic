@@ -1147,7 +1147,8 @@ class DataCheck(pd.DataFrame):
 
         cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
         chk_df = self[cond].copy()
-        
+        chk_df = chk_df[(~chk_df[show_cols].isna()).any(axis=1)]
+
         dup_err = 'DC_DUP'
         err_list.append(dup_err)
 
