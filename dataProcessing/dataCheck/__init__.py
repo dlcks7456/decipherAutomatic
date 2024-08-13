@@ -4069,7 +4069,7 @@ from decipherAutomatic.utils import get_versioned_filename
 pid = '{pid}'
 # download_decipher_data(pid=pid, data_path=os.getcwd(), file_format='csv', folder='data', cond='qualified')
 
-raw_df = pd.read_csv(f'data/{{pid}}.csv')
+raw_df = pd.read_csv(f'data/{{pid}}.csv', low_memory=False)
 df = DecipherDataProcessing(raw_df, map_json=f'meta/map_{{pid}}.json')"""
         
         ipynb_cell.append(nbf.v4.new_code_cell(default))
