@@ -4196,7 +4196,7 @@ df.proc_export_excel(save_file_name, heatmap=True)"""
 
         ipynb_file_path = os.path.join(parent_path, processing_ipynb)
         if not os.path.isfile(ipynb_file_path) :
-            with open(ipynb_file_path, 'w') as f:
+            with open(ipynb_file_path, 'w', encoding='utf-8') as f:
                 nbf.write(nb, f)
         else :
             print('❗ The Processing ipynb file already exists')
