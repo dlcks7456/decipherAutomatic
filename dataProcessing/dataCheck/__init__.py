@@ -3240,7 +3240,7 @@ class DataCheck(pd.DataFrame):
         self.attrs.get('meta')[qid] = self.meta_validation(meta_data)
 
     
-    def update_meta(self, qid: str, meta_data: List[Dict]) :
+    def update_meta(self, qid: str, meta_data: Dict) :
         if not isinstance(qid, str) :
             raise ValueError("qid must be str")
         
@@ -4074,18 +4074,12 @@ df = DecipherDataProcessing(raw_df, map_json=f'meta/map_{{pid}}.json')"""
         
         ipynb_cell.append(nbf.v4.new_code_cell(default))
 
-        banner_cell = f"""banner = [
-    [
-        ('BAG1', 'Banner Group 1 Title'),
-        [
-            (),
-            (),
-        ],
-    ],
-]
-
-df.netting(banner)
-df.set_banner(df.net())"""
+        banner_cell = f"""# Example
+# df.set_banner({{
+#     '성별' : 'SQ1', # SA
+#     '연령': 'SQ2', # SA
+#     '브랜드': ['SQ3r1', 'SQ3r2', 'SQ3r3'] # MA
+# }})"""
         ipynb_cell.append(nbf.v4.new_code_cell(banner_cell))
 
         for idx, var in enumerate(map_py, 1) :
@@ -4101,8 +4095,8 @@ df.set_banner(df.net())"""
             meta = var['meta']
             title = var['title']
             title = title.replace('\n', ' ')
-            title = title.replace('"', '\"')
-            title = title.replace("\'", "\'")
+            title = title.replace('"', '\\"')
+            title = title.replace("'", "\\'")
             title = title.split('?')[0]
 
             table_id = f"Table_T{idx}"
