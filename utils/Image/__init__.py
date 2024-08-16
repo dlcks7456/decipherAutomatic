@@ -257,7 +257,7 @@ def image_re_all(image_path=None, save_folder=None, name_format="%s", file_forma
 
 
 
-def create_dummy_img(save_name, save_path=None, width=500, height=500, background_color=(255, 255, 255, 0)) :
+def create_dummy_img(save_name, save_path=None, file_format='png', width=500, height=500, background_color=(255, 255, 255, 0)) :
     '''### 더미 이미지 생성
     - `save_name` : 이미지 이름
     - `save_path` : 저장할 경로 (기본값 : None) / 경로가 지정되지 않으면 현재 경로를 저장 경로로 사용
@@ -283,7 +283,7 @@ def create_dummy_img(save_name, save_path=None, width=500, height=500, backgroun
     while text_width < target_text_width:
         font_size += 1
         font = ImageFont.truetype("arial.ttf", font_size)
-        img_name = f'{save_name}.png'
+        img_name = f'{save_name}.{file_format}'
         text_bbox = draw.textbbox((0, 0), img_name, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         if text_width > target_text_width:
