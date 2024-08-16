@@ -962,6 +962,8 @@ class DataCheck(pd.DataFrame):
         cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
         chk_df = self[cond].copy()
 
+        cnt = 'ANSWER_CNT'
+
         def no_base_check() :
             if cond is not None and no_base :
                 ans_err = 'DC_NO_BASE'
@@ -985,7 +987,6 @@ class DataCheck(pd.DataFrame):
             if no_base is not None :
                 chk_df, err_list = no_base
         else :            
-            cnt = 'ANSWER_CNT'
             chk_df[cnt] = chk_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
 
             ms_err = 'DC_BASE'
