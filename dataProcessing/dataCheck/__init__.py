@@ -1883,44 +1883,47 @@ class DataCheck(pd.DataFrame):
 
             if columns is None :
                 banner = self.attrs['banner']
-                if banner is None :
-                    raise ValueError("banner is not set")
-                else :
+                if banner is not None :
                     columns = banner
-            
-            titles = self.attrs.get('title')
-            clouds = []
-
-            total_flag = True
-            if isinstance(columns, dict) :
-                columns = list(columns.items())
-            
-            if isinstance(columns, str) :
-                columns = [(titles.get(columns, {}).get('title', columns), columns)]
-
-            for col_head, col in columns :
-                header = col_head
-                if col_head in titles.keys() :
-                    header = titles[col_head]['title']
-                
-                cloud_list = self.wordcloud(index, col, cond=cond, **options)
-                title = cloud_list.title
-                _list = cloud_list.cloud_list
-                sample_size = cloud_list.sample_size
-                if base_desc is None :
-                    base_desc = cloud_list.base_desc
-                if total_flag :
-                    total_flag = False
-                    clouds.append(('', WordCloudHandler('Total', _list[:1], index, base_desc, sample_size))) # Total
-                    clouds.append((header, WordCloudHandler(title, _list[1:], index, base_desc, sample_size)))
-                else :
-                    cloud_list = _list[1:]
-                    clouds.append((header, WordCloudHandler(title, cloud_list, index, base_desc, sample_size)))
 
             cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
             df = self[cond].copy()
 
-            return BannerWordCloud(clouds, index, base_desc, sample_size=len(df))
+            titles = self.attrs.get('title')
+            clouds = []
+
+            total_flag = True
+
+            if columns is not None :
+                if isinstance(columns, dict) :
+                    columns = list(columns.items())
+                
+                if isinstance(columns, str) :
+                    columns = [(titles.get(columns, {}).get('title', columns), columns)]
+
+                for col_head, col in columns :
+                    header = col_head
+                    if col_head in titles.keys() :
+                        header = titles[col_head]['title']
+                    
+                    cloud_list = self.wordcloud(index, col, cond=cond, **options)
+                    title = cloud_list.title
+                    _list = cloud_list.cloud_list
+                    sample_size = cloud_list.sample_size
+                    if base_desc is None :
+                        base_desc = cloud_list.base_desc
+                    if total_flag :
+                        total_flag = False
+                        clouds.append(('', WordCloudHandler('Total', _list[:1], index, base_desc, sample_size))) # Total
+                        clouds.append((header, WordCloudHandler(title, _list[1:], index, base_desc, sample_size)))
+                    else :
+                        cloud_list = _list[1:]
+                        clouds.append((header, WordCloudHandler(title, cloud_list, index, base_desc, sample_size)))
+                
+                return BannerWordCloud(clouds, index, base_desc, sample_size=len(df))
+            else :
+                return self.wordcloud(index, cond=cond, **options)
+            
 
     def table(self, index: Union[str, List[str]],
                     columns: Optional[Union[str, List[str]]] = None,
@@ -4124,7 +4127,8 @@ df = DecipherDataProcessing(raw_df, map_json=f'meta/map_{{pid}}.json')"""
 
 
             cell_text += "\n"
-            if isinstance(variables, list) and len(variables) >= 2 :
+            # print(qtype, variables)
+            if isinstance(variables, dict) and len(list(variables.keys())) >= 2 :
                 if qtype in ['rating'] :
                     rating_text = cell_text
                     rating_text += f"# {qid} Grid summary\n"
@@ -4147,7 +4151,7 @@ df = DecipherDataProcessing(raw_df, map_json=f'meta/map_{{pid}}.json')"""
                 
                 if qtype in ['rank'] :
                     # 1 to max rank
-                    max_rank = len(variables)
+                    max_rank = len(list(variables.keys()))
                     for i in range(1, max_rank+1) :
                         rank_cnt = '1' if i == 1 else f"1-{i}"
                         rank_cell_text = f"# {qid} ({qtype}) : Rank {rank_cnt}\n"

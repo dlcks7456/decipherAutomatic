@@ -710,8 +710,6 @@ def get_decipher_datamap(pid: Union[str, int], map_format: Literal['json', 'json
     return decipher_map
 
 
-rank_flag = ['1순위', '2순위', '1st', '2nd']
-
 def decipher_meta(pid: Union[str, int]) :
     json_map = get_decipher_datamap(pid)
     variables = json_map["variables"]
@@ -739,6 +737,7 @@ def decipher_meta(pid: Union[str, int]) :
 def decipher_title(pid: Union[str, int]) :
     json_map = get_decipher_datamap(pid)
     questions = json_map["questions"]
+    rank_flag = ['1순위', '2순위', '1st', '2nd']
 
     title_data = {}
     for v in questions :
@@ -783,7 +782,8 @@ def decipher_title(pid: Union[str, int]) :
 def decipher_map(pid: Union[str, int]) :
     json_map = get_decipher_datamap(pid)
     questions = json_map["questions"]
-
+    rank_flag = ['1순위', '2순위', '1st', '2nd']
+    
     return_questions = []
     for q in questions :
         qlabel = q['qlabel']
