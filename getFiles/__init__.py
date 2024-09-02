@@ -15,14 +15,18 @@ def create_binary_file(path, file_name, file) :
     with open(file_path, 'wb') as f: 
         f.write(file)
 
-def create_ascii_file(path, binary_file) :
+def create_ascii_file(path, binary_file, save_name=None) :
     get_binary_file_path = os.path.join(path, binary_file)
     if '.csv' in binary_file :
         csv = pd.read_csv(os.path.join(path, binary_file), low_memory=False)
-        csv.to_csv(f'{path}/{binary_file}', index=False, encoding='utf-8-sig')
+        if save_name is None :
+            save_name = binary_file
+        csv.to_csv(f'{path}/{save_name}', index=False, encoding='utf-8-sig')
 
     else :
-        with open(f'{path}/{binary_file}', 'w', encoding='utf-8-sig') as f :
+        if save_name is None :
+            save_name = binary_file
+        with open(f'{path}/{save_name}', 'w', encoding='utf-8-sig') as f :
             get_binary_file = open(get_binary_file_path, 'r', encoding='utf-8-sig')
             for line in get_binary_file.readlines() :
                 f.write(line)
