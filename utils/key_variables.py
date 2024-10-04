@@ -15,4 +15,5 @@ dsid
 GUID
 dsmcpID
 MLUID
+sinoid
 '''
