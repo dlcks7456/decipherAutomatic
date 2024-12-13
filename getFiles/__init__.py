@@ -5,6 +5,7 @@ from datetime import datetime
 import pandas as pd
 from ..key import api_key, api_server
 from pandas.io.formats import excel
+import re
 
 def chk_mkdir(path_name) :
     if not os.path.exists(path_name) :
@@ -33,6 +34,110 @@ def create_ascii_file(path, binary_file, save_name=None) :
             get_binary_file.close()
 
     # os.remove(get_binary_file_path)
+
+
+def get_survey_xml(pid=None, 
+                   file_path=None,
+                   key = api_key, 
+                   server = api_server) :
+    
+    if pid is None :
+        raise ValueError("Enter pid of survey")
+    
+    now = datetime.now()
+    now_date = now.strftime("%Y%m%d_%H_%M")
+
+    survey_xml = 'survey.xml'
+    curr_path = os.getcwd()
+    path = f'surveys/selfserve/548/{pid}'
+
+    try :
+        api.login(key, server)
+    except :
+        print('❌ [ERROR] : Decipher api login failed')
+        return 
+
+    if file_path is not None :
+        if not os.path.exists(file_path) :
+            os.mkdir(file_path)
+        
+        file_path = os.path.join(curr_path, file_path)
+    else :
+        file_path = os.getcwd()
+    
+    try :
+        get_survey_xml = api.get(f'{path}/files/{survey_xml}')
+        file_name = f'{now_date}_{survey_xml}'
+        create_binary_file(file_path, file_name, get_survey_xml)
+        # print(' 🔔 XML Download Done')
+
+        return os.path.join(file_path, file_name)
+    except :
+        raise ValueError('❌ [ERROR] : Get XML API is Error')
+
+    
+def get_note(pid=None, 
+             qc_path=None, 
+             qc_ver=None,
+             xml_file=None):
+        
+    if qc_path is None :
+        qc_path = 'QC Note'
+    
+    if not os.path.exists(qc_path) :
+        os.mkdir(qc_path)
+
+    xml = None
+
+    if xml_file is None :
+        # Export XML
+        xml = get_survey_xml(pid=pid, file_path='XML')
+    else :
+        xml = xml_file
+
+    if xml is None :
+        raise ValueError('XML File Error')
+    
+    with open(xml, 'r', encoding='utf-8') as f :
+        xml = f.read()
+    
+    notes = re.findall(r'<note[^>]*\bsst="0"[^>]*>(.*?)</note>', xml, re.DOTALL)
+    
+    notes = [note.strip() for note in notes]
+    if qc_ver is not None :
+        notes = [note for note in notes if f'VER {qc_ver}' in note.split('\n')[0]]
+    
+    now = datetime.now()
+    now_date = now.strftime("%Y%m%d_%H_%M")
+
+    note_file_name = f'{now_date}_Note_surmmary.md'
+    md_file = os.path.join(qc_path, note_file_name)
+
+    with open(md_file, 'w', encoding='utf-8') as md :
+        ver_title = '### Note Version : Any\n\n'
+        if qc_ver is not None :
+            ver_title = f'### Note Version {qc_ver}\n\n'
+        
+        md.write(ver_title)
+
+        for note in notes :
+            clean = note.split('\n')[1:]
+            clean = [c.strip() for c in clean]
+            qid = clean[0].replace('#', '').strip()
+            clean[0] = f'###### ✔️ {qid}\n'
+
+            clean = '\n'.join(clean)
+            md.write(clean)
+            md.write('\n\n\n')
+
+    return md_file
+            
+
+
+
+
+
+
 
 def project_files(
     pid,
@@ -338,7 +443,6 @@ def project_files(
         try :
             get_survey_xml = api.get(f'{path}/files/{survey_xml}')
             create_binary_file(file_path, survey_xml, get_survey_xml)
-            time.sleep(2)
             print(' 🔔 XML BackUp is done')
         except :
             print(' ❌ [ERROR] : Get XML API is Error')
