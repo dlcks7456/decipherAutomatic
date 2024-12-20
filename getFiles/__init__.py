@@ -124,17 +124,13 @@ def get_note(pid=None,
             clean = note.split('\n')[1:]
             clean = [c.strip() for c in clean]
             qid = clean[0].replace('#', '').strip()
-            clean[0] = f'###### ✔️ {qid}\n'
+            clean[0] = f'##### ✔️ **{qid}**\n'
 
             clean = '\n'.join(clean)
             md.write(clean)
-            md.write('\n\n\n')
+            md.write('\n\n&nbsp;\n\n')
 
     return md_file
-            
-
-
-
 
 
 
