@@ -946,136 +946,127 @@ class DataCheck(pd.DataFrame):
         """
         복수 응답(다중 변수) 데이터 체크 메서드
         """
-        if (self.ma_check(qid)) :
+        if self.ma_check(qid):
             return
         
         err_list = []
-
-        # Answer Base Check
         warnings = []
         show_cols = self.ma_return(qid)
+        if not self.col_name_check(*show_cols):
+            return
         
-        if not self.col_name_check(*show_cols) : return
-
         qid_key = self.key_var_setting(cols=show_cols, key_var=key_var)
-
-        cond = (self.attrs['default_filter']) if cond is None else (self.attrs['default_filter']) & (cond)
+        cond = self.attrs['default_filter'] if cond is None else (self.attrs['default_filter'] & cond)
         chk_df = self[cond].copy()
-
+        
         cnt = 'ANSWER_CNT'
-
-        def no_base_check() :
-            if cond is not None and no_base :
+        
+        # --------------------------
+        # (1) no_base_check 벡터화
+        # --------------------------
+        def no_base_check():
+            if cond is not None and no_base:
                 ans_err = 'DC_NO_BASE'
                 add_df = self[self.attrs['default_filter'] & ~(cond)].copy()
-                add_df[cnt] = add_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
+                # 벡터 연산으로 ANSWER_CNT 계산
+                add_df[cnt] = (add_df[show_cols].notna() & (add_df[show_cols] != 0)).sum(axis=1)
+                # 전체가 0이거나 NaN인 행만 제외
                 add_filt = (add_df[show_cols].isna() | (add_df[show_cols] == 0)).all(axis=1)
                 add_df = add_df[~add_filt].copy()
-                if len(add_df) > 0 :
+                if len(add_df) > 0:
                     add_df[ans_err] = 1
-                    err_list = [ans_err]
-                    chk_df = add_df
-                    return [chk_df, err_list]
-                else :
-                    return None
-            else :
-                return None
-
-        if len(chk_df) == 0 :
+                    return [add_df, [ans_err]]
+            return None
+        
+        if len(chk_df) == 0:
             warnings.append("No response to this condition")
-            no_base = no_base_check()
-            if no_base is not None :
-                chk_df, err_list = no_base
-        else :            
-            chk_df[cnt] = chk_df[show_cols].apply(lambda x: x.count() - (x==0).sum(), axis=1)
-
+            no_base_result = no_base_check()
+            if no_base_result is not None:
+                chk_df, err_list = no_base_result
+        else:
+            # --------------------------
+            # (2) cnt 계산 벡터화
+            # --------------------------
+            chk_df[cnt] = (chk_df[show_cols].notna() & (chk_df[show_cols] != 0)).sum(axis=1)
+            
             ms_err = 'DC_BASE'
-            # filt = (chk_df[cnt]==0)  # Default
             filt = (chk_df[show_cols].isna() | (chk_df[show_cols] == 0)).all(axis=1)
             chk_df.loc[filt, ms_err] = 1
-
             err_list.append(ms_err)
 
-            # Generalized Answer Check Function
+            # 조건 체크(벡터화)
             def check_answer(condition, operator, err_label):
                 if condition is not None:
                     if operator == '==':
                         cond_err = (chk_df[cnt] != condition)
-                        warnings.append(f"Exactly : {condition}")
                     elif operator == '<':
                         cond_err = (chk_df[cnt] < condition)
-                        warnings.append(f"Atleast : {condition}")
                     elif operator == '>':
                         cond_err = (chk_df[cnt] > condition)
-                        warnings.append(f"Atmost : {condition}")
                     
                     chk_df.loc[cond_err, err_label] = 1
                     err_list.append(err_label)
 
-            # AT LEAST, AT MOST, EXACTLY Answer Checks
             check_answer(atleast, '<', 'DC_ATLEAST')
             check_answer(atmost, '>', 'DC_ATMOST')
             check_answer(exactly, '==', 'DC_EXACTLY')
 
-            def process_check(check_type, check_value, check_func, err_label):
-                warnings.append(f"{check_type.capitalize()} value : {check_value}")
-                if isinstance(check_value, range):
-                    check_list = list(check_value) + [check_value[-1] + 1]
-                elif isinstance(check_value, (int, str)):
-                    check_list = [check_value]
-                elif isinstance(check_value, list):
-                    check_list = check_value
+            # --------------------------
+            # (3) isin, isall, isnot 벡터화
+            # --------------------------
+            if isinstance(qid_key, str):
+                def build_check_cols(value):
+                    """range, int, list 등에 따라 cols를 만들어줌"""
+                    if isinstance(value, range):
+                        # range 자체의 end+1 까지 생성하는 등 원하는 방식 적용
+                        check_list = list(value)
+                    elif isinstance(value, (int, str)):
+                        check_list = [value]
+                    else:  # list
+                        check_list = value
+                    return [qid_key.format(code=m) for m in check_list]
 
-                chk_cols = [qid_key.format(code=m) for m in check_list]
-
-                def apply_func(row):
-                    return 1 if check_func(row, chk_cols) else np.nan
-
-                chk_df[err_label] = chk_df.apply(apply_func, axis=1)
-
-                err_list.append(err_label)
-
-            # Check Functions
-            def ma_isin_check(row, cols):
-                return not any(not (pd.isna(row[c]) or row[c] == 0) for c in cols)
-
-            def ma_isall_check(row, cols):
-                return any(pd.isna(row[c]) or row[c] == 0 for c in cols)
-
-            def ma_isnot_check(row, cols) :
-                return any(not (pd.isna(row[c]) or row[c] == 0) for c in cols)
-
-            # Is In Check
-            if not isinstance(qid_key, str) :
-                warnings.append("A variable structure for which the isin/isall/isnot methods are not available")
-            else :
                 if isin is not None:
-                    process_check('isin', isin, ma_isin_check, 'MA_ISIN')
-
-                # Is All Check
+                    cols = build_check_cols(isin)
+                    # ma_isin_check: 모든 열이 0 또는 NaN 인지 확인
+                    mask = (chk_df[cols].notna() & (chk_df[cols] != 0)).any(axis=1)
+                    # "isin"이라 함은 "적어도 하나는 응답해야"라면 논리 반전 등 필요할 수 있음
+                    chk_df.loc[~mask, 'MA_ISIN'] = 1
+                    err_list.append('MA_ISIN')
+                
                 if isall is not None:
-                    process_check('isall', isall, ma_isall_check, 'MA_ISALL')
-
-                # Is Not Check
+                    cols = build_check_cols(isall)
+                    # ma_isall_check: 하나라도 0/NaN 이면 True
+                    mask = (chk_df[cols].isna() | (chk_df[cols] == 0)).any(axis=1)
+                    chk_df.loc[mask, 'MA_ISALL'] = 1
+                    err_list.append('MA_ISALL')
+                
                 if isnot is not None:
-                    process_check('isnot', isnot, ma_isnot_check, 'MA_ISNOT')
+                    cols = build_check_cols(isnot)
+                    # ma_isnot_check: 하나라도 (0/NaN 아닌 값) 이면 True
+                    mask = (~chk_df[cols].isna() & (chk_df[cols] != 0)).any(axis=1)
+                    chk_df.loc[mask, 'MA_ISNOT'] = 1
+                    err_list.append('MA_ISNOT')
 
-            # Cases responded to other than base
-            if not no_base : 
+            if not no_base:
                 warnings.append('No Base Check does not run')
             
-            if cond is not None and no_base :
-                no_base = no_base_check()
-                if no_base is not None :
-                    chk_df, err_list = no_base
-
+            if cond is not None and no_base:
+                no_base_result = no_base_check()
+                if no_base_result is not None:
+                    chk_df, extra_err = no_base_result
+                    err_list.extend(extra_err)
 
             show_cols = [cnt] + show_cols
-        
+
         set_alt = self.result_alt(qid, alt)
         edf = ErrorDataFrame(qid, 'MA', show_cols, chk_df, err_list, warnings, set_alt)
         self.show_message(edf)
-        self.result_html_update(alt=set_alt, result_html=edf.chk_msg, dataframe=edf.err()[show_cols+edf.extra_cols].to_json())
+        self.result_html_update(
+            alt=set_alt, 
+            result_html=edf.chk_msg,
+            dataframe=edf.err()[show_cols + edf.extra_cols].to_json()
+        )
         return edf
 
 

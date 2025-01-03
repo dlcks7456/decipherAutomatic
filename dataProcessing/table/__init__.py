@@ -28,6 +28,8 @@ from wordcloud import WordCloud
 import nltk
 from nltk.corpus import stopwords
 from konlpy.tag import Okt
+from bs4 import BeautifulSoup
+import subprocess
 
 def single_total(data, base, total_label='Total') :
     if len(data[~data[base].isna()]) == 0 :
@@ -953,3 +955,248 @@ def get_decipher_data(pid: Union[str, int], data_format: Literal['tab', 'fwu', '
 
     return decipher_data
     
+
+
+
+def decipher_create_datamap(pid: Union[str, int], 
+                            uid: bool= False,
+                            ce: bool=True,
+                            oe: bool=True,
+                            folder_name: Union[str, None]='MAP') :
+    api.login(api_key, api_server)
+    survey = f'selfserve/548/{pid}'    
+    url = f'surveys/{survey}/datamap'
+    decipher_data = api.get(url, format='html', qa=True)
+    # map_json = json.dumps(decipher_data)
+
+    if folder_name is None :
+        folder_name = 'MAP'
+
+    folder_name = f'{folder_name} ({pid})'
+
+    if not os.path.exists(folder_name) :
+        os.makedirs(folder_name)
+    
+    with open(f'{folder_name}/map.html', 'wb') as f :
+        f.write(decipher_data)
+    
+    html_data = decipher_data.decode('utf-8')  # UTF-8로 디코딩 (필요에 따라 인코딩 변경)
+    # BeautifulSoup으로 파싱
+    soup = BeautifulSoup(html_data, 'html.parser')
+
+    # Get Body Data
+    body = soup.find('body')
+
+
+    def get_label(content:str) :
+        soup = BeautifulSoup(content, 'html.parser')
+        # class가 label인 div 태그
+        label = soup.find('div', class_='label')
+
+        if label :
+            label = label.text
+            # 만약 label에 대괄호가 포함되어 있다면 정규식으로 대괄호 안의 텍스트 추출
+            rv_label = re.findall(r'\[(.*?)\]', label)
+            if rv_label :
+                return rv_label[0]
+            else :
+                return label
+        else :
+            return None
+
+    ce_types = ['radio', 'checkbox', 'number', 'float', 'select']
+    oe_types = ['open', 'text', 'textarea']
+
+    def type_check(content:str) :
+        qtype = re.findall(r'(?<=Question type is )\w+', content)
+        if qtype :
+            qtype = qtype[0].lower()
+            if (not qtype in oe_types) and ('Open text response' in content) :
+                return 'open'
+            
+            if qtype in oe_types and all(v in content for v in ['Play Count', 'Elapsed Time'] ):
+                return 'video'
+                
+            return qtype
+        else :
+            return 'system'
+        
+
+    def check_values(content:str) :
+        # Values: 0-9999가 있다면, 0-9999을 추출
+        values = re.findall(r'(?<=Values: )\d+-\d+', content)
+        if values :
+            minv, maxv = values[0].split('-')
+            return {
+                'min': minv,
+                'max': maxv
+            }
+        else :
+            return None
+        
+    def check_verfiy(content:str) :
+        # VRF:range(0,9999)가 있다면, 0,9999을 추출
+        verify = re.findall(r'(?<=VRF:range\()\d+,\d+', content)
+        if verify :
+            minv, maxv = verify[0].split(',')
+            return {
+                'min': minv,
+                'max': maxv
+            }
+        else :
+            return None
+
+    def check_float_range(content:str) :
+        # >R(0.1,31)<가 있다면, 0.1, 31을 추출 (소수점으로 되어 있을 수도, 정수일 수도 있음)
+        verify = re.findall(r'(?<=R\()\d+\.?\d*,\d+\.?\d*', content)
+        if verify :
+            minv, maxv = verify[0].split(',')
+            return {
+                'min': minv,
+                'max': maxv
+            }
+        else :
+            return None
+
+    def check_virtual_variable(content:str) :
+        # <span title="Virtual question not shown to participants">V</span>가 있다면 True, 없다면 False
+        virtual = re.findall(r'<span title="Virtual question not shown to participants">V</span>', content)
+
+        if virtual :
+            return True
+        else :
+            return False
+    
+
+    default_front = [
+        ('record', 7),
+        ('uuid', 16),
+    ]
+
+    default_back = [
+        ('decLang', 60),
+    ]
+
+    if uid :  
+        default_front.append(('UID', 16))
+    
+    default_front = ''.join([f'{f[0]},{f[0]},{f[1]}\n' for f in default_front])
+    default_back = ''.join([f'{f[0]},{f[0]},{f[1]}\n' for f in default_back])
+
+    ce = default_front
+    oe = default_front
+
+    recheck_vars = []
+
+    exactly_diff_vars = key_vars + sys_vars
+
+    max_width_dict = {
+        'number': 19,
+        'float': 22,
+        'open': 60,
+        'text': 60,
+        'textarea': 255,
+        'video': 60,
+    }
+
+    if body :
+        body_content = str(body.decode_contents())
+        contents = body_content.split('<p></p>')
+        if contents :
+            for c in contents :
+                # 정규식으로 [ ] 안에 있는 내용을 모두 추출
+                qids = re.findall(r'>\[(.*?)\]<', c)
+                label = get_label(c)
+                qtype = type_check(c)
+                values = check_values(c)
+                verify = check_verfiy(c)
+                virtual = check_virtual_variable(c)
+
+                if qtype == 'system' :
+                    continue
+                
+                if qtype in ['float'] :
+                    verify = check_float_range(c)
+
+                max_width = None
+                rechk = False
+                if qtype in max_width_dict.keys() :
+                    max_width = max_width_dict[qtype]
+                    if verify is not None :
+                        max_width = len(verify['max'])
+                        if qtype == 'float' :
+                            max_width += 3
+                    else :
+                        if qtype in ce_types :
+                            rechk = True
+                else :
+                    max_width = len(values['max'])
+
+                for qid in qids :
+                    if qid in exactly_diff_vars :
+                        continue
+                    
+                    if label in exactly_diff_vars :
+                        continue
+
+                    if rechk :
+                        recheck_vars.append({
+                            'label': label,
+                            'qid': qid,
+                            'qtype': qtype,
+                            'values': values,
+                            'verify': verify,
+                        })
+
+                    if qtype in ce_types :
+                        ce += f'{qid},{qid},{max_width}\n'
+                    if qtype in oe_types :
+                        oe += f'{qid},{qid},{max_width}\n'
+
+        oe += default_back
+
+        # 파일 저장 함수 정의
+        def save_txt(layout_folder, txt):
+            save_path = os.path.join(folder_name, layout_folder)
+            
+            if not os.path.exists(save_path):
+                os.makedirs(save_path)
+
+            version = 1
+            file_name = os.path.join(save_path, f"v{version}.txt")
+            
+            while os.path.exists(file_name):
+                version += 1
+                file_name = os.path.join(save_path, f"v{version}.txt")
+            
+            with open(file_name, 'w', encoding='utf-8') as f:
+                f.write(txt)
+            
+            # abs_path = os.path.abspath(file_name)
+            return file_name
+
+        return_dict = {}
+        if ce :
+            fpath = save_txt('CE', ce)
+            display(HTML(f'<b><span style="color: #2d9fff;">CE</span> Layout File Created</b>: {fpath}'))
+
+            if recheck_vars :
+                df = pd.DataFrame(recheck_vars)
+                df_path = f'{folder_name}/recheck_vars.xlsx'
+                df.to_excel(df_path, index=False)
+
+                display(HTML(f'<b><span style="color: #f5496c;">Recheck Variables</span></b>: {df_path}'))
+
+            return_dict['CE'] = os.path.abspath(fpath)
+
+        if oe :
+            fpath = save_txt('OE', oe)
+            display(HTML(f'<b><span style="color: #5ae070;">OE</span> Layout File Created</b>: {fpath}'))
+        
+            return_dict['OE'] = os.path.abspath(fpath)
+        
+        return return_dict
+
+    return None
+
+
