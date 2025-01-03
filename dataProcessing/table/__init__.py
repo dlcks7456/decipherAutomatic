@@ -1120,6 +1120,9 @@ def decipher_create_datamap(pid: Union[str, int],
 
                 max_width = None
                 rechk = False
+                # 사유
+                reason = None
+
                 if qtype in max_width_dict.keys() :
                     max_width = max_width_dict[qtype]
                     if verify is not None :
@@ -1129,9 +1132,18 @@ def decipher_create_datamap(pid: Union[str, int],
                     else :
                         if qtype in ce_types :
                             rechk = True
+                            reason = 'No Verify / No Values'
                 else :
                     max_width = len(values['max'])
 
+                # Dummy Checkbox는 제외
+                if qtype == 'checkbox' :
+                    if values :
+                        if values.get('min') == '0' and values.get('max') == '1' :
+                            if all(v in c for v in ['Unchecked', 'Checked']) :
+                                rechk = True
+                                reason = 'Dummy Checkbox'
+                            
                 for qid in qids :
                     if qid in exactly_diff_vars :
                         continue
@@ -1146,7 +1158,11 @@ def decipher_create_datamap(pid: Union[str, int],
                             'qtype': qtype,
                             'values': values,
                             'verify': verify,
+                            'reason': reason
                         })
+                        
+                        if qtype == 'checkbox' :
+                            continue
 
                     if qtype in ce_types :
                         ce += f'{qid},{qid},{max_width}\n'
