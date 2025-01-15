@@ -616,53 +616,125 @@ class CrossTabs(pd.DataFrame):
                     model='gpt-4o-mini')
         
         post_text = '%'
+# User Persona: "Professional Data Analyst"
+# User Goal: "Analyze and summarize cross-tabulation results"
+# User Task: "Includes basic statistics, if available, to provide a summary of the analysis and insights beyond the total number of responses, focusing on trends and noteworthy points."
+# Report Language: "{lang.upper()}"
+
+# Prompt:
+# You are a professional data analyst. Your task is to analyze and summarize the given cross-tabulation results. Follow these steps:
+
+# Exclude any analysis on the total response count.
+# Focus on analyzing by group in each row in each column of the cross table.
+# If the cross-tabulation includes basic statistics like mean, min, and max, provide an analysis of these as well.
+# Derive comprehensive insights and summarize them.
+# The final report should be written in {lang.upper()} and in complete sentences.
+# Take a deep breath and let's work this out in a step by step way to be sure we have the right answer.
         default_prompt = F"""
-User Persona: "Professional Data Analyst"
-User Goal: "Analyze and summarize cross-tabulation results"
-User Task: "Includes basic statistics, if available, to provide a summary of the analysis and insights beyond the total number of responses, focusing on trends and noteworthy points."
-Report Language: "{lang.upper()}"
-
-Prompt:
-You are a professional data analyst. Your task is to analyze and summarize the given cross-tabulation results. Follow these steps:
-
+<role>Professional Data Analyst</role>
+<goal>Analyze and summarize cross-tabulation results</goal>
+<task>
+Includes basic statistics, if available, to provide a summary of the analysis and insights beyond the total number of responses, focusing on trends and noteworthy points.
+</task>
+<lang>{lang.upper()}</lang>
+<instruction>
+You are a professional data analyst. Your task is to analyze and summarize the given cross-tabulation results(<reference>). Follow these steps:
 Exclude any analysis on the total response count.
+You should only analyze the numbers that appear to be significant.
 Focus on analyzing by group in each row in each column of the cross table.
-If the cross-tabulation includes basic statistics like mean, min, and max, provide an analysis of these as well.
 Derive comprehensive insights and summarize them.
 The final report should be written in {lang.upper()} and in complete sentences.
-Take a deep breath and let's work this out in a step by step way to be sure we have the right answer.
+Never misinterpret the results of a crosstab. Check your answers carefully.
+</instruction>
+<if>If the cross-tabulation includes basic statistics like mean, min, and max</if>
+<switch>Provide an analysis of these as well</switch>
+<format>
+### [Subheadings 1]
+#### [Column 1]
+<list>[Write your analysis]</list>
+
+#### [Column 2]
+<list>[Write your analysis]</list>
+
+### [Subheadings 2]
+...[Proceed with the same]
+
+#### Summarize
+[The full summary]
+
+#### Insight
+[The Insight]
+</format>
 """
         
         if (isinstance(table_type, str) and table_type in ['number', 'float', 'text']) or (isinstance(table_type, list) and any(t in ['number', 'float', 'text'] for t in table_type)) :
             post_text = None
+# User Persona: "Professional Data Analyst"
+# User Goal: "Analyze and summarize cross-tabulation results"
+# User Task: "Provide detailed analysis and insights excluding total response counts, focusing on calculated basic statistics per column, and deliver the final report in {lang.upper()}"
+# Report Language: "{lang.upper()}"
+
+# Prompt:
+# You are a professional data analyst. Your task is to analyze and summarize the given cross-tabulation results. Follow these steps:
+
+# Exclude any analysis on the total response count.
+# Focus on analyzing the calculated basic statistics (e.g., mean, min, max) for each column.
+# Derive comprehensive insights and summarize them.
+# The final report should be written in {lang.upper()} and in complete sentences.
+# Take a deep breath and let's work this out in a step by step way to be sure we have the right answer.
+
             default_prompt = f"""
-User Persona: "Professional Data Analyst"
-User Goal: "Analyze and summarize cross-tabulation results"
-User Task: "Provide detailed analysis and insights excluding total response counts, focusing on calculated basic statistics per column, and deliver the final report in {lang.upper()}"
-Report Language: "{lang.upper()}"
-
-Prompt:
+<role>Professional Data Analyst</role>
+<goal>Analyze and summarize cross-tabulation results</goal>
+<task>
+Provide detailed analysis and insights excluding total response counts, focusing on calculated basic statistics per column, and deliver the final report in {lang.upper()}.
+</task>
+<lang>{lang.upper()}</lang>
+<instruction>
 You are a professional data analyst. Your task is to analyze and summarize the given cross-tabulation results. Follow these steps:
-
 Exclude any analysis on the total response count.
 Focus on analyzing the calculated basic statistics (e.g., mean, min, max) for each column.
+You should only analyze the numbers that appear to be significant.
 Derive comprehensive insights and summarize them.
 The final report should be written in {lang.upper()} and in complete sentences.
 Take a deep breath and let's work this out in a step by step way to be sure we have the right answer.
+Never misinterpret the results of a crosstab. Check your answers carefully.
+</instruction>
+<format>
+### [Subheadings 1]
+#### [Column 1]
+<list>[Write your analysis]</list>
+
+#### [Column 2]
+<list>[Write your analysis]</list>
+
+### [Subheadings 2]
+...[Proceed with the same]
+
+#### Summarize
+[The full summary]
+
+#### Insight
+[The Insight]
+</format>
 """
 
         if prompt is None :
             prompt = default_prompt
         
         crosstab = self.ratio(ratio_round=2, heatmap=False, post_text=post_text)
+        crosstab.columns = ['_'.join(col) for col in crosstab.columns]
         crosstab = crosstab.to_markdown()
+        
+        # return crosstab
 
         prompt_template = ChatPromptTemplate.from_template(
 """
 {prompt}
-===
-{sub_title}
+<title>{sub_title}</title>
+<reference>
 {crosstab}
+</reference>
 """
 )
         try :

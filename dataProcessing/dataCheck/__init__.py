@@ -1,6 +1,6 @@
 import pandas as pd
 from pandas.api.types import is_numeric_dtype
-from IPython.display import display, HTML
+from IPython.display import display, HTML, Markdown
 from typing import Union, List, Tuple, Dict, Optional, Literal, Callable, Any, TypedDict
 import numpy as np
 from dataclasses import dataclass, field
@@ -2678,7 +2678,7 @@ class DataCheck(pd.DataFrame):
                     table_id: Union[str, tuple], 
                     table: Union[pd.DataFrame, CrossTabs],
                     ai: bool = False,
-                    model: Literal['gpt-4o', 'gpt-4o-mini', 'llama3', 'llama3.1'] = 'gpt-4o-mini',
+                    model: Literal['gpt-4o', 'gpt-4o-mini', 'llama3', 'llama3.1'] = 'gpt-4o',
                     prompt: Optional[str] = None,
                     heatmap: Optional[bool] = True,) :
         if not isinstance(table_id, (str, tuple)) :
@@ -2756,22 +2756,24 @@ class DataCheck(pd.DataFrame):
                     📌 {base}
             </div>"""
 
-            table_analysis_html = f"""<div style="font-weight: bold; font-size: 0.8rem; padding: 7px; max-width: 700px; margin-bottom: 7px;border: 1px solid #2d6df6; border-radius: 5px;">
-                    {chat_result}
-            </div>
-            """
+            # table_analysis_html = f"""<div style="font-weight: bold; font-size: 0.8rem; padding: 7px; max-width: 700px; margin-bottom: 7px;border: 1px solid #2d6df6; border-radius: 5px;">
+            #         {chat_result}
+            # </div>
+            # """
 
             table_id_html = f"""
                 <div style="width:fit-content;padding: 7px; font-size:1rem;font-weight:bold; background-color: #2d6df6; border-radius: 5px; color:white; margin-bottom: 7px;">
                     {table_name}
                 </div>
                 {table_desc_html if table_desc is not None else ''}
-                {table_analysis_html if chat_result is not None else ''}
                 <div>
                     {table_html}
                 </div>
             """
             display(HTML(table_id_html))
+            
+            if chat_result is not None :
+                display(Markdown(chat_result))
     
     
     def load_log(self, pkl_path: str) :
