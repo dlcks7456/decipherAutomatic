@@ -101,7 +101,7 @@ def get_note(pid=None,
     with open(xml, 'r', encoding='utf-8') as f :
         xml = f.read()
     
-    notes = re.findall(r'<note[^>]*\bsst="0"[^>]*>(.*?)</note>', xml, re.DOTALL)
+    notes = re.findall(r'<note[^>]*\b[^>]*>(.*?)</note>', xml, re.DOTALL)
     
     notes = [note.strip() for note in notes]
     if qc_ver is not None :
@@ -123,12 +123,13 @@ def get_note(pid=None,
         for note in notes :
             clean = note.split('\n')[1:]
             clean = [c.strip() for c in clean]
-            qid = clean[0].replace('#', '').strip()
-            clean[0] = f'##### ✔️ **{qid}**\n'
+            if clean :
+                qid = clean[0].replace('#', '').strip()
+                clean[0] = f'##### ✔️ **{qid}**\n'
 
-            clean = '\n'.join(clean)
-            md.write(clean)
-            md.write('\n\n&nbsp;\n\n')
+                clean = '\n'.join(clean)
+                md.write(clean)
+                md.write('\n\n&nbsp;\n\n')
 
     return md_file
 
