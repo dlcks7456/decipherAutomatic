@@ -1163,7 +1163,7 @@ class DataCheck(pd.DataFrame):
 
         def check_duplicates(row):
             row_values = row.tolist()
-            filtered_values = [value for value in row_values if value not in okUnique and not pd.isna(value)]
+            filtered_values = [value for value in row_values if not pd.isna(value) and value not in okUnique]
             return 1 if len(filtered_values) != len(set(filtered_values)) else None
         
         chk_df[dup_err] = chk_df[show_cols].apply(check_duplicates, axis=1)
