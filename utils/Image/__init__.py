@@ -1,10 +1,16 @@
-from PIL import Image, ImageDraw, ImageFont
 import os
 import re
-from IPython.display import display, HTML
 import shutil
-import pandas as pd
 import numpy as np
+import pandas as pd
+from typing import Dict, List, Literal, Union
+from openpyxl import load_workbook
+from openpyxl.drawing.image import Image
+from openpyxl.utils import get_column_letter
+from openpyxl.styles import Alignment
+from PIL import Image as PILImage
+from PIL import ImageDraw, ImageFont
+from IPython.display import display, HTML
 
 def list_directories(path=None):
     '''### 현재 디렉토리의 하위 디렉토리 목록을 반환
@@ -312,3 +318,174 @@ def create_dummy_img(save_name, save_path=None, file_format='png', width=500, he
 
     path = os.path.join(img_save_path, img_name)
     image.save(path)
+
+
+
+
+# Image Insert to Excel 
+def insert_img_in_ws(ws, image_path: str, col_letter: str, row_idx: int, target_width: int, row_height: int) -> None:
+    """
+    이미 열려있는 worksheet(ws)에 이미지를 삽입합니다.
+    """
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"Image file not found: {image_path}")
+    
+    img_for_excel = Image(image_path)
+    img = PILImage.open(image_path)
+    
+    if img.format == 'MPO':
+        img = img.convert('RGB')
+        img.save(image_path)
+        img_for_excel = Image(image_path)
+    
+    width_percent = target_width / img.width
+    new_height = int(img.height * width_percent)
+    img_for_excel.width = target_width
+    img_for_excel.height = new_height
+
+    # 해당 셀의 열 및 행 크기를 조정
+    ws.column_dimensions[col_letter].width = (target_width // 7) - 1
+    ws.row_dimensions[row_idx].height = row_height
+
+    ws.add_image(img_for_excel, f'{col_letter}{row_idx}')
+
+def sort_key(key: str):
+    match = re.match(r"([A-Z]+)(\d+)", key)
+    return (match.group(1), int(match.group(2))) if match else (key, 0)
+
+def process_image_insertion(
+    data_file: str, 
+    sheet: str = None,
+    platform: Literal['decipher', 'stg'] = 'decipher',
+    images_path: str = 'images', 
+    img_variables: Union[List[str], None] = None,
+    row_height: int = 205, 
+    target_width: int = 110,
+    mkdir: bool = True,
+    dir_name: str = 'insert_img',
+) -> None:
+    """엑셀 파일에 이미지를 삽입합니다.
+    
+    Args:
+        data_file: 이미지를 삽입할 엑셀 파일 경로
+        sheet: 작업할 시트 이름 (None인 경우 첫 번째 시트 사용)
+        platform: 데이터 플랫폼 유형 ('decipher' 또는 'stg')
+        images_path: 이미지 파일이 있는 디렉토리 경로
+        img_variables: 이미지를 삽입할 변수명 리스트 (None인 경우 자동 감지)
+        row_height: 이미지가 들어갈 행의 높이
+        target_width: 삽입할 이미지의 목표 너비
+        mkdir: 결과 파일을 저장할 새 디렉토리 생성 여부
+        dir_name: 결과 파일을 저장할 디렉토리 이름
+    """
+    def print_status(message: str, end='\r', flush=True):
+        print(message, end=end, flush=flush)
+    
+    print_status('📝 Starting image insertion process...')
+    
+    if platform is None:
+        raise ValueError('platform value error')
+    
+    index_col_dict = {'decipher': 'record', 'stg': 'SbjNum'}
+    index_col = index_col_dict[platform]
+    
+    # Excel 데이터를 읽어 record 리스트 생성
+    if sheet is None:
+        df = pd.read_excel(data_file, index_col=index_col)
+    else:
+        df = pd.read_excel(data_file, sheet_name=sheet, index_col=index_col)
+    df.index = df.index.astype(str)
+    records = list(df.index)
+    
+    print_status('📊 Loading Excel workbook...')
+    # 새 파일 생성 (중복 피하기)
+    if mkdir:
+        if not isinstance(dir_name, str):
+            raise ValueError('dir_name must be str')
+        os.makedirs(dir_name, exist_ok=True)
+    version = 1
+    base_filename = os.path.basename(data_file)
+    base_name = f"v{version}_Img_{base_filename}"
+    new_name = os.path.join(dir_name, base_name) if mkdir else base_name
+    while os.path.exists(new_name):
+        version += 1
+        base_name = f"v{version}_Img_{base_filename}"
+        new_name = os.path.join(dir_name, base_name) if mkdir else base_name
+
+    # 원본 파일을 새 파일로 복사
+    wb_temp = load_workbook(data_file)
+    wb_temp.save(new_name)
+    wb_temp.close()
+    
+    print_status('🔍 Analyzing image variables...')
+    # 새 파일을 한 번만 열어 작업 (Workbook은 메모리상에서 처리)
+    wb = load_workbook(new_name)
+    sheet_name = sheet or wb.sheetnames[0]
+    ws = wb[sheet_name]
+    max_cols = ws.max_column
+    
+    images = os.listdir(images_path)
+    
+    # 이미지 변수 설정: 자동 감지 혹은 인자 사용
+    if img_variables is None:
+        match platform:
+            case 'stg':
+                survey_info = [
+                    [img.split('_--_')[0].split('_')[0], '_'.join(img.split('_--_')[0].split('_')[1:])]
+                    for img in images
+                ]
+                variables = set([s[-1] for s in survey_info])
+                summary_var: Dict[str, List[str]] = {}
+                for v in variables:
+                    if '_' not in v:
+                        summary_var[v] = [v]
+                    else:
+                        base, row = v.split('_')
+                        if base not in summary_var:
+                            rows = sorted(set(
+                                int(re.findall(r'R(\d+)', i.split('_')[-1])[0])
+                                for i in variables if base in i
+                            ))
+                            summary_var[base] = [f'{base}_R{r}' for r in rows]
+                sorted_summary_var = dict(sorted(summary_var.items(), key=lambda item: sort_key(item[0])))
+                img_variables = sum(sorted_summary_var.values(), [])
+            case 'decipher':
+                blob = df.astype(str).apply(lambda col: col.map(lambda x: "blob" in x)).any()
+                img_variables = blob[blob].index.tolist()
+
+    print_status('📝 Preparing worksheet columns...')
+    # 새 열을 기존 열 뒤에 추가하기
+    match_col_index = {col: max_cols + idx + 1 for idx, col in enumerate(img_variables)}
+    for col, col_index in match_col_index.items():
+        ws.cell(row=1, column=col_index, value=col)
+    
+
+    # 이미지 파일들을 (record, variable) 튜플을 키로 갖는 딕셔너리로 미리 매핑 (파일명에 "record_variable" 패턴일 경우)
+    image_lookup = {}
+    for img_file in images:
+        for rec in records:
+            for var in img_variables:
+                if f"{rec}_{var}" in img_file:
+                    image_lookup[(rec, var)] = img_file
+                    break  # 중복 매핑 방지
+    
+    print_status('🖼️ Inserting images...')
+    total_records = len(records)
+    for idx, rec in enumerate(records, start=2):
+        for var, col_index in match_col_index.items():
+            img_file = image_lookup.get((rec, var))
+            if img_file:
+                col_letter = get_column_letter(col_index)
+                img_path = os.path.join(images_path, img_file)
+                insert_img_in_ws(ws, img_path, col_letter, idx, target_width, row_height)
+        progress = ((idx - 1) / total_records) * 100
+        print_status(f'🖼️ Processing images... {progress:.1f}%')
+    
+    print_status('💫 Applying final formatting...')
+    # 모든 셀에 대해 가운데 정렬 적용
+    for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
+        for cell in row:
+            cell.alignment = Alignment(horizontal='center', vertical='center')
+    
+    wb.save(new_name)
+    wb.close()
+    print_status('✨ Image insertion complete!', end='\n')
