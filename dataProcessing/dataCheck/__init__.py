@@ -1051,15 +1051,16 @@ class DataCheck(pd.DataFrame):
             if not no_base:
                 warnings.append('No Base Check does not run')
             
-            if cond is not None and no_base:
-                no_base_result = no_base_check()
-                if no_base_result is not None:
-                    chk_df, extra_err = no_base_result
-                    err_list.extend(extra_err)
+            # if cond is not None and no_base:
+            #     no_base_result = no_base_check()
+            #     if no_base_result is not None:
+            #         chk_df, extra_err = no_base_result
+            #         err_list.extend(extra_err)
 
             show_cols = [cnt] + show_cols
 
         set_alt = self.result_alt(qid, alt)
+        
         edf = ErrorDataFrame(qid, 'MA', show_cols, chk_df, err_list, warnings, set_alt)
         self.show_message(edf)
         self.result_html_update(
